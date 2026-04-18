@@ -233,11 +233,11 @@ function formatProjectMemberActionLabel(
 function projectGroupingModeDescription(mode: SidebarProjectGroupingMode): string {
   switch (mode) {
     case "repository":
-      return "Projects from the same repository share one sidebar row.";
+      return "Flakes from the same repository share one sidebar row.";
     case "repository_path":
-      return "Projects group only when both the repository and repo-relative path match.";
+      return "Flakes group only when both the repository and repo-relative path match.";
     case "separate":
-      return "Every project path gets its own sidebar row.";
+      return "Every flake path gets its own sidebar row.";
   }
 }
 
@@ -1330,17 +1330,17 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if ((memberThreadCountByPhysicalKey.get(member.physicalProjectKey) ?? 0) > 0) {
         toastManager.add({
           type: "warning",
-          title: "Project is not empty",
-          description: "Delete all threads in this project before removing it.",
+          title: "Flake is not empty",
+          description: "Delete all threads in this flake before removing it.",
         });
         return;
       }
 
       const message = [
-        `Remove project "${member.name}"?`,
+        `Remove flake "${member.name}"?`,
         `Path: ${member.cwd}`,
         ...(member.environmentLabel ? [`Environment: ${member.environmentLabel}`] : []),
-        "This removes only this project entry.",
+        "This removes only this flake entry.",
       ].join("\n");
       const confirmed = await api.dialogs.confirm(message);
       if (!confirmed) {
@@ -1357,7 +1357,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         clearProjectDraftThreadId(memberProjectRef);
         const projectApi = readEnvironmentApi(member.environmentId);
         if (!projectApi) {
-          throw new Error("Project API unavailable.");
+          throw new Error("Flake API unavailable.");
         }
         await projectApi.orchestration.dispatchCommand({
           type: "project.delete",
@@ -1365,15 +1365,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           projectId: member.id,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error removing project.";
-        console.error("Failed to remove project", {
+        const message = error instanceof Error ? error.message : "Unknown error removing flake.";
+        console.error("Failed to remove flake", {
           projectId: member.id,
           environmentId: member.environmentId,
           error,
         });
         toastManager.add({
           type: "error",
-          title: `Failed to remove "${member.name}"`,
+          title: `Failed to remove flake "${member.name}"`,
           description: message,
         });
       }
@@ -1461,10 +1461,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
         const clicked = await api.contextMenu.show(
           [
-            buildTargetedItem("rename", "Rename project"),
-            buildTargetedItem("grouping", "Project grouping…"),
-            buildTargetedItem("copy-path", "Copy Project Path"),
-            buildTargetedItem("delete", "Remove project", {
+            buildTargetedItem("rename", "Rename flake"),
+            buildTargetedItem("grouping", "Flake grouping…"),
+            buildTargetedItem("copy-path", "Copy Flake Path"),
+            buildTargetedItem("delete", "Remove flake", {
               destructive: true,
               isDisabled: (member) =>
                 (memberThreadCountByPhysicalKey.get(member.physicalProjectKey) ?? 0) > 0,
@@ -1773,7 +1773,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     if (trimmed.length === 0) {
       toastManager.add({
         type: "warning",
-        title: "Project title cannot be empty",
+        title: "Flake title cannot be empty",
       });
       return;
     }
@@ -1787,8 +1787,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     if (!api) {
       toastManager.add({
         type: "error",
-        title: "Failed to rename project",
-        description: "Project API unavailable.",
+        title: "Failed to rename flake",
+        description: "Flake API unavailable.",
       });
       return;
     }
@@ -1804,7 +1804,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     } catch (error) {
       toastManager.add({
         type: "error",
-        title: "Failed to rename project",
+        title: "Failed to rename flake",
         description: error instanceof Error ? error.message : "An error occurred.",
       });
     }
@@ -1969,7 +1969,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             </span>
             {project.groupedProjectCount > 1 ? (
               <span className="shrink-0 text-[10px] text-muted-foreground/60">
-                {project.groupedProjectCount} projects
+                {project.groupedProjectCount} flakes
               </span>
             ) : null}
           </span>
@@ -2066,18 +2066,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       >
         <DialogPopup className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Rename project</DialogTitle>
+            <DialogTitle>Rename flake</DialogTitle>
             <DialogDescription>
               {projectRenameTarget
                 ? `Update the title for ${projectRenameTarget.cwd}.`
-                : "Update the project title."}
+                : "Update the flake title."}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-4">
             <div className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Project title</span>
+              <span className="text-xs font-medium text-foreground">Flake title</span>
               <Input
-                aria-label="Project title"
+                aria-label="Flake title"
                 value={projectRenameTitle}
                 onChange={(event) => setProjectRenameTitle(event.target.value)}
                 onKeyDown={(event) => {
@@ -2554,7 +2554,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
       <SidebarGroup className="px-2 py-2">
         <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Projects
+            Flakes
           </span>
           <div className="flex items-center gap-1">
             <ProjectSortMenu
@@ -2570,7 +2570,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 render={
                   <button
                     type="button"
-                    aria-label="Add project"
+                    aria-label="Add flake"
                     data-testid="sidebar-add-project-trigger"
                     className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={openAddProject}
@@ -2579,7 +2579,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               >
                 <PlusIcon className="size-3.5" />
               </TooltipTrigger>
-              <TooltipPopup side="right">Add project</TooltipPopup>
+              <TooltipPopup side="right">Add flake</TooltipPopup>
             </Tooltip>
           </div>
         </div>

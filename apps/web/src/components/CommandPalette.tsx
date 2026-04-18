@@ -646,11 +646,11 @@ function OpenCommandPaletteDialog() {
     actionItems.push({
       kind: "submenu",
       value: "action:new-thread-in",
-      searchTerms: ["new thread", "project", "pick", "choose", "select"],
+      searchTerms: ["new thread", "flake", "pick", "choose", "select"],
       title: "New thread in...",
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
-      groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+      groups: [{ value: "flakes", label: "Flakes", items: projectThreadItems }],
     });
   }
 
@@ -658,8 +658,8 @@ function OpenCommandPaletteDialog() {
     actionItems.push({
       kind: "submenu",
       value: "action:add-project",
-      searchTerms: ["add project", "folder", "directory", "browse", "environment"],
-      title: "Add project",
+      searchTerms: ["add flake", "folder", "directory", "browse", "environment"],
+      title: "Add flake",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
       groups: addProjectEnvironmentGroups,
@@ -668,8 +668,8 @@ function OpenCommandPaletteDialog() {
     actionItems.push({
       kind: "action",
       value: "action:add-project",
-      searchTerms: ["add project", "folder", "directory", "browse"],
-      title: "Add project",
+      searchTerms: ["add flake", "folder", "directory", "browse"],
+      title: "Add flake",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
@@ -709,7 +709,7 @@ function OpenCommandPaletteDialog() {
       if (isUnsupportedWindowsProjectPath(rawCwd.trim(), browseEnvironmentPlatform)) {
         toastManager.add({
           type: "error",
-          title: "Failed to add project",
+          title: "Failed to add flake",
           description: "Windows-style paths are only supported on Windows.",
         });
         return;
@@ -718,8 +718,8 @@ function OpenCommandPaletteDialog() {
       if (isExplicitRelativeProjectPath(rawCwd.trim()) && !currentProjectCwdForBrowse) {
         toastManager.add({
           type: "error",
-          title: "Failed to add project",
-          description: "Relative paths require an active project.",
+          title: "Failed to add flake",
+          description: "Relative paths require an active flake.",
         });
         return;
       }
@@ -763,7 +763,7 @@ function OpenCommandPaletteDialog() {
       } catch (error) {
         toastManager.add({
           type: "error",
-          title: "Failed to add project",
+          title: "Failed to add flake",
           description: error instanceof Error ? error.message : "An error occurred.",
         });
       }
@@ -1026,10 +1026,10 @@ function OpenCommandPaletteDialog() {
             keybindings={keybindings}
             onExecuteItem={executeItem}
             {...(relativePathNeedsActiveProject
-              ? { emptyStateMessage: "Relative paths require an active project." }
+              ? { emptyStateMessage: "Relative paths require an active flake." }
               : willCreateProjectPath
                 ? {
-                    emptyStateMessage: "Press Enter to create this folder and add it as a project.",
+                    emptyStateMessage: "Press Enter to create this folder and add it as a flake.",
                   }
                 : {})}
           />

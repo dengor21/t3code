@@ -559,7 +559,7 @@ const resolveProjectTitle = Effect.fn("resolveProjectTitle")(function* (
     if (trimmed.length > 0) {
       return trimmed;
     }
-    return yield* Effect.fail(new Error("Project title cannot be empty."));
+    return yield* Effect.fail(new Error("Flake title cannot be empty."));
   }
 
   const path = yield* Path.Path;
@@ -573,7 +573,7 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
 }) {
   const trimmedIdentifier = input.identifier.trim();
   if (trimmedIdentifier.length === 0) {
-    return yield* Effect.fail(new Error("Project identifier cannot be empty."));
+    return yield* Effect.fail(new Error("Flake identifier cannot be empty."));
   }
 
   const activeProjects = input.snapshot.projects.filter((project) => project.deletedAt === null);
@@ -600,7 +600,7 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
 
   const resolved = exactWorkspaceMatch;
   if (!resolved) {
-    return yield* Effect.fail(new Error(`No active project found for '${trimmedIdentifier}'.`));
+    return yield* Effect.fail(new Error(`No active flake found for '${trimmedIdentifier}'.`));
   }
 
   return {
