@@ -11,12 +11,14 @@ import { ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 import {
   type BranchNameGenerationInput,
+  type ChangeDocumentationGenerationResult,
   type ThreadTitleGenerationResult,
   type TextGenerationShape,
   TextGeneration,
 } from "../Services/TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildChangeDocumentationPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -90,7 +92,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateChangeDocumentation",
     attachments: BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -134,7 +137,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateChangeDocumentation";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -406,11 +410,47 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     } satisfies ThreadTitleGenerationResult;
   });
 
+  const generateChangeDocumentation: TextGenerationShape["generateChangeDocumentation"] = Effect.fn(
+    "CodexTextGeneration.generateChangeDocumentation",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildChangeDocumentationPrompt({
+      projectTitle: input.projectTitle,
+      threadTitle: input.threadTitle,
+      assistantResponse: input.assistantResponse,
+      changedFilesSummary: input.changedFilesSummary,
+      diffPatch: input.diffPatch,
+      hosts: input.hosts,
+    });
+
+    if (input.modelSelection.provider !== "codex") {
+      return yield* new TextGenerationError({
+        operation: "generateChangeDocumentation",
+        detail: "Invalid model selection.",
+      });
+    }
+
+    const generated = yield* runCodexJson({
+      operation: "generateChangeDocumentation",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      headline: generated.headline.trim(),
+      summary: generated.summary.trim(),
+      changes: generated.changes.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+      hostImpact: generated.hostImpact.trim(),
+    } satisfies ChangeDocumentationGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateChangeDocumentation,
   } satisfies TextGenerationShape;
 });
 

@@ -73,6 +73,29 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+export interface ChangeDocumentationGenerationInput {
+  cwd: string;
+  projectTitle: string;
+  threadTitle: string;
+  assistantResponse: string;
+  changedFilesSummary: string;
+  diffPatch: string;
+  hosts: ReadonlyArray<{
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  }>;
+  modelSelection: ModelSelection;
+}
+
+export interface ChangeDocumentationGenerationResult {
+  headline: string;
+  summary: string;
+  changes: ReadonlyArray<string>;
+  hostImpact: string;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -80,6 +103,9 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
+  generateChangeDocumentation(
+    input: ChangeDocumentationGenerationInput,
+  ): Promise<ChangeDocumentationGenerationResult>;
 }
 
 /**
@@ -113,6 +139,13 @@ export interface TextGenerationShape {
   readonly generateThreadTitle: (
     input: ThreadTitleGenerationInput,
   ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate a structured documentation entry for a completed turn.
+   */
+  readonly generateChangeDocumentation: (
+    input: ChangeDocumentationGenerationInput,
+  ) => Effect.Effect<ChangeDocumentationGenerationResult, TextGenerationError>;
 }
 
 /**

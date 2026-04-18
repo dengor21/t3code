@@ -15,9 +15,14 @@ import { resolveApiModelId } from "@t3tools/shared/model";
 import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
 
 import { TextGenerationError } from "@t3tools/contracts";
-import { type TextGenerationShape, TextGeneration } from "../Services/TextGeneration.ts";
+import {
+  type ChangeDocumentationGenerationResult,
+  type TextGenerationShape,
+  TextGeneration,
+} from "../Services/TextGeneration.ts";
 import {
   buildBranchNamePrompt,
+  buildChangeDocumentationPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -77,7 +82,8 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateChangeDocumentation";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -328,11 +334,47 @@ const makeClaudeTextGeneration = Effect.gen(function* () {
     };
   });
 
+  const generateChangeDocumentation: TextGenerationShape["generateChangeDocumentation"] = Effect.fn(
+    "ClaudeTextGeneration.generateChangeDocumentation",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildChangeDocumentationPrompt({
+      projectTitle: input.projectTitle,
+      threadTitle: input.threadTitle,
+      assistantResponse: input.assistantResponse,
+      changedFilesSummary: input.changedFilesSummary,
+      diffPatch: input.diffPatch,
+      hosts: input.hosts,
+    });
+
+    if (input.modelSelection.provider !== "claudeAgent") {
+      return yield* new TextGenerationError({
+        operation: "generateChangeDocumentation",
+        detail: "Invalid model selection.",
+      });
+    }
+
+    const generated = yield* runClaudeJson({
+      operation: "generateChangeDocumentation",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return {
+      headline: generated.headline.trim(),
+      summary: generated.summary.trim(),
+      changes: generated.changes.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+      hostImpact: generated.hostImpact.trim(),
+    } satisfies ChangeDocumentationGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateChangeDocumentation,
   } satisfies TextGenerationShape;
 });
 

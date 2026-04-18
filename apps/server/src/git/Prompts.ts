@@ -200,3 +200,72 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Living documentation
+// ---------------------------------------------------------------------------
+
+export interface ChangeDocumentationPromptInput {
+  projectTitle: string;
+  threadTitle: string;
+  assistantResponse: string;
+  changedFilesSummary: string;
+  diffPatch: string;
+  hosts: ReadonlyArray<{
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  }>;
+}
+
+export function buildChangeDocumentationPrompt(input: ChangeDocumentationPromptInput) {
+  const hostLines =
+    input.hosts.length > 0
+      ? input.hosts.map((host) =>
+          [
+            `- ${host.name}`,
+            `target=${host.target}`,
+            ...(host.system ? [`system=${host.system}`] : []),
+            ...(host.type ? [`type=${host.type}`] : []),
+          ].join(", "),
+        )
+      : ["- No host metadata available"];
+
+  const prompt = [
+    "You maintain concise living deployment documentation for a Nix flake.",
+    "Return a JSON object with keys: headline, summary, changes, hostImpact.",
+    "Rules:",
+    "- headline must be a short title for the change entry",
+    "- summary must be 1-2 sentences and describe the outcome in plain language",
+    "- changes must be 2-4 short bullet-style statements without markdown bullets",
+    "- hostImpact must explain how the change affects the flake hosts, or be an empty string if unknown",
+    "- focus on durable system/deployment changes, not transient implementation chatter",
+    "- mention host names only when the context supports it",
+    "- do not use markdown headings or code fences in any field",
+    "",
+    `Flake: ${input.projectTitle}`,
+    `Thread: ${input.threadTitle}`,
+    "",
+    "Hosts:",
+    limitSection(hostLines.join("\n"), 4_000),
+    "",
+    "Changed files:",
+    limitSection(input.changedFilesSummary, 8_000),
+    "",
+    "Assistant response:",
+    limitSection(input.assistantResponse, 12_000),
+    "",
+    "Diff patch:",
+    limitSection(input.diffPatch, 40_000),
+  ].join("\n");
+
+  const outputSchema = Schema.Struct({
+    headline: Schema.String,
+    summary: Schema.String,
+    changes: Schema.Array(Schema.String),
+    hostImpact: Schema.String,
+  });
+
+  return { prompt, outputSchema };
+}
