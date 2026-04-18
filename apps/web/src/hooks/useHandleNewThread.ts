@@ -13,7 +13,7 @@ import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import { deriveLogicalProjectKeyFromSettings } from "../logicalProject";
 import { selectProjectsAcrossEnvironments, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
-import { resolveThreadRouteTarget } from "../threadRoutes";
+import { resolveFlakeRouteRef, resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
 import { useSettings } from "./useSettings";
 
@@ -152,6 +152,10 @@ export function useHandleNewThread() {
     strict: false,
     select: (params) => resolveThreadRouteTarget(params),
   });
+  const routeProjectRef = useParams({
+    strict: false,
+    select: (params) => resolveFlakeRouteRef(params),
+  });
   const routeThreadRef = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
   const activeThread = useStore(
     useMemo(() => createThreadSelectorByRef(routeThreadRef), [routeThreadRef]),
@@ -177,9 +181,11 @@ export function useHandleNewThread() {
   return {
     activeDraftThread,
     activeThread,
-    defaultProjectRef: orderedProjects[0]
-      ? scopeProjectRef(orderedProjects[0].environmentId, orderedProjects[0].id)
-      : null,
+    defaultProjectRef:
+      routeProjectRef ??
+      (orderedProjects[0]
+        ? scopeProjectRef(orderedProjects[0].environmentId, orderedProjects[0].id)
+        : null),
     handleNewThread,
     routeThreadRef,
   };

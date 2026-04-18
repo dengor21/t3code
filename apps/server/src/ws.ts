@@ -50,7 +50,9 @@ import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
+import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
+import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
@@ -148,6 +150,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
+      const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
       const serverAuth = yield* ServerAuth;
@@ -210,12 +213,16 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       ): Effect.Effect<OrchestrationEvent, never, never> => {
         switch (event.type) {
           case "project.created":
-            return repositoryIdentityResolver.resolve(event.payload.workspaceRoot).pipe(
-              Effect.map((repositoryIdentity) => ({
+            return Effect.all({
+              repositoryIdentity: repositoryIdentityResolver.resolve(event.payload.workspaceRoot),
+              flakeMetadata: flakeMetadataResolver.resolve(event.payload.workspaceRoot),
+            }).pipe(
+              Effect.map(({ repositoryIdentity, flakeMetadata }) => ({
                 ...event,
                 payload: {
                   ...event.payload,
                   repositoryIdentity,
+                  flakeMetadata,
                 },
               })),
             );
@@ -231,12 +238,16 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 return event;
               }
 
-              const repositoryIdentity = yield* repositoryIdentityResolver.resolve(workspaceRoot);
+              const { repositoryIdentity, flakeMetadata } = yield* Effect.all({
+                repositoryIdentity: repositoryIdentityResolver.resolve(workspaceRoot),
+                flakeMetadata: flakeMetadataResolver.resolve(workspaceRoot),
+              });
               return {
                 ...event,
                 payload: {
                   ...event.payload,
                   repositoryIdentity,
+                  flakeMetadata,
                 },
               } satisfies OrchestrationEvent;
             });
@@ -1076,7 +1087,10 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           },
         }).pipe(
           Effect.provide(
-            makeWsRpcLayer(session.sessionId).pipe(Layer.provideMerge(RpcSerialization.layerJson)),
+            makeWsRpcLayer(session.sessionId).pipe(
+              Layer.provideMerge(RpcSerialization.layerJson),
+              Layer.provideMerge(FlakeMetadataResolverLive),
+            ),
           ),
         );
         return yield* Effect.acquireUseRelease(

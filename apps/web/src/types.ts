@@ -1,5 +1,6 @@
 import type {
   EnvironmentId,
+  FlakeMetadata,
   ModelSelection,
   OrchestrationLatestTurn,
   OrchestrationProposedPlanId,
@@ -86,6 +87,7 @@ export interface Project {
   name: string;
   cwd: string;
   repositoryIdentity?: RepositoryIdentity | null;
+  flakeMetadata?: FlakeMetadata | null;
   defaultModelSelection: ModelSelection | null;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;

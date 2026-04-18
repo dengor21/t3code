@@ -59,6 +59,31 @@ export const RepositoryIdentity = Schema.Struct({
 });
 export type RepositoryIdentity = typeof RepositoryIdentity.Type;
 
+export const FlakeHost = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  target: TrimmedNonEmptyString,
+  system: Schema.optionalKey(TrimmedNonEmptyString),
+  type: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type FlakeHost = typeof FlakeHost.Type;
+
+export const FlakeMetadataSource = Schema.Literals([
+  "nix-eval",
+  "parsed-flake",
+  "missing",
+  "error",
+]);
+export type FlakeMetadataSource = typeof FlakeMetadataSource.Type;
+
+export const FlakeMetadata = Schema.Struct({
+  host: Schema.NullOr(FlakeHost),
+  hosts: Schema.Array(FlakeHost),
+  source: FlakeMetadataSource,
+  flakePath: TrimmedNonEmptyString,
+  diagnostics: Schema.Array(TrimmedNonEmptyString),
+});
+export type FlakeMetadata = typeof FlakeMetadata.Type;
+
 export const ScopedProjectRef = Schema.Struct({
   environmentId: EnvironmentId,
   projectId: ProjectId,

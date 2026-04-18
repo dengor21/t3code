@@ -88,7 +88,9 @@ import { retainThreadDetailSubscription } from "../environments/runtime/service"
 
 import { useThreadActions } from "../hooks/useThreadActions";
 import {
+  buildFlakeRouteParams,
   buildThreadRouteParams,
+  resolveFlakeRouteRef,
   resolveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
@@ -891,8 +893,10 @@ interface SidebarProjectItemProps {
   project: SidebarProjectSnapshot;
   isThreadListExpanded: boolean;
   activeRouteThreadKey: string | null;
+  isActiveRouteProject: boolean;
   newThreadShortcutLabel: string | null;
   handleNewThread: ReturnType<typeof useNewThreadHandler>["handleNewThread"];
+  navigateToProjectOverview: (projectRef: ReturnType<typeof scopeProjectRef>) => void;
   archiveThread: ReturnType<typeof useThreadActions>["archiveThread"];
   deleteThread: ReturnType<typeof useThreadActions>["deleteThread"];
   threadJumpLabelByKey: ReadonlyMap<string, string>;
@@ -911,8 +915,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     project,
     isThreadListExpanded,
     activeRouteThreadKey,
+    isActiveRouteProject,
     newThreadShortcutLabel,
     handleNewThread,
+    navigateToProjectOverview,
     archiveThread,
     deleteThread,
     threadJumpLabelByKey,
@@ -1224,11 +1230,20 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (selectedThreadCount > 0) {
         clearSelection();
       }
+      if (project.memberProjects.length === 1) {
+        const member = project.memberProjects[0];
+        if (member) {
+          navigateToProjectOverview(scopeProjectRef(member.environmentId, member.id));
+        }
+        return;
+      }
       toggleProject(project.projectKey);
     },
     [
       clearSelection,
       dragInProgressRef,
+      navigateToProjectOverview,
+      project.memberProjects,
       project.projectKey,
       selectedThreadCount,
       suppressProjectClickAfterDragRef,
@@ -1244,9 +1259,31 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (dragInProgressRef.current) {
         return;
       }
+      if (project.memberProjects.length === 1) {
+        const member = project.memberProjects[0];
+        if (member) {
+          navigateToProjectOverview(scopeProjectRef(member.environmentId, member.id));
+        }
+        return;
+      }
       toggleProject(project.projectKey);
     },
-    [dragInProgressRef, project.projectKey, toggleProject],
+    [
+      dragInProgressRef,
+      navigateToProjectOverview,
+      project.memberProjects,
+      project.projectKey,
+      toggleProject,
+    ],
+  );
+
+  const handleProjectChevronClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleProject(project.projectKey);
+    },
+    [project.projectKey, toggleProject],
   );
 
   const handleProjectButtonPointerDownCapture = useCallback(
@@ -1880,25 +1917,18 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   return (
     <>
-      <div className="group/project-header relative">
-        <SidebarMenuButton
-          ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
-          size="sm"
-          className={`gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground ${
-            isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-          }`}
-          {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
-          {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
-          onPointerDownCapture={handleProjectButtonPointerDownCapture}
-          onClick={handleProjectButtonClick}
-          onKeyDown={handleProjectButtonKeyDown}
-          onContextMenu={handleProjectButtonContextMenu}
+      <div className="group/project-header relative flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={`${projectExpanded ? "Collapse" : "Expand"} ${project.displayName}`}
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+          onClick={handleProjectChevronClick}
         >
           {!projectExpanded && projectStatus ? (
             <span
               aria-hidden="true"
               title={projectStatus.label}
-              className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center ${projectStatus.colorClass}`}
+              className={`relative inline-flex size-3.5 shrink-0 items-center justify-center ${projectStatus.colorClass}`}
             >
               <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
                 <span
@@ -1911,11 +1941,27 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             </span>
           ) : (
             <ChevronRightIcon
-              className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
+              className={`size-3.5 shrink-0 transition-transform duration-150 ${
                 projectExpanded ? "rotate-90" : ""
               }`}
             />
           )}
+        </button>
+        <SidebarMenuButton
+          ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
+          size="sm"
+          className={`flex-1 gap-2 px-2 py-1.5 text-left ${
+            isActiveRouteProject
+              ? "bg-accent text-sidebar-accent-foreground"
+              : "hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground"
+          } ${isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+          {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
+          {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
+          onPointerDownCapture={handleProjectButtonPointerDownCapture}
+          onClick={handleProjectButtonClick}
+          onKeyDown={handleProjectButtonKeyDown}
+          onContextMenu={handleProjectButtonContextMenu}
+        >
           <ProjectFavicon environmentId={project.environmentId} cwd={project.cwd} />
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-xs font-medium text-foreground/90">
@@ -2386,6 +2432,7 @@ interface SidebarProjectsContentProps {
   newThreadShortcutLabel: string | null;
   commandPaletteShortcutLabel: string | null;
   threadJumpLabelByKey: ReadonlyMap<string, string>;
+  navigateToProjectOverview: (projectRef: ReturnType<typeof scopeProjectRef>) => void;
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void;
   expandThreadListForProject: (projectKey: string) => void;
   collapseThreadListForProject: (projectKey: string) => void;
@@ -2426,6 +2473,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     newThreadShortcutLabel,
     commandPaletteShortcutLabel,
     threadJumpLabelByKey,
+    navigateToProjectOverview,
     attachThreadListAutoAnimateRef,
     expandThreadListForProject,
     collapseThreadListForProject,
@@ -2559,8 +2607,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                         activeRouteThreadKey={
                           activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                         }
+                        isActiveRouteProject={activeRouteProjectKey === project.projectKey}
                         newThreadShortcutLabel={newThreadShortcutLabel}
                         handleNewThread={handleNewThread}
+                        navigateToProjectOverview={navigateToProjectOverview}
                         archiveThread={archiveThread}
                         deleteThread={deleteThread}
                         threadJumpLabelByKey={threadJumpLabelByKey}
@@ -2591,8 +2641,10 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 activeRouteThreadKey={
                   activeRouteProjectKey === project.projectKey ? routeThreadKey : null
                 }
+                isActiveRouteProject={activeRouteProjectKey === project.projectKey}
                 newThreadShortcutLabel={newThreadShortcutLabel}
                 handleNewThread={handleNewThread}
+                navigateToProjectOverview={navigateToProjectOverview}
                 archiveThread={archiveThread}
                 deleteThread={deleteThread}
                 threadJumpLabelByKey={threadJumpLabelByKey}
@@ -2641,6 +2693,10 @@ export default function Sidebar() {
   const routeThreadRef = useParams({
     strict: false,
     select: (params) => resolveThreadRouteRef(params),
+  });
+  const routeProjectRef = useParams({
+    strict: false,
+    select: (params) => resolveFlakeRouteRef(params),
   });
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const keybindings = useServerKeybindings();
@@ -2724,17 +2780,32 @@ export default function Sidebar() {
   // Resolve the active route's project key to a logical key so it matches the
   // sidebar's grouped project entries.
   const activeRouteProjectKey = useMemo(() => {
-    if (!routeThreadKey) {
+    const projectScopedKey = routeProjectRef
+      ? scopedProjectKey(routeProjectRef)
+      : (() => {
+          if (!routeThreadKey) {
+            return null;
+          }
+          const activeThread = sidebarThreadByKey.get(routeThreadKey);
+          if (!activeThread) {
+            return null;
+          }
+          return scopedProjectKey(
+            scopeProjectRef(activeThread.environmentId, activeThread.projectId),
+          );
+        })();
+    if (!projectScopedKey) {
       return null;
     }
-    const activeThread = sidebarThreadByKey.get(routeThreadKey);
-    if (!activeThread) return null;
-    const physicalKey =
-      projectPhysicalKeyByScopedRef.get(
-        scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId)),
-      ) ?? scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId));
+    const physicalKey = projectPhysicalKeyByScopedRef.get(projectScopedKey) ?? projectScopedKey;
     return physicalToLogicalKey.get(physicalKey) ?? physicalKey;
-  }, [routeThreadKey, sidebarThreadByKey, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
+  }, [
+    routeProjectRef,
+    routeThreadKey,
+    sidebarThreadByKey,
+    physicalToLogicalKey,
+    projectPhysicalKeyByScopedRef,
+  ]);
 
   // Group threads by logical project key so all threads from grouped projects
   // are displayed together.
@@ -2793,6 +2864,19 @@ export default function Sidebar() {
       });
     },
     [clearSelection, navigate, setSelectionAnchor],
+  );
+
+  const navigateToProjectOverview = useCallback(
+    (projectRef: ReturnType<typeof scopeProjectRef>) => {
+      if (useThreadSelectionStore.getState().selectedThreadKeys.size > 0) {
+        clearSelection();
+      }
+      void navigate({
+        to: "/$environmentId/flake/$projectId",
+        params: buildFlakeRouteParams(projectRef),
+      });
+    },
+    [clearSelection, navigate],
   );
 
   const projectDnDSensors = useSensors(
@@ -3317,6 +3401,7 @@ export default function Sidebar() {
             newThreadShortcutLabel={newThreadShortcutLabel}
             commandPaletteShortcutLabel={commandPaletteShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
+            navigateToProjectOverview={navigateToProjectOverview}
             attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
             expandThreadListForProject={expandThreadListForProject}
             collapseThreadListForProject={collapseThreadListForProject}

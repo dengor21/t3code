@@ -1,5 +1,11 @@
-import { scopeThreadRef } from "@t3tools/client-runtime";
-import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
+import type {
+  EnvironmentId,
+  ProjectId,
+  ScopedProjectRef,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 
 export type ThreadRouteTarget =
@@ -28,6 +34,16 @@ export function buildDraftThreadRouteParams(draftId: DraftId): {
   return { draftId };
 }
 
+export function buildFlakeRouteParams(ref: ScopedProjectRef): {
+  environmentId: EnvironmentId;
+  projectId: ProjectId;
+} {
+  return {
+    environmentId: ref.environmentId,
+    projectId: ref.projectId,
+  };
+}
+
 export function resolveThreadRouteRef(
   params: Partial<Record<"environmentId" | "threadId", string | undefined>>,
 ): ScopedThreadRef | null {
@@ -36,6 +52,16 @@ export function resolveThreadRouteRef(
   }
 
   return scopeThreadRef(params.environmentId as EnvironmentId, params.threadId as ThreadId);
+}
+
+export function resolveFlakeRouteRef(
+  params: Partial<Record<"environmentId" | "projectId", string | undefined>>,
+): ScopedProjectRef | null {
+  if (!params.environmentId || !params.projectId) {
+    return null;
+  }
+
+  return scopeProjectRef(params.environmentId as EnvironmentId, params.projectId as ProjectId);
 }
 
 export function resolveThreadRouteTarget(

@@ -1,4 +1,5 @@
 import {
+  type FlakeMetadata,
   ChatAttachment,
   IsoDateTime,
   MessageId,
@@ -41,6 +42,8 @@ import { ProjectionThreadMessage } from "../../persistence/Services/ProjectionTh
 import { ProjectionThreadProposedPlan } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadSession } from "../../persistence/Services/ProjectionThreadSessions.ts";
 import { ProjectionThread } from "../../persistence/Services/ProjectionThreads.ts";
+import { FlakeMetadataResolverLive } from "../../project/Layers/FlakeMetadataResolver.ts";
+import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { RepositoryIdentityResolver } from "../../project/Services/RepositoryIdentityResolver.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import {
@@ -205,12 +208,14 @@ function mapSessionRow(
 function mapProjectShellRow(
   row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
+  flakeMetadata: FlakeMetadata | null,
 ): OrchestrationProjectShell {
   return {
     id: row.projectId,
     title: row.title,
     workspaceRoot: row.workspaceRoot,
     repositoryIdentity,
+    flakeMetadata,
     defaultModelSelection: row.defaultModelSelection,
     scripts: row.scripts,
     createdAt: row.createdAt,
@@ -227,6 +232,7 @@ function toPersistenceSqlOrDecodeError(sqlOperation: string, decodeOperation: st
 
 const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const flakeMetadataResolver = yield* FlakeMetadataResolver;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
   const repositoryIdentityResolutionConcurrency = 4;
 
@@ -886,13 +892,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 });
               }
 
-              const repositoryIdentities = new Map(
+              const projectMetadata = new Map(
                 yield* Effect.forEach(
                   projectRows,
                   (row) =>
-                    repositoryIdentityResolver
-                      .resolve(row.workspaceRoot)
-                      .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
+                    Effect.all({
+                      repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
+                      flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
+                    }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
                   { concurrency: repositoryIdentityResolutionConcurrency },
                 ),
               );
@@ -901,7 +908,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 id: row.projectId,
                 title: row.title,
                 workspaceRoot: row.workspaceRoot,
-                repositoryIdentity: repositoryIdentities.get(row.projectId) ?? null,
+                repositoryIdentity: projectMetadata.get(row.projectId)?.repositoryIdentity ?? null,
+                flakeMetadata: projectMetadata.get(row.projectId)?.flakeMetadata ?? null,
                 defaultModelSelection: row.defaultModelSelection,
                 scripts: row.scripts,
                 createdAt: row.createdAt,
@@ -1024,13 +1032,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               updatedAt = maxIso(updatedAt, row.updatedAt);
             }
 
-            const repositoryIdentities = new Map(
+            const projectMetadata = new Map(
               yield* Effect.forEach(
                 projectRows,
                 (row) =>
-                  repositoryIdentityResolver
-                    .resolve(row.workspaceRoot)
-                    .pipe(Effect.map((identity) => [row.projectId, identity] as const)),
+                  Effect.all({
+                    repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
+                    flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
+                  }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
                 { concurrency: repositoryIdentityResolutionConcurrency },
               ),
             );
@@ -1046,7 +1055,11 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               projects: projectRows
                 .filter((row) => row.deletedAt === null)
                 .map((row) =>
-                  mapProjectShellRow(row, repositoryIdentities.get(row.projectId) ?? null),
+                  mapProjectShellRow(
+                    row,
+                    projectMetadata.get(row.projectId)?.repositoryIdentity ?? null,
+                    projectMetadata.get(row.projectId)?.flakeMetadata ?? null,
+                  ),
                 ),
               threads: threadRows
                 .filter((row) => row.deletedAt === null)
@@ -1119,13 +1132,17 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         Effect.flatMap((option) =>
           Option.isNone(option)
             ? Effect.succeed(Option.none<OrchestrationProject>())
-            : repositoryIdentityResolver.resolve(option.value.workspaceRoot).pipe(
-                Effect.map((repositoryIdentity) =>
+            : Effect.all({
+                repositoryIdentity: repositoryIdentityResolver.resolve(option.value.workspaceRoot),
+                flakeMetadata: flakeMetadataResolver.resolve(option.value.workspaceRoot),
+              }).pipe(
+                Effect.map(({ repositoryIdentity, flakeMetadata }) =>
                   Option.some({
                     id: option.value.projectId,
                     title: option.value.title,
                     workspaceRoot: option.value.workspaceRoot,
                     repositoryIdentity,
+                    flakeMetadata,
                     defaultModelSelection: option.value.defaultModelSelection,
                     scripts: option.value.scripts,
                     createdAt: option.value.createdAt,
@@ -1148,13 +1165,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       Effect.flatMap((option) =>
         Option.isNone(option)
           ? Effect.succeed(Option.none<OrchestrationProjectShell>())
-          : repositoryIdentityResolver
-              .resolve(option.value.workspaceRoot)
-              .pipe(
-                Effect.map((repositoryIdentity) =>
-                  Option.some(mapProjectShellRow(option.value, repositoryIdentity)),
-                ),
+          : Effect.all({
+              repositoryIdentity: repositoryIdentityResolver.resolve(option.value.workspaceRoot),
+              flakeMetadata: flakeMetadataResolver.resolve(option.value.workspaceRoot),
+            }).pipe(
+              Effect.map(({ repositoryIdentity, flakeMetadata }) =>
+                Option.some(mapProjectShellRow(option.value, repositoryIdentity, flakeMetadata)),
               ),
+            ),
       ),
     );
 
@@ -1431,4 +1449,4 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
 export const OrchestrationProjectionSnapshotQueryLive = Layer.effect(
   ProjectionSnapshotQuery,
   makeProjectionSnapshotQuery,
-);
+).pipe(Layer.provideMerge(FlakeMetadataResolverLive));

@@ -14,6 +14,13 @@ const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asEventId = (value: string): EventId => EventId.make(value);
 const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(value);
+const missingFlakeMetadata = (workspaceRoot: string) => ({
+  host: null,
+  hosts: [],
+  source: "missing" as const,
+  flakePath: `${workspaceRoot}/flake.nix`,
+  diagnostics: ["nix eval could not run: Command not found: nix", "flake.nix was not found."],
+});
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -251,6 +258,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           title: "Project 1",
           workspaceRoot: "/tmp/project-1",
           repositoryIdentity: null,
+          flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
           defaultModelSelection: {
             provider: "codex",
             model: "gpt-5-codex",
@@ -362,6 +370,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           title: "Project 1",
           workspaceRoot: "/tmp/project-1",
           repositoryIdentity: null,
+          flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
           defaultModelSelection: {
             provider: "codex",
             model: "gpt-5-codex",
