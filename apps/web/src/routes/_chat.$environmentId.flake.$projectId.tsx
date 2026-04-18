@@ -1,9 +1,11 @@
+import type { FlakeHost } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircleIcon, BookOpenIcon, FileTextIcon, PlayIcon, ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 
 import { openInPreferredEditor } from "../editorPreferences";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import { buildHostThreadPrompt } from "../lib/flakeHosts";
 import { readLocalApi } from "../localApi";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
@@ -102,6 +104,18 @@ function FlakeOverviewRouteView() {
     void handleNewThread(projectRef);
   }, [handleNewThread, projectRef]);
 
+  const handleStartHostThread = useCallback(
+    (host: FlakeHost) => {
+      if (!projectRef) {
+        return;
+      }
+      void handleNewThread(projectRef, {
+        initialPrompt: buildHostThreadPrompt(host),
+      });
+    },
+    [handleNewThread, projectRef],
+  );
+
   if (!projectRef || !bootstrapComplete || !project) {
     return null;
   }
@@ -176,9 +190,11 @@ function FlakeOverviewRouteView() {
                 {hosts.length > 0 ? (
                   <div className="mt-4 grid gap-4 xl:grid-cols-2">
                     {hosts.map((host) => (
-                      <div
+                      <button
                         key={`${host.name}:${host.target}`}
-                        className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                        type="button"
+                        onClick={() => handleStartHostThread(host)}
+                        className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition-colors hover:border-border hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -210,7 +226,10 @@ function FlakeOverviewRouteView() {
                             {host.target}
                           </div>
                         </div>
-                      </div>
+                        <div className="mt-4 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                          Open a new thread with this host context
+                        </div>
+                      </button>
                     ))}
                   </div>
                 ) : (

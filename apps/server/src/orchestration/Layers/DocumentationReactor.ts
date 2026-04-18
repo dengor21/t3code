@@ -64,6 +64,48 @@ function normalizeHosts(hosts: ReadonlyArray<FlakeHost>): ReadonlyArray<FlakeHos
   });
 }
 
+function splitPathSegments(value: string): ReadonlyArray<string> {
+  return value
+    .split("/")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter((segment) => segment.length > 0);
+}
+
+function stripFileExtension(value: string): string {
+  const lastDotIndex = value.lastIndexOf(".");
+  return lastDotIndex <= 0 ? value : value.slice(0, lastDotIndex);
+}
+
+function resolveImpactedHosts(input: {
+  hosts: ReadonlyArray<FlakeHost>;
+  changedFiles: ReadonlyArray<OrchestrationCheckpointFile>;
+}): ReadonlyArray<FlakeHost> {
+  if (input.hosts.length === 0) {
+    return [];
+  }
+
+  const changedPathSegments = input.changedFiles.map((file) => splitPathSegments(file.path));
+  const impactedHosts = input.hosts.filter((host) => {
+    const normalizedHostName = host.name.trim().toLowerCase();
+    if (normalizedHostName.length === 0) {
+      return false;
+    }
+
+    return changedPathSegments.some((segments) =>
+      segments.some(
+        (segment) =>
+          segment === normalizedHostName || stripFileExtension(segment) === normalizedHostName,
+      ),
+    );
+  });
+
+  if (impactedHosts.length > 0) {
+    return impactedHosts;
+  }
+
+  return input.hosts.length === 1 ? input.hosts : [];
+}
+
 function resolveProjectHosts(
   metadata: { host?: FlakeHost | null; hosts?: ReadonlyArray<FlakeHost> } | null | undefined,
 ): ReadonlyArray<FlakeHost> {
@@ -244,7 +286,7 @@ const make = Effect.gen(function* () {
       changes: ReadonlyArray<string>;
       hostImpact: string;
     };
-    hosts: ReadonlyArray<FlakeHost>;
+    impactedHosts: ReadonlyArray<FlakeHost>;
   }) {
     const updatedPaths: string[] = [];
 
@@ -267,7 +309,7 @@ const make = Effect.gen(function* () {
     });
     updatedPaths.push(GENERAL_DOC_PATH);
 
-    for (const host of input.hosts) {
+    for (const host of input.impactedHosts) {
       const relativePath = `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`;
       const existing = yield* readWorkspaceFile({
         cwd: input.docsRoot,
@@ -346,6 +388,10 @@ const make = Effect.gen(function* () {
 
     const flakeMetadata = yield* flakeMetadataResolver.resolve(project.workspaceRoot);
     const hosts = resolveProjectHosts(flakeMetadata);
+    const impactedHosts = resolveImpactedHosts({
+      hosts,
+      changedFiles: event.payload.files,
+    });
     const modelSelection = yield* resolveModelSelection({
       projectDefaultModelSelection: project.defaultModelSelection,
     });
@@ -366,7 +412,7 @@ const make = Effect.gen(function* () {
       threadTitle: thread.title,
       changedFiles: event.payload.files,
       generated,
-      hosts,
+      impactedHosts,
     });
 
     yield* appendDocumentationActivity({

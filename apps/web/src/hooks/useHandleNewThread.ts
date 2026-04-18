@@ -4,6 +4,7 @@ import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
+  DraftId,
   type DraftThreadEnvMode,
   type DraftThreadState,
   useComposerDraftStore,
@@ -36,13 +37,16 @@ function useNewThreadState() {
         branch?: string | null;
         worktreePath?: string | null;
         envMode?: DraftThreadEnvMode;
+        initialPrompt?: string;
       },
     ): Promise<void> => {
       const {
         getDraftSessionByLogicalProjectKey,
         getDraftSession,
         getDraftThread,
+        getComposerDraft,
         applyStickyState,
+        setPrompt,
         setDraftThreadContext,
         setLogicalProjectDraftThreadId,
       } = useComposerDraftStore.getState();
@@ -58,6 +62,17 @@ function useNewThreadState() {
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
+      const normalizedInitialPrompt = options?.initialPrompt?.trim() ?? "";
+      const seedDraftPromptIfEmpty = (draftId: DraftId) => {
+        if (normalizedInitialPrompt.length === 0) {
+          return;
+        }
+        const existingPrompt = getComposerDraft(draftId)?.prompt ?? "";
+        if (existingPrompt.trim().length > 0) {
+          return;
+        }
+        setPrompt(draftId, normalizedInitialPrompt);
+      };
       const storedDraftThread = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       const latestActiveDraftThread: DraftThreadState | null = currentRouteTarget
         ? currentRouteTarget.kind === "server"
@@ -73,6 +88,7 @@ function useNewThreadState() {
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
             });
           }
+          seedDraftPromptIfEmpty(storedDraftThread.draftId);
           setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, storedDraftThread.draftId, {
             threadId: storedDraftThread.threadId,
           });
@@ -111,6 +127,7 @@ function useNewThreadState() {
           ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
         });
+        seedDraftPromptIfEmpty(currentRouteTarget.draftId);
         return Promise.resolve();
       }
 
@@ -127,6 +144,7 @@ function useNewThreadState() {
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
         applyStickyState(draftId);
+        seedDraftPromptIfEmpty(draftId);
 
         await router.navigate({
           to: "/draft/$draftId",

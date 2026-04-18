@@ -426,4 +426,97 @@ describe("DocumentationReactor", () => {
     expect(fs.existsSync(path.join(harness.cwd, ".t3code", "changes.md"))).toBe(false);
     expect(harness.generateChangeDocumentation).not.toHaveBeenCalled();
   });
+
+  it("writes per-host docs only for hosts implicated by changed file paths", async () => {
+    const harness = await createHarness({
+      flakeMetadata: {
+        source: "parsed-flake",
+        flakePath: "flake.nix",
+        host: null,
+        hosts: [
+          {
+            name: "bc250",
+            target: "bc250",
+            system: "x86_64-linux",
+            type: "nixos",
+          },
+          {
+            name: "nexus",
+            target: "10.0.0.115",
+            system: "x86_64-linux",
+            type: "nixos",
+          },
+        ],
+        diagnostics: [],
+      },
+      textGenerationResult: {
+        headline: "Add mpv video player on bc250",
+        summary: "bc250 now installs mpv for local video playback.",
+        changes: ["Added mpv to the bc250 host package set"],
+        hostImpact: "Only bc250 is affected.",
+      },
+    });
+    const turnId = asTurnId("turn-bc250");
+    const messageId = MessageId.make("assistant-turn-bc250");
+    const completedAt = new Date().toISOString();
+
+    await runtime!.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    fs.mkdirSync(path.join(harness.cwd, "hosts", "bc250"), { recursive: true });
+    fs.writeFileSync(path.join(harness.cwd, "hosts", "bc250", "default.nix"), "{ }\n", "utf8");
+    await runtime!.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-assistant-delta-bc250"),
+        threadId: ThreadId.make("thread-1"),
+        messageId,
+        delta: "Scoped the package change to bc250.",
+        turnId,
+        createdAt: completedAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-turn-diff-bc250"),
+        threadId: ThreadId.make("thread-1"),
+        turnId,
+        completedAt,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+        status: "ready",
+        files: [
+          {
+            path: "hosts/bc250/default.nix",
+            kind: "modified",
+            additions: 1,
+            deletions: 0,
+          },
+        ],
+        assistantMessageId: messageId,
+        checkpointTurnCount: 1,
+        createdAt: completedAt,
+      }),
+    );
+
+    await waitForThreadActivity(harness.engine, "flake.documentation.updated");
+    await harness.drain();
+
+    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"))).toBe(true);
+    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "nexus.md"))).toBe(false);
+
+    const bc250Doc = fs.readFileSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"), "utf8");
+    expect(bc250Doc).toContain("Add mpv video player on bc250");
+    expect(bc250Doc).toContain("Host: `bc250` (`bc250`)");
+  });
 });
