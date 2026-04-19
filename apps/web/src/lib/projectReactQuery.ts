@@ -1,9 +1,27 @@
-import type { EnvironmentId, ProjectSearchEntriesResult } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProjectId,
+  ProjectSearchEntriesResult,
+} from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { ensureEnvironmentApi } from "~/environmentApi";
 
 export const projectQueryKeys = {
   all: ["projects"] as const,
+  dashboardContentPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "dashboard-content", environmentId ?? null, projectId ?? null] as const,
+  dashboardContent: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    hostName: string | null,
+  ) =>
+    [
+      "projects",
+      "dashboard-content",
+      environmentId ?? null,
+      projectId ?? null,
+      hostName ?? null,
+    ] as const,
   searchEntries: (
     environmentId: EnvironmentId | null,
     cwd: string | null,
@@ -14,6 +32,7 @@ export const projectQueryKeys = {
 
 const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
+const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
 const EMPTY_SEARCH_ENTRIES_RESULT: ProjectSearchEntriesResult = {
   entries: [],
   truncated: false,
@@ -48,5 +67,35 @@ export function projectSearchEntriesQueryOptions(input: {
       input.query.length > 0,
     staleTime: input.staleTime ?? DEFAULT_SEARCH_ENTRIES_STALE_TIME,
     placeholderData: (previous) => previous ?? EMPTY_SEARCH_ENTRIES_RESULT,
+  });
+}
+
+export function projectDashboardContentQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  hostName?: string | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  const normalizedHostName = input.hostName?.trim() ? input.hostName.trim() : null;
+  return queryOptions({
+    queryKey: projectQueryKeys.dashboardContent(
+      input.environmentId,
+      input.projectId,
+      normalizedHostName,
+    ),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId) {
+        throw new Error("Flake dashboard is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.projects.getDashboardContent({
+        projectId: input.projectId,
+        ...(normalizedHostName ? { hostName: normalizedHostName } : {}),
+      });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
+    staleTime: input.staleTime ?? DEFAULT_DASHBOARD_CONTENT_STALE_TIME,
+    placeholderData: (previous) => previous,
   });
 }

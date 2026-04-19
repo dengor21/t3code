@@ -5,7 +5,11 @@ export const HOST_DOCS_DIR = ".t3code/docs/hosts";
 export const LEGACY_HOST_DOCS_DIR = ".t3code/hosts";
 
 export interface DocumentationChangeLogEntry {
+  readonly id: string;
+  readonly kind: "change" | "bootstrap";
   readonly completedAt: string;
+  readonly title: string;
+  readonly markdown: string;
   readonly hosts: ReadonlyArray<string>;
   readonly ambiguous: boolean;
   readonly files: ReadonlyArray<string>;
@@ -99,6 +103,10 @@ function parseCompletedAt(value: string): string | null {
   return /^###\s+([0-9T:.-]+Z)\s+-\s+/m.exec(value)?.[1] ?? null;
 }
 
+function parseTitle(value: string): string | null {
+  return /^###\s+[0-9T:.-]+Z\s+-\s+(.+)$/m.exec(value)?.[1]?.trim() ?? null;
+}
+
 function parseMetadataComment(value: string): {
   hosts: ReadonlyArray<string>;
   ambiguous: boolean;
@@ -132,19 +140,31 @@ export function parseChangeLogEntries(input: {
 }): ReadonlyArray<DocumentationChangeLogEntry> {
   const entries: DocumentationChangeLogEntry[] = [];
   const blockRegex =
-    /<!--\s*t3code:(turn:[^:]+):start\s*-->([\s\S]*?)<!--\s*t3code:\1:end\s*-->/g;
+    /<!--\s*t3code:(turn|bootstrap):([^:]+):start\s*-->([\s\S]*?)<!--\s*t3code:\1:\2:end\s*-->/g;
   for (const match of input.markdown.matchAll(blockRegex)) {
-    const block = match[2] ?? "";
+    const markerKind = match[1] === "bootstrap" ? "bootstrap" : "change";
+    const id = match[2]?.trim() ?? "";
+    const block = match[3] ?? "";
     const completedAt = parseCompletedAt(block);
+    const title = parseTitle(block);
     if (!completedAt) {
       continue;
     }
     const files = parseFilesLine(block);
     const metadata = parseMetadataComment(block);
+    const sanitizedMarkdown = block
+      .replace(/<!--\s*t3code:meta\s+\{[\s\S]*?\}\s*-->\n?/g, "")
+      .replace(/^###\s+[0-9T:.-]+Z\s+-\s+.+$\n?/m, "")
+      .replace(/^Files:\s*.+$/m, "")
+      .trim();
     const inferredHosts =
       metadata?.hosts.length ? metadata.hosts : inferHostsFromPaths({ hosts: input.hosts, paths: files });
     entries.push({
+      id: id.length > 0 ? id : completedAt,
+      kind: markerKind,
       completedAt,
+      title: title && title.length > 0 ? title : "Untitled change",
+      markdown: sanitizedMarkdown,
       hosts: inferredHosts,
       ambiguous: metadata?.ambiguous ?? false,
       files,

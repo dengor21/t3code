@@ -20,8 +20,10 @@ import type {
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
+  ProjectGetDashboardContentInput,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -246,6 +248,9 @@ export interface EnvironmentApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    getDashboardContent: (
+      input: ProjectGetDashboardContentInput,
+    ) => Promise<ProjectDashboardContentResult>;
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,
     ) => Promise<ProjectGenerateHostDocumentationResult>;

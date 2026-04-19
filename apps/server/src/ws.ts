@@ -54,6 +54,7 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
+import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
@@ -152,6 +153,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
+      const projectDashboardContentResolver = yield* ProjectDashboardContentResolver;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const documentationStatusResolver = yield* DocumentationStatusResolver;
@@ -841,6 +843,15 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             Effect.gen(function* () {
               const hostDocumentationService = yield* HostDocumentationService;
               return yield* hostDocumentationService.generateHostDocumentation(input);
+            }),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGetDashboardContent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGetDashboardContent,
+            projectDashboardContentResolver.resolveDashboardContent({
+              projectId: input.projectId,
+              ...(input.hostName ? { hostName: input.hostName } : {}),
             }),
             { "rpc.aggregate": "workspace" },
           ),

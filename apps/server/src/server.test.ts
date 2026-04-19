@@ -101,6 +101,10 @@ import {
 } from "./observability/Services/BrowserTraceCollector.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import {
+  ProjectDashboardContentResolver,
+  type ProjectDashboardContentResolverShape,
+} from "./project/Services/ProjectDashboardContentResolver.ts";
+import {
   ProjectSetupScriptRunner,
   type ProjectSetupScriptRunnerShape,
 } from "./project/Services/ProjectSetupScriptRunner.ts";
@@ -349,6 +353,7 @@ const buildAppUnderTest = (options?: {
     serverLifecycleEvents?: Partial<ServerLifecycleEventsShape>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
+    projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
   };
 }) =>
@@ -574,6 +579,25 @@ const buildAppUnderTest = (options?: {
           getEnvironmentId: Effect.succeed(testEnvironmentDescriptor.environmentId),
           getDescriptor: Effect.succeed(testEnvironmentDescriptor),
           ...options?.layers?.serverEnvironment,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProjectDashboardContentResolver)({
+          resolveDashboardContent: () =>
+            Effect.succeed({
+              mode: "flake",
+              selectedHostName: null,
+              flakeSource: {
+                path: "flake.nix",
+                language: "nix",
+                contents: "",
+              },
+              generalChanges: [],
+              hostChanges: [],
+              hostDoc: null,
+              hostSummaries: [],
+            }),
+          ...options?.layers?.projectDashboardContentResolver,
         }),
       ),
       Layer.provide(

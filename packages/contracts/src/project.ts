@@ -1,5 +1,6 @@
 import { Schema } from "effect";
-import { PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./environment.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -68,6 +69,66 @@ export type ProjectGenerateHostDocumentationResult = typeof ProjectGenerateHostD
 
 export class ProjectGenerateHostDocumentationError extends Schema.TaggedErrorClass<ProjectGenerateHostDocumentationError>()(
   "ProjectGenerateHostDocumentationError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+const ProjectDashboardChangeKind = Schema.Literals(["change", "bootstrap"]);
+
+export const ProjectDashboardChangeEntry = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  kind: ProjectDashboardChangeKind,
+  completedAt: IsoDateTime,
+  title: TrimmedNonEmptyString,
+  markdown: Schema.String,
+  hosts: Schema.Array(TrimmedNonEmptyString),
+  ambiguous: Schema.Boolean,
+  files: Schema.Array(TrimmedNonEmptyString),
+});
+export type ProjectDashboardChangeEntry = typeof ProjectDashboardChangeEntry.Type;
+
+export const ProjectDashboardHostSummary = Schema.Struct({
+  host: FlakeHost,
+  documentation: HostDocumentationState,
+});
+export type ProjectDashboardHostSummary = typeof ProjectDashboardHostSummary.Type;
+
+export const ProjectDashboardFlakeSource = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  language: Schema.Literal("nix"),
+  contents: Schema.String,
+});
+export type ProjectDashboardFlakeSource = typeof ProjectDashboardFlakeSource.Type;
+
+export const ProjectDashboardHostDoc = Schema.Struct({
+  path: TrimmedNonEmptyString,
+  markdown: Schema.String,
+  generatedAt: Schema.NullOr(TrimmedNonEmptyString),
+  status: HostDocumentationStatus,
+});
+export type ProjectDashboardHostDoc = typeof ProjectDashboardHostDoc.Type;
+
+export const ProjectGetDashboardContentInput = Schema.Struct({
+  projectId: ProjectId,
+  hostName: Schema.optional(TrimmedNonEmptyString),
+});
+export type ProjectGetDashboardContentInput = typeof ProjectGetDashboardContentInput.Type;
+
+export const ProjectDashboardContentResult = Schema.Struct({
+  mode: Schema.Literals(["flake", "host"]),
+  selectedHostName: Schema.NullOr(TrimmedNonEmptyString),
+  flakeSource: ProjectDashboardFlakeSource,
+  generalChanges: Schema.Array(ProjectDashboardChangeEntry),
+  hostChanges: Schema.Array(ProjectDashboardChangeEntry),
+  hostDoc: Schema.NullOr(ProjectDashboardHostDoc),
+  hostSummaries: Schema.Array(ProjectDashboardHostSummary),
+});
+export type ProjectDashboardContentResult = typeof ProjectDashboardContentResult.Type;
+
+export class ProjectGetDashboardContentError extends Schema.TaggedErrorClass<ProjectGetDashboardContentError>()(
+  "ProjectGetDashboardContentError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

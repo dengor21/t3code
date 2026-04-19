@@ -1,29 +1,41 @@
-import type { FlakeHost } from "@t3tools/contracts";
+import type { FlakeHost, HostDocumentationStatus, ProjectDashboardChangeEntry } from "@t3tools/contracts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircleIcon, BookOpenIcon, FileTextIcon, PlayIcon, ServerIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  BookOpenIcon,
+  FileTextIcon,
+  PlayIcon,
+  RefreshCcwIcon,
+  ServerIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import ChatMarkdown from "../components/ChatMarkdown";
+import { Button } from "../components/ui/button";
+import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
+import { toastManager } from "../components/ui/toast";
 import { openInPreferredEditor } from "../editorPreferences";
 import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { buildHostThreadPrompt } from "../lib/flakeHosts";
+import { projectDashboardContentQueryOptions, projectQueryKeys } from "../lib/projectReactQuery";
+import { cn } from "../lib/utils";
 import { readLocalApi } from "../localApi";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
-import { resolveFlakeRouteRef } from "../threadRoutes";
-import { Button } from "../components/ui/button";
-import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
-import { toastManager } from "../components/ui/toast";
+import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
 
-function slugifyHostName(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug.length > 0 ? slug : "host";
+export interface FlakeDashboardSearch {
+  host?: string;
 }
 
-function formatDocumentationStatusLabel(status: string | null | undefined): string {
+function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashboardSearch {
+  const host = typeof search.host === "string" ? search.host.trim() : "";
+  return host.length > 0 ? { host } : {};
+}
+
+function formatDocumentationStatusLabel(status: HostDocumentationStatus | null | undefined): string {
   switch (status) {
     case "current":
       return "Current";
@@ -37,7 +49,7 @@ function formatDocumentationStatusLabel(status: string | null | undefined): stri
   }
 }
 
-function documentationStatusClasses(status: string | null | undefined): string {
+function documentationStatusClasses(status: HostDocumentationStatus | null | undefined): string {
   switch (status) {
     case "current":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
@@ -51,26 +63,118 @@ function documentationStatusClasses(status: string | null | undefined): string {
   }
 }
 
-function formatFlakeSourceLabel(source: string | null | undefined): string {
-  switch (source) {
-    case "nix-eval":
-      return "Resolved from nix eval";
-    case "parsed-flake":
-      return "Parsed from flake.nix";
-    case "missing":
-      return "No host metadata found";
-    case "error":
-      return "Metadata resolution failed";
-    default:
-      return "Metadata unavailable";
-  }
+function kindLabel(kind: ProjectDashboardChangeEntry["kind"]): string {
+  return kind === "bootstrap" ? "Bootstrap" : "Change";
 }
 
-function FlakeOverviewRouteView() {
+function formatTimestamp(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function renderFlakeSourceMarkdown(contents: string): string {
+  return `\`\`\`nix\n${contents}\n\`\`\``;
+}
+
+function EmptyPanel(props: {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  pending?: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 px-5 py-6">
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{props.title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{props.description}</p>
+        </div>
+        {props.actionLabel && props.onAction ? (
+          <div>
+            <Button
+              variant="outline"
+              onClick={props.onAction}
+              disabled={props.pending}
+              className="gap-2"
+            >
+              {props.pending ? <RefreshCcwIcon className="size-4 animate-spin" /> : null}
+              {props.actionLabel}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ChangeEntryCard(props: {
+  entry: ProjectDashboardChangeEntry;
+  cwd: string;
+}) {
+  const { entry, cwd } = props;
+  return (
+    <article className="rounded-2xl border border-border/60 bg-background/55 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          {kindLabel(entry.kind)}
+        </span>
+        {entry.ambiguous ? (
+          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-orange-700 dark:text-orange-300">
+            Needs review
+          </span>
+        ) : null}
+        {entry.hosts.map((host) => (
+          <span
+            key={`${entry.id}:${host}`}
+            className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground"
+          >
+            {host}
+          </span>
+        ))}
+      </div>
+      <div className="mt-3">
+        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground/70">
+          {formatTimestamp(entry.completedAt)}
+        </div>
+        <h3 className="mt-2 text-base font-semibold text-foreground">{entry.title}</h3>
+      </div>
+      {entry.markdown.trim().length > 0 ? (
+        <div className="mt-4 rounded-xl bg-card/40 p-3">
+          <ChatMarkdown text={entry.markdown} cwd={cwd} />
+        </div>
+      ) : null}
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground/80">Files:</span>
+        {entry.files.length > 0 ? (
+          entry.files.map((file) => (
+            <code
+              key={`${entry.id}:${file}`}
+              className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+            >
+              {file}
+            </code>
+          ))
+        ) : (
+          <span>None recorded</span>
+        )}
+      </div>
+    </article>
+  );
+}
+
+export const Route = createFileRoute("/_chat/$environmentId/flake/$projectId")({
+  component: FlakeDashboardRouteView,
+  validateSearch: parseFlakeDashboardSearch,
+});
+
+function FlakeDashboardRouteView() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const projectRef = Route.useParams({
     select: (params) => resolveFlakeRouteRef(params),
   });
+  const search = Route.useSearch();
   const bootstrapComplete = useStore(
     (store) => selectEnvironmentState(store, projectRef?.environmentId ?? null).bootstrapComplete,
   );
@@ -86,16 +190,60 @@ function FlakeOverviewRouteView() {
     if (!projectRef || !bootstrapComplete) {
       return;
     }
-
     if (!project && environmentHasProjects) {
       void navigate({ to: "/", replace: true });
     }
   }, [bootstrapComplete, environmentHasProjects, navigate, project, projectRef]);
 
-  const docsRootPath = useMemo(
-    () => (project ? `${project.cwd}/.t3code/docs/hosts` : null),
-    [project],
+  const routeHostsByName = useMemo(() => {
+    const flakeMetadata = project?.flakeMetadata ?? null;
+    const hosts = flakeMetadata?.hosts ?? (flakeMetadata?.host ? [flakeMetadata.host] : []);
+    return new Map(hosts.map((host) => [host.name.trim().toLowerCase(), host.name] as const));
+  }, [project?.flakeMetadata]);
+  const requestedHostName = search.host?.trim() ? search.host.trim() : null;
+  const matchedRouteHostName =
+    requestedHostName === null ? null : routeHostsByName.get(requestedHostName.toLowerCase()) ?? null;
+
+  useEffect(() => {
+    if (!projectRef || !requestedHostName || routeHostsByName.size === 0 || matchedRouteHostName) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: {},
+      replace: true,
+    });
+  }, [matchedRouteHostName, navigate, projectRef, requestedHostName, routeHostsByName]);
+
+  const dashboardQuery = useQuery(
+    projectDashboardContentQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      hostName: matchedRouteHostName ?? requestedHostName,
+      enabled: bootstrapComplete && projectRef !== null && project !== null,
+    }),
   );
+
+  useEffect(() => {
+    if (
+      !projectRef ||
+      !requestedHostName ||
+      !dashboardQuery.isError ||
+      !(dashboardQuery.error instanceof Error) ||
+      !dashboardQuery.error.message.includes("was not found in the selected flake")
+    ) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: {},
+      replace: true,
+    });
+  }, [dashboardQuery.error, dashboardQuery.isError, navigate, projectRef, requestedHostName]);
+
+  const localApiAvailable = readLocalApi() !== null;
 
   const openPathInEditor = useCallback(async (targetPath: string) => {
     const api = readLocalApi();
@@ -118,6 +266,20 @@ function FlakeOverviewRouteView() {
     }
   }, []);
 
+  const selectHost = useCallback(
+    (hostName: string | null) => {
+      if (!projectRef) {
+        return;
+      }
+      void navigate({
+        to: "/$environmentId/flake/$projectId",
+        params: buildFlakeRouteParams(projectRef),
+        search: hostName ? { host: hostName } : {},
+      });
+    },
+    [navigate, projectRef],
+  );
+
   const handleStartThread = useCallback(() => {
     if (!projectRef) {
       return;
@@ -137,6 +299,15 @@ function FlakeOverviewRouteView() {
     },
     [handleNewThread, projectRef],
   );
+
+  const invalidateDashboardQueries = useCallback(() => {
+    if (!projectRef || !project) {
+      return Promise.resolve();
+    }
+    return queryClient.invalidateQueries({
+      queryKey: projectQueryKeys.dashboardContentPrefix(projectRef.environmentId, project.id),
+    });
+  }, [project, projectRef, queryClient]);
 
   const handleGenerateHostDoc = useCallback(
     async (host: FlakeHost) => {
@@ -162,6 +333,7 @@ function FlakeOverviewRouteView() {
           projectId: project.id,
           hostName: host.name,
         });
+        await invalidateDashboardQueries();
         toastManager.add({
           type: "success",
           title: `Documentation generated for ${host.name}`,
@@ -181,32 +353,30 @@ function FlakeOverviewRouteView() {
         });
       }
     },
-    [generatingDocsByHost, project, projectRef],
+    [generatingDocsByHost, invalidateDashboardQueries, project, projectRef],
   );
 
-  const openHostDoc = useCallback(
-    async (hostName: string) => {
-      if (!project) {
-        return;
-      }
+  const selectedHostSummary = useMemo(() => {
+    const hostName = dashboardQuery.data?.selectedHostName;
+    if (!hostName) {
+      return null;
+    }
+    return (
+      dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === hostName) ?? null
+    );
+  }, [dashboardQuery.data]);
 
-      await openPathInEditor(`${project.cwd}/.t3code/docs/hosts/${slugifyHostName(hostName)}.md`);
-    },
-    [openPathInEditor, project],
+  const flakeSourceMarkdown = useMemo(
+    () => renderFlakeSourceMarkdown(dashboardQuery.data?.flakeSource.contents ?? ""),
+    [dashboardQuery.data?.flakeSource.contents],
   );
+  const visibleChangeEntries = selectedHostSummary
+    ? dashboardQuery.data?.hostChanges ?? []
+    : dashboardQuery.data?.generalChanges ?? [];
 
   if (!projectRef || !bootstrapComplete || !project) {
     return null;
   }
-
-  const flakeMetadata = project.flakeMetadata;
-  const hosts = flakeMetadata?.hosts ?? (flakeMetadata?.host ? [flakeMetadata.host] : []);
-  const documentationStateByHost = new Map(
-    (project.documentationState?.hosts ?? []).map((entry) => [entry.hostName, entry] as const),
-  );
-  const sourceLabel = formatFlakeSourceLabel(flakeMetadata?.source);
-  const flakePath = flakeMetadata?.flakePath ?? `${project.cwd}/flake.nix`;
-  const diagnostics = flakeMetadata?.diagnostics ?? [];
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
@@ -214,196 +384,312 @@ function FlakeOverviewRouteView() {
         <header className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-5 sm:py-3">
           <SidebarTrigger className="size-7 shrink-0 md:hidden" />
           <span className="text-sm font-medium text-foreground md:text-muted-foreground/60">
-            Flake overview
+            Flake dashboard
           </span>
         </header>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-            <section className="rounded-3xl border border-border/70 bg-card/60 p-6 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
+          <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+            <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+              <aside className="flex min-w-0 flex-col gap-4">
+                <section className="rounded-3xl border border-border/70 bg-card/60 p-6 shadow-sm">
                   <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground/70">
                     <ServerIcon className="size-3.5" />
                     <span>Selected flake</span>
                   </div>
-                  <div>
+                  <div className="mt-4">
                     <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                       {project.name}
                     </h1>
                     <p className="mt-1 break-all text-sm text-muted-foreground">{project.cwd}</p>
                   </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleStartThread}>
-                    <PlayIcon className="size-4" />
-                    Start thread
-                  </Button>
-                  <Button variant="outline" onClick={() => void openPathInEditor(flakePath)}>
-                    <FileTextIcon className="size-4" />
-                    Open flake.nix
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => void openPathInEditor(`${project.cwd}/.t3code/changes.md`)}
-                  >
-                    <BookOpenIcon className="size-4" />
-                    Open changes log
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => docsRootPath && void openPathInEditor(docsRootPath)}
-                    disabled={!docsRootPath}
-                  >
-                    <BookOpenIcon className="size-4" />
-                    Open docs folder
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,1fr)]">
-              <div className="rounded-3xl border border-border/70 bg-card/50 p-6">
-                <h2 className="text-sm font-semibold tracking-wide text-foreground">
-                  {hosts.length > 1 ? "Hosts" : "Host"}
-                </h2>
-                {hosts.length > 0 ? (
-                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                    {hosts.map((host) => (
-                      <div
-                        key={`${host.name}:${host.target}`}
-                        className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    <Button onClick={handleStartThread}>
+                      <PlayIcon className="size-4" />
+                      Start thread
+                    </Button>
+                    {dashboardQuery.data?.selectedHostName ? (
+                      <Button variant="outline" onClick={() => selectHost(null)}>
+                        View flake
+                      </Button>
+                    ) : null}
+                    {localApiAvailable ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => void openPathInEditor(`${project.cwd}/flake.nix`)}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                              Name
-                            </div>
-                            <div className="mt-2 text-lg font-medium text-foreground">
-                              {host.name}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            {host.type ? (
-                              <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                {host.type}
+                        <FileTextIcon className="size-4" />
+                        Open flake in editor
+                      </Button>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="rounded-3xl border border-border/70 bg-card/50 p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold tracking-wide text-foreground">Hosts</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Select a host to inspect its changes and documentation.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3">
+                    {dashboardQuery.isPending && !dashboardQuery.data ? (
+                      <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
+                        Loading hosts...
+                      </div>
+                    ) : dashboardQuery.data && dashboardQuery.data.hostSummaries.length > 0 ? (
+                      dashboardQuery.data.hostSummaries.map((summary) => {
+                        const isSelected =
+                          dashboardQuery.data?.selectedHostName === summary.host.name;
+                        const generating = generatingDocsByHost[summary.host.name] === true;
+                        const docPath = `${project.cwd}/${summary.documentation.docPath}`;
+                        return (
+                          <div
+                            key={`${summary.host.name}:${summary.host.target}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => selectHost(summary.host.name)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                selectHost(summary.host.name);
+                              }
+                            }}
+                            className={cn(
+                              "rounded-2xl border p-4 text-left transition-colors",
+                              isSelected
+                                ? "border-primary/40 bg-primary/8 shadow-sm"
+                                : "border-border/60 bg-background/55 hover:border-primary/30 hover:bg-background/80",
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-base font-semibold text-foreground">
+                                  {summary.host.name}
+                                </div>
+                                <div className="mt-1 break-all text-sm text-muted-foreground">
+                                  {summary.host.target}
+                                </div>
+                              </div>
+                              <span
+                                className={cn(
+                                  "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                  documentationStatusClasses(summary.documentation.status),
+                                )}
+                              >
+                                {formatDocumentationStatusLabel(summary.documentation.status)}
                               </span>
-                            ) : null}
-                            {host.system ? (
-                              <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                {host.system}
-                              </span>
-                            ) : null}
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${documentationStatusClasses(
-                                documentationStateByHost.get(host.name)?.status,
-                              )}`}
-                            >
-                              {formatDocumentationStatusLabel(
-                                documentationStateByHost.get(host.name)?.status,
-                              )}
-                            </span>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {summary.host.type ? (
+                                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                  {summary.host.type}
+                                </span>
+                              ) : null}
+                              {summary.host.system ? (
+                                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                  {summary.host.system}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleStartHostThread(summary.host);
+                                }}
+                              >
+                                <PlayIcon className="size-3.5" />
+                                Start thread
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={generating}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleGenerateHostDoc(summary.host);
+                                }}
+                              >
+                                {generating ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : null}
+                                {summary.documentation.status === "missing" ? "Generate doc" : "Refresh doc"}
+                              </Button>
+                              {localApiAvailable ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={summary.documentation.status === "missing"}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void openPathInEditor(docPath);
+                                  }}
+                                >
+                                  Open in editor
+                                </Button>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                        <div className="mt-4">
-                          <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                            Target
-                          </div>
-                          <div className="mt-2 break-all text-sm font-medium text-foreground">
-                            {host.target}
-                          </div>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                          <div className="text-xs text-muted-foreground">
-                            {documentationStateByHost.get(host.name)?.generatedAt
-                              ? `Generated ${documentationStateByHost.get(host.name)?.generatedAt}`
-                              : "No current-state host doc has been generated yet."}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleStartHostThread(host)}
-                              className="min-w-[8rem]"
-                            >
-                              <PlayIcon className="size-4" />
-                              Start thread
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void handleGenerateHostDoc(host)}
-                              disabled={Boolean(generatingDocsByHost[host.name])}
-                            >
-                              <BookOpenIcon className="size-4" />
-                              {generatingDocsByHost[host.name]
-                                ? "Generating..."
-                                : documentationStateByHost.get(host.name)?.status === "missing"
-                                  ? "Generate doc"
-                                  : "Refresh doc"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => void openHostDoc(host.name)}
-                              disabled={documentationStateByHost.get(host.name)?.status === "missing"}
-                            >
-                              <FileTextIcon className="size-4" />
-                              Open doc
-                            </Button>
-                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
+                        No hosts were resolved for this flake yet.
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </aside>
+
+              <main className="grid min-w-0 gap-6">
+                {dashboardQuery.isError && !dashboardQuery.data ? (
+                  <section className="rounded-3xl border border-destructive/30 bg-destructive/5 p-6">
+                    <div className="flex items-start gap-3">
+                      <AlertCircleIcon className="mt-0.5 size-5 text-destructive" />
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">
+                          Unable to load flake dashboard
+                        </h2>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {dashboardQuery.error instanceof Error
+                            ? dashboardQuery.error.message
+                            : "An unexpected error occurred."}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                ) : (
+                  <>
+                    <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="text-lg font-semibold text-foreground">
+                            {selectedHostSummary
+                              ? `Recent changes for ${selectedHostSummary.host.name}`
+                              : "Recent changes"}
+                          </h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {selectedHostSummary
+                              ? "Shows the latest host-specific and ambiguous changes that may affect this host."
+                              : "Shows the latest flake-wide changes recorded by T3code."}
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-dashed border-border/70 bg-background/40 p-5 text-sm text-muted-foreground">
-                    No `t3code.host` or `t3hosts` metadata was resolved for this flake yet.
-                  </div>
+
+                      <div className="mt-4 grid gap-4">
+                        {dashboardQuery.isPending && !dashboardQuery.data ? (
+                          <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
+                            Loading recent changes...
+                          </div>
+                        ) : visibleChangeEntries.length > 0 ? (
+                          visibleChangeEntries.map((entry) => (
+                            <ChangeEntryCard key={`${entry.kind}:${entry.id}`} entry={entry} cwd={project.cwd} />
+                          ))
+                        ) : (
+                          <EmptyPanel
+                            title="No changes recorded yet"
+                            description={
+                              selectedHostSummary
+                                ? "This host does not have any matching changelog entries yet."
+                                : "T3code has not written any general changelog entries for this flake yet."
+                            }
+                          />
+                        )}
+                      </div>
+                    </section>
+
+                    <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="text-lg font-semibold text-foreground">
+                            {selectedHostSummary ? "Host documentation" : "flake.nix"}
+                          </h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {selectedHostSummary
+                              ? selectedHostSummary.documentation.generatedAt
+                                ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
+                                : "Manual host documentation is missing or needs to be refreshed."
+                              : "Read-only source preview for the selected flake."}
+                          </p>
+                        </div>
+                        {selectedHostSummary ? (
+                          <span
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                              documentationStatusClasses(selectedHostSummary.documentation.status),
+                            )}
+                          >
+                            {formatDocumentationStatusLabel(selectedHostSummary.documentation.status)}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/45">
+                        {selectedHostSummary ? (
+                          dashboardQuery.data?.hostDoc &&
+                          dashboardQuery.data.hostDoc.status !== "missing" &&
+                          dashboardQuery.data.hostDoc.markdown.trim().length > 0 ? (
+                            <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
+                              <ChatMarkdown text={dashboardQuery.data.hostDoc.markdown} cwd={project.cwd} />
+                            </div>
+                          ) : (
+                            <div className="p-4 sm:p-5">
+                              <EmptyPanel
+                                title="No host doc yet"
+                                description={`Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`}
+                                actionLabel={
+                                  generatingDocsByHost[selectedHostSummary.host.name]
+                                    ? "Generating doc"
+                                    : "Generate doc"
+                                }
+                                onAction={() => void handleGenerateHostDoc(selectedHostSummary.host)}
+                                pending={generatingDocsByHost[selectedHostSummary.host.name] === true}
+                              />
+                            </div>
+                          )
+                        ) : dashboardQuery.data ? (
+                          <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
+                            <ChatMarkdown text={flakeSourceMarkdown} cwd={project.cwd} />
+                          </div>
+                        ) : (
+                          <div className="p-4 sm:p-5">
+                            <EmptyPanel
+                              title="Loading flake source"
+                              description="Fetching flake.nix for the selected flake."
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedHostSummary && localApiAvailable ? (
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              void openPathInEditor(
+                                `${project.cwd}/${selectedHostSummary.documentation.docPath}`,
+                              )
+                            }
+                            disabled={selectedHostSummary.documentation.status === "missing"}
+                          >
+                            <BookOpenIcon className="size-4" />
+                            Open in editor
+                          </Button>
+                        </div>
+                      ) : null}
+                    </section>
+                  </>
                 )}
-              </div>
-
-              <div className="rounded-3xl border border-border/70 bg-card/50 p-6">
-                <h2 className="text-sm font-semibold tracking-wide text-foreground">Resolution</h2>
-                <dl className="mt-4 space-y-4">
-                  <div>
-                    <dt className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                      Source
-                    </dt>
-                    <dd className="mt-1 text-sm text-foreground">{sourceLabel}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
-                      Flake path
-                    </dt>
-                    <dd className="mt-1 break-all text-sm text-muted-foreground">{flakePath}</dd>
-                  </div>
-                </dl>
-              </div>
-            </section>
-
-            {diagnostics.length > 0 ? (
-              <section className="rounded-3xl border border-amber-500/30 bg-amber-500/8 p-6">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <AlertCircleIcon className="size-4 text-amber-600" />
-                  Diagnostics
-                </div>
-                <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                  {diagnostics.map((diagnostic) => (
-                    <li key={diagnostic} className="rounded-2xl bg-background/55 px-4 py-3">
-                      {diagnostic}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+              </main>
+            </div>
           </div>
         </div>
       </div>
     </SidebarInset>
   );
 }
-
-export const Route = createFileRoute("/_chat/$environmentId/flake/$projectId")({
-  component: FlakeOverviewRouteView,
-});

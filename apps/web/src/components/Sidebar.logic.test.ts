@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildSidebarThreadFolders,
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
@@ -25,6 +26,7 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type Project,
+  type SidebarThreadSummary,
   type Thread,
 } from "../types";
 
@@ -394,6 +396,105 @@ describe("getVisibleSidebarThreadIds", () => {
         },
       ]),
     ).toEqual([ThreadId.make("thread-12"), ThreadId.make("thread-11")]);
+  });
+});
+
+describe("buildSidebarThreadFolders", () => {
+  function makeSidebarThreadSummary(
+    overrides: Partial<SidebarThreadSummary> &
+      Pick<SidebarThreadSummary, "id" | "projectId" | "title">,
+  ): SidebarThreadSummary {
+    return {
+      environmentId: localEnvironmentId,
+      interactionMode: DEFAULT_INTERACTION_MODE,
+      session: null,
+      createdAt: "2026-03-09T10:00:00.000Z",
+      archivedAt: null,
+      updatedAt: "2026-03-09T10:00:00.000Z",
+      latestTurn: null,
+      branch: null,
+      worktreePath: null,
+      scopedHostName: null,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      ...overrides,
+    };
+  }
+
+  it("returns General first and groups scoped host threads by host name", () => {
+    const folders = buildSidebarThreadFolders({
+      hostNames: ["bc250", "teletype"],
+      threads: [
+        makeSidebarThreadSummary({
+          id: ThreadId.make("thread-general"),
+          projectId: ProjectId.make("project-1"),
+          title: "General thread",
+        }),
+        makeSidebarThreadSummary({
+          id: ThreadId.make("thread-bc250"),
+          projectId: ProjectId.make("project-1"),
+          title: "bc250 thread",
+          scopedHostName: "bc250",
+        }),
+        makeSidebarThreadSummary({
+          id: ThreadId.make("thread-teletype"),
+          projectId: ProjectId.make("project-1"),
+          title: "teletype thread",
+          scopedHostName: "teletype",
+        }),
+      ],
+    });
+
+    expect(
+      folders.map((folder) => ({
+        label: folder.label,
+        hostName: folder.hostName,
+        threadIds: folder.threads.map((thread) => thread.id),
+      })),
+    ).toEqual([
+      {
+        label: "General",
+        hostName: null,
+        threadIds: [ThreadId.make("thread-general")],
+      },
+      {
+        label: "bc250",
+        hostName: "bc250",
+        threadIds: [ThreadId.make("thread-bc250")],
+      },
+      {
+        label: "teletype",
+        hostName: "teletype",
+        threadIds: [ThreadId.make("thread-teletype")],
+      },
+    ]);
+  });
+
+  it("keeps known host folders even when they are empty and adds unknown scoped hosts", () => {
+    const folders = buildSidebarThreadFolders({
+      hostNames: ["bc250"],
+      threads: [
+        makeSidebarThreadSummary({
+          id: ThreadId.make("thread-extra-host"),
+          projectId: ProjectId.make("project-1"),
+          title: "unknown host thread",
+          scopedHostName: "nexus",
+        }),
+      ],
+    });
+
+    expect(
+      folders.map((folder) => ({
+        label: folder.label,
+        threadCount: folder.threads.length,
+      })),
+    ).toEqual([
+      { label: "General", threadCount: 0 },
+      { label: "bc250", threadCount: 0 },
+      { label: "nexus", threadCount: 1 },
+    ]);
   });
 });
 

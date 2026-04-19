@@ -25,6 +25,13 @@ type SidebarProject = {
 
 export type ThreadTraversalDirection = "previous" | "next";
 
+export interface SidebarThreadFolder {
+  id: string;
+  label: string;
+  hostName: string | null;
+  threads: SidebarThreadSummary[];
+}
+
 export interface ThreadStatusPill {
   label:
     | "Working"
@@ -239,6 +246,71 @@ export function orderItemsByPreferredIds<TItem, TId>(input: {
   });
   const remaining = items.filter((item) => !preferredIdSet.has(getId(item)));
   return [...ordered, ...remaining];
+}
+
+function normalizeSidebarHostKey(hostName: string | null | undefined): string | null {
+  const trimmed = hostName?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+}
+
+export function buildSidebarThreadFolders(input: {
+  hostNames: readonly string[];
+  threads: readonly SidebarThreadSummary[];
+}): SidebarThreadFolder[] {
+  const hostLabelByKey = new Map<string, string>();
+  const hostOrder: string[] = [];
+  const ensureHost = (candidate: string | null | undefined) => {
+    const normalizedKey = normalizeSidebarHostKey(candidate);
+    if (!normalizedKey) {
+      return;
+    }
+    if (hostLabelByKey.has(normalizedKey)) {
+      return;
+    }
+    hostLabelByKey.set(normalizedKey, candidate!.trim());
+    hostOrder.push(normalizedKey);
+  };
+
+  for (const hostName of input.hostNames) {
+    ensureHost(hostName);
+  }
+  for (const thread of input.threads) {
+    ensureHost(thread.scopedHostName);
+  }
+
+  const generalThreads: SidebarThreadSummary[] = [];
+  const hostThreadsByKey = new Map<string, SidebarThreadSummary[]>(
+    hostOrder.map((hostKey) => [hostKey, []] as const),
+  );
+
+  for (const thread of input.threads) {
+    const hostKey = normalizeSidebarHostKey(thread.scopedHostName);
+    if (!hostKey) {
+      generalThreads.push(thread);
+      continue;
+    }
+    const bucket = hostThreadsByKey.get(hostKey);
+    if (bucket) {
+      bucket.push(thread);
+      continue;
+    }
+    generalThreads.push(thread);
+  }
+
+  return [
+    {
+      id: "general",
+      label: "General",
+      hostName: null,
+      threads: generalThreads,
+    },
+    ...hostOrder.map((hostKey) => ({
+      id: `host:${hostKey}`,
+      label: hostLabelByKey.get(hostKey) ?? hostKey,
+      hostName: hostLabelByKey.get(hostKey) ?? hostKey,
+      threads: hostThreadsByKey.get(hostKey) ?? [],
+    })),
+  ];
 }
 
 export function getVisibleSidebarThreadIds<TThreadId>(

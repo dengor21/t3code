@@ -49,9 +49,12 @@ import {
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
 import {
+  ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationError,
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
+  ProjectGetDashboardContentError,
+  ProjectGetDashboardContentInput,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -88,6 +91,7 @@ export const WS_METHODS = {
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
+  projectsGetDashboardContent: "projects.getDashboardContent",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -180,6 +184,12 @@ export const WsProjectsGenerateHostDocumentationRpc = Rpc.make(
     error: ProjectGenerateHostDocumentationError,
   },
 );
+
+export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetDashboardContent, {
+  payload: ProjectGetDashboardContentInput,
+  success: ProjectDashboardContentResult,
+  error: ProjectGetDashboardContentError,
+});
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: OpenInEditorInput,
@@ -377,6 +387,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
+  WsProjectsGetDashboardContentRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeGitStatusRpc,
