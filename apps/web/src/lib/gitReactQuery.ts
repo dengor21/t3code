@@ -167,6 +167,7 @@ export function gitRunStackedActionMutationOptions(input: {
     mutationFn: async ({
       actionId,
       action,
+      threadId,
       commitMessage,
       featureBranch,
       filePaths,
@@ -174,6 +175,7 @@ export function gitRunStackedActionMutationOptions(input: {
     }: {
       actionId: string;
       action: GitStackedAction;
+      threadId?: ThreadId;
       commitMessage?: string;
       featureBranch?: boolean;
       filePaths?: string[];
@@ -185,6 +187,7 @@ export function gitRunStackedActionMutationOptions(input: {
           action,
           actionId,
           cwd: input.cwd,
+          ...(threadId ? { threadId } : {}),
           ...(commitMessage ? { commitMessage } : {}),
           ...(featureBranch ? { featureBranch: true } : {}),
           ...(filePaths && filePaths.length > 0 ? { filePaths } : {}),

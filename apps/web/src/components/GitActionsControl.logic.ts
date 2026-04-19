@@ -145,7 +145,7 @@ export function buildMenuItems(
 export function resolveQuickAction(
   gitStatus: GitStatusResult | null,
   isBusy: boolean,
-  isDefaultBranch = false,
+  _isDefaultBranch = false,
   hasOriginRemote = true,
 ): GitQuickAction {
   if (isBusy) {
@@ -163,7 +163,6 @@ export function resolveQuickAction(
 
   const hasBranch = gitStatus.branch !== null;
   const hasChanges = gitStatus.hasWorkingTreeChanges;
-  const hasOpenPr = gitStatus.pr?.state === "open";
   const isAhead = gitStatus.aheadCount > 0;
   const isBehind = gitStatus.behindCount > 0;
   const isDiverged = isAhead && isBehind;
@@ -173,107 +172,32 @@ export function resolveQuickAction(
       label: "Commit",
       disabled: true,
       kind: "show_hint",
-      hint: "Create and checkout a branch before pushing or opening a PR.",
+      hint: "Create and checkout a branch before committing.",
     };
   }
 
   if (hasChanges) {
-    if (!gitStatus.hasUpstream && !hasOriginRemote) {
-      return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
-    }
-    if (hasOpenPr || isDefaultBranch) {
-      return { label: "Commit & push", disabled: false, kind: "run_action", action: "commit_push" };
-    }
-    return {
-      label: "Commit, push & PR",
-      disabled: false,
-      kind: "run_action",
-      action: "commit_push_pr",
-    };
-  }
-
-  if (!gitStatus.hasUpstream) {
-    if (!hasOriginRemote) {
-      if (hasOpenPr && !isAhead) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
-      }
-      return {
-        label: "Push",
-        disabled: true,
-        kind: "show_hint",
-        hint: 'Add an "origin" remote before pushing or creating a PR.',
-      };
-    }
-    if (!isAhead) {
-      if (hasOpenPr) {
-        return { label: "View PR", disabled: false, kind: "open_pr" };
-      }
-      return {
-        label: "Push",
-        disabled: true,
-        kind: "show_hint",
-        hint: "No local commits to push.",
-      };
-    }
-    if (hasOpenPr || isDefaultBranch) {
-      return {
-        label: "Push",
-        disabled: false,
-        kind: "run_action",
-        action: isDefaultBranch ? "commit_push" : "push",
-      };
-    }
-    return {
-      label: "Push & create PR",
-      disabled: false,
-      kind: "run_action",
-      action: "create_pr",
-    };
+    return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
   }
 
   if (isDiverged) {
     return {
-      label: "Sync branch",
+      label: "Commit",
       disabled: true,
       kind: "show_hint",
       hint: "Branch has diverged from upstream. Rebase/merge first.",
     };
   }
 
-  if (isBehind) {
-    return {
-      label: "Pull",
-      disabled: false,
-      kind: "run_pull",
-    };
-  }
-
-  if (isAhead) {
-    if (hasOpenPr || isDefaultBranch) {
-      return {
-        label: "Push",
-        disabled: false,
-        kind: "run_action",
-        action: isDefaultBranch ? "commit_push" : "push",
-      };
-    }
-    return {
-      label: "Push & create PR",
-      disabled: false,
-      kind: "run_action",
-      action: "create_pr",
-    };
-  }
-
-  if (hasOpenPr && gitStatus.hasUpstream) {
-    return { label: "View PR", disabled: false, kind: "open_pr" };
-  }
-
   return {
     label: "Commit",
     disabled: true,
     kind: "show_hint",
-    hint: "Branch is up to date. No action needed.",
+    hint: isBehind
+      ? "Pull or rebase before committing new changes."
+      : !gitStatus.hasUpstream && !hasOriginRemote
+        ? 'Add an "origin" remote before pushing follow-up commits.'
+        : "No changes to commit yet.",
   };
 }
 

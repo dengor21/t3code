@@ -42,6 +42,7 @@ import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.
 import { DocumentationReactorLive } from "./orchestration/Layers/DocumentationReactor.ts";
 import { DocumentationStatusResolverLive } from "./orchestration/Layers/DocumentationStatusResolver.ts";
 import { HostDocumentationServiceLive } from "./orchestration/Layers/HostDocumentationService.ts";
+import { ThreadChangeLifecycleReactorLive } from "./orchestration/Layers/ThreadChangeLifecycleReactor.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
@@ -133,6 +134,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderCommandReactorLive),
   Layer.provideMerge(CheckpointReactorLive),
   Layer.provideMerge(DocumentationReactorLive),
+  Layer.provideMerge(ThreadChangeLifecycleReactorLive),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
 

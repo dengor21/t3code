@@ -65,6 +65,7 @@ const NON_REPOSITORY_STATUS_DETAILS = Object.freeze<GitStatusDetails>({
   hasOriginRemote: false,
   isDefaultBranch: false,
   branch: null,
+  head: null,
   upstreamRef: null,
   hasWorkingTreeChanges: false,
   workingTree: { files: [], insertions: 0, deletions: 0 },
@@ -99,6 +100,25 @@ function parseBranchAb(value: string): { ahead: number; behind: number } {
   return {
     ahead: Number(match[1] ?? "0"),
     behind: Number(match[2] ?? "0"),
+  };
+}
+
+function parseHeadSummary(stdout: string): { sha: string; subject: string | null } | null {
+  const trimmed = stdout.trimEnd();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const [shaRaw = "", subjectRaw = ""] = trimmed.split("\0");
+  const sha = shaRaw.trim();
+  if (sha.length === 0) {
+    return null;
+  }
+
+  const subject = subjectRaw.trim();
+  return {
+    sha,
+    subject: subject.length > 0 ? subject : null,
   };
 }
 
@@ -1220,7 +1240,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       );
     }
 
-    const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasOriginRemote] =
+    const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasOriginRemote, headResult] =
       yield* Effect.all(
         [
           runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
@@ -1238,6 +1258,9 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
             },
           ),
           originRemoteExists(cwd).pipe(Effect.catch(() => Effect.succeed(false))),
+          executeGit("GitCore.statusDetails.head", cwd, ["log", "-1", "--format=%H%x00%s"], {
+            allowNonZeroExit: true,
+          }),
         ],
         { concurrency: "unbounded" },
       );
@@ -1320,6 +1343,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         (branch === defaultBranch ||
           (defaultBranch === null && (branch === "main" || branch === "master"))),
       branch,
+      head: headResult.code === 0 ? parseHeadSummary(headResult.stdout) : null,
       upstreamRef,
       hasWorkingTreeChanges,
       workingTree: {
@@ -1354,6 +1378,7 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
         hasOriginRemote: details.hasOriginRemote,
         isDefaultBranch: details.isDefaultBranch,
         branch: details.branch,
+        head: details.head,
         hasWorkingTreeChanges: details.hasWorkingTreeChanges,
         workingTree: details.workingTree,
         hasUpstream: details.hasUpstream,

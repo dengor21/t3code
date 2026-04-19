@@ -296,6 +296,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           branch: null,
           worktreePath: null,
           scopedHostName: null,
+          changeTracking: {
+            baselineHeadSha: null,
+            lastCommit: null,
+            state: "ongoing",
+          },
           latestTurn: {
             turnId: asTurnId("turn-1"),
             state: "completed",
@@ -413,6 +418,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           branch: null,
           worktreePath: null,
           scopedHostName: null,
+          changeTracking: {
+            baselineHeadSha: null,
+            lastCommit: null,
+            state: "ongoing",
+          },
           latestTurn: {
             turnId: asTurnId("turn-1"),
             state: "completed",

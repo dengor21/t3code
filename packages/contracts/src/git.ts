@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { NonNegativeInt, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
@@ -119,6 +119,7 @@ export const GitRunStackedActionInput = Schema.Struct({
   actionId: TrimmedNonEmptyStringSchema,
   cwd: TrimmedNonEmptyStringSchema,
   action: GitStackedAction,
+  threadId: Schema.optional(ThreadId),
   commitMessage: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(10_000))),
   featureBranch: Schema.optional(Schema.Boolean),
   filePaths: Schema.optional(
@@ -200,12 +201,21 @@ const GitStatusPr = Schema.Struct({
   state: GitStatusPrState,
 });
 
+export const GitStatusHead = Schema.Struct({
+  sha: TrimmedNonEmptyStringSchema,
+  subject: Schema.NullOr(TrimmedNonEmptyStringSchema),
+});
+export type GitStatusHead = typeof GitStatusHead.Type;
+
 const GitStatusLocalShape = {
   isRepo: Schema.Boolean,
   hostingProvider: Schema.optional(GitHostingProvider),
   hasOriginRemote: Schema.Boolean,
   isDefaultBranch: Schema.Boolean,
   branch: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  head: Schema.optional(Schema.NullOr(GitStatusHead)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   hasWorkingTreeChanges: Schema.Boolean,
   workingTree: Schema.Struct({
     files: Schema.Array(

@@ -281,6 +281,7 @@ describe("ProviderCommandReactor", () => {
             Effect.die("refreshLocalStatus should not be called in this test"),
           refreshStatus,
           streamStatus: () => Stream.die("streamStatus should not be called in this test"),
+          streamAllChanges: () => Stream.empty,
         } satisfies GitStatusBroadcasterShape),
       ),
       Layer.provideMerge(

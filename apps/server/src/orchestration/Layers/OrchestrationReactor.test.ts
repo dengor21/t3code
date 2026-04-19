@@ -6,6 +6,7 @@ import { DocumentationReactor } from "../Services/DocumentationReactor.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
+import { ThreadChangeLifecycleReactor } from "../Services/ThreadChangeLifecycleReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 
 describe("OrchestrationReactor", () => {
@@ -18,7 +19,7 @@ describe("OrchestrationReactor", () => {
     runtime = null;
   });
 
-  it("starts provider ingestion, provider command, checkpoint, and documentation reactors", async () => {
+  it("starts provider ingestion, provider command, checkpoint, documentation, and thread lifecycle reactors", async () => {
     const started: string[] = [];
 
     runtime = ManagedRuntime.make(
@@ -59,6 +60,15 @@ describe("OrchestrationReactor", () => {
             drain: Effect.void,
           }),
         ),
+        Layer.provideMerge(
+          Layer.succeed(ThreadChangeLifecycleReactor, {
+            start: () => {
+              started.push("thread-change-lifecycle-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
       ),
     );
 
@@ -71,6 +81,7 @@ describe("OrchestrationReactor", () => {
       "provider-command-reactor",
       "checkpoint-reactor",
       "documentation-reactor",
+      "thread-change-lifecycle-reactor",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

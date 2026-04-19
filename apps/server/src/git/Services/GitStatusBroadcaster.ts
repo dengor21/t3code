@@ -19,6 +19,13 @@ export interface GitStatusBroadcasterShape {
   readonly streamStatus: (
     input: GitStatusInput,
   ) => Stream.Stream<GitStatusStreamEvent, GitManagerServiceError>;
+  readonly streamAllChanges: () => Stream.Stream<
+    {
+      cwd: string;
+      event: GitStatusStreamEvent;
+    },
+    never
+  >;
 }
 
 export class GitStatusBroadcaster extends Context.Service<

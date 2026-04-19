@@ -6,6 +6,7 @@ import {
   EventId,
   type OrchestrationCommand,
   type GitActionProgressEvent,
+  GitManagerError,
   type GitManagerServiceError,
   OrchestrationDispatchCommandError,
   type OrchestrationEvent,
@@ -77,6 +78,8 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
       | "thread.proposed-plan-upserted"
       | "thread.activity-appended"
       | "thread.turn-diff-completed"
+      | "thread.change-baseline-recorded"
+      | "thread.commit-recorded"
       | "thread.reverted"
       | "thread.session-set";
   }
@@ -86,6 +89,8 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
     event.type === "thread.proposed-plan-upserted" ||
     event.type === "thread.activity-appended" ||
     event.type === "thread.turn-diff-completed" ||
+    event.type === "thread.change-baseline-recorded" ||
+    event.type === "thread.commit-recorded" ||
     event.type === "thread.reverted" ||
     event.type === "thread.session-set"
   );
@@ -915,10 +920,34 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 .pipe(
                   Effect.matchCauseEffect({
                     onFailure: (cause) => Queue.failCause(queue, cause),
-                    onSuccess: () =>
-                      refreshGitStatus(input.cwd).pipe(
-                        Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
-                      ),
+                    onSuccess: (result) =>
+                      Effect.gen(function* () {
+                        const commitSha = result.commit.commitSha;
+                        if (input.threadId && result.commit.status === "created" && commitSha) {
+                          yield* orchestrationEngine
+                            .dispatch({
+                              type: "thread.commit.record",
+                              commandId: serverCommandId("thread-commit-record"),
+                              threadId: input.threadId,
+                              commitSha,
+                              subject: result.commit.subject ?? null,
+                              source: "ui",
+                              createdAt: new Date().toISOString(),
+                            })
+                            .pipe(
+                              Effect.mapError(
+                                (cause) =>
+                                  new GitManagerError({
+                                    operation: "ws.gitRunStackedAction",
+                                    detail: "Failed to record thread commit lifecycle.",
+                                    cause,
+                                  }),
+                              ),
+                            );
+                        }
+                        yield* refreshGitStatus(input.cwd);
+                        yield* Queue.end(queue).pipe(Effect.asVoid);
+                      }),
                   }),
                 ),
             ),

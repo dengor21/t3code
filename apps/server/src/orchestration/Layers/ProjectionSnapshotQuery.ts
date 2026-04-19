@@ -19,6 +19,7 @@ import {
   type OrchestrationProject,
   type ProjectDocumentationState,
   type OrchestrationSession,
+  type ThreadChangeTracking,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
   ModelSelection,
@@ -208,6 +209,24 @@ function mapSessionRow(
   };
 }
 
+function mapThreadChangeTrackingRow(
+  row: Schema.Schema.Type<typeof ProjectionThreadDbRowSchema>,
+): ThreadChangeTracking {
+  return {
+    baselineHeadSha: row.changeBaselineHeadSha,
+    lastCommit:
+      row.lastCommitSha === null || row.lastCommitRecordedAt === null || row.lastCommitSource === null
+        ? null
+        : {
+            sha: row.lastCommitSha,
+            subject: row.lastCommitSubject,
+            recordedAt: row.lastCommitRecordedAt,
+            source: row.lastCommitSource,
+          },
+    state: row.changeState,
+  };
+}
+
 function mapProjectShellRow(
   row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
@@ -284,6 +303,12 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          change_baseline_head_sha AS "changeBaselineHeadSha",
+          last_commit_sha AS "lastCommitSha",
+          last_commit_subject AS "lastCommitSubject",
+          last_commit_recorded_at AS "lastCommitRecordedAt",
+          last_commit_source AS "lastCommitSource",
+          change_state AS "changeState",
           deleted_at AS "deletedAt"
         FROM projection_threads
         ORDER BY created_at ASC, thread_id ASC
@@ -539,6 +564,12 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pending_approval_count AS "pendingApprovalCount",
           pending_user_input_count AS "pendingUserInputCount",
           has_actionable_proposed_plan AS "hasActionableProposedPlan",
+          change_baseline_head_sha AS "changeBaselineHeadSha",
+          last_commit_sha AS "lastCommitSha",
+          last_commit_subject AS "lastCommitSubject",
+          last_commit_recorded_at AS "lastCommitRecordedAt",
+          last_commit_source AS "lastCommitSource",
+          change_state AS "changeState",
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE thread_id = ${threadId}
@@ -944,6 +975,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 branch: row.branch,
                 worktreePath: row.worktreePath,
                 scopedHostName: row.scopedHostName,
+                changeTracking: mapThreadChangeTrackingRow(row),
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
@@ -1101,6 +1133,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     branch: row.branch,
                     worktreePath: row.worktreePath,
                     scopedHostName: row.scopedHostName,
+                    changeTracking: mapThreadChangeTrackingRow(row),
                     latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                     createdAt: row.createdAt,
                     updatedAt: row.updatedAt,
@@ -1327,6 +1360,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
         scopedHostName: threadRow.value.scopedHostName,
+        changeTracking: mapThreadChangeTrackingRow(threadRow.value),
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,
         updatedAt: threadRow.value.updatedAt,
@@ -1422,6 +1456,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
         scopedHostName: threadRow.value.scopedHostName,
+        changeTracking: mapThreadChangeTrackingRow(threadRow.value),
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,
         updatedAt: threadRow.value.updatedAt,

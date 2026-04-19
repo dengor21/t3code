@@ -172,6 +172,18 @@ function deriveHasActionableProposedPlan(input: {
   return latestPlan !== null && latestPlan.implementedAt === null;
 }
 
+function deriveThreadChangeState(input: {
+  readonly lastCommitRecordedAt: string | null;
+  readonly latestUserMessageAt: string | null;
+}): "ongoing" | "committed" {
+  if (input.lastCommitRecordedAt === null) {
+    return "ongoing";
+  }
+  return input.latestUserMessageAt === null || input.latestUserMessageAt <= input.lastCommitRecordedAt
+    ? "committed"
+    : "ongoing";
+}
+
 function retainProjectionMessagesAfterRevert(
   messages: ReadonlyArray<ProjectionThreadMessage>,
   turns: ReadonlyArray<ProjectionTurn>,
@@ -554,6 +566,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         pendingApprovalCount,
         pendingUserInputCount,
         hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
+        changeState: deriveThreadChangeState({
+          lastCommitRecordedAt: existingRow.value.lastCommitRecordedAt,
+          latestUserMessageAt,
+        }),
       });
     });
 
@@ -580,6 +596,12 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             pendingApprovalCount: 0,
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
+            changeBaselineHeadSha: null,
+            lastCommitSha: null,
+            lastCommitSubject: null,
+            lastCommitRecordedAt: null,
+            lastCommitSource: null,
+            changeState: "ongoing",
             deletedAt: null,
           });
           return;
@@ -698,6 +720,48 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             updatedAt: event.occurredAt,
           });
           yield* refreshThreadShellSummary(event.payload.threadId);
+          return;
+        }
+
+        case "thread.change-baseline-recorded": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            changeBaselineHeadSha: event.payload.baselineHeadSha,
+            changeState: deriveThreadChangeState({
+              lastCommitRecordedAt: existingRow.value.lastCommitRecordedAt,
+              latestUserMessageAt: existingRow.value.latestUserMessageAt,
+            }),
+            updatedAt: event.occurredAt,
+          });
+          return;
+        }
+
+        case "thread.commit-recorded": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            changeBaselineHeadSha: event.payload.commitSha,
+            lastCommitSha: event.payload.commitSha,
+            lastCommitSubject: event.payload.subject,
+            lastCommitRecordedAt: event.payload.recordedAt,
+            lastCommitSource: event.payload.source,
+            changeState: deriveThreadChangeState({
+              lastCommitRecordedAt: event.payload.recordedAt,
+              latestUserMessageAt: existingRow.value.latestUserMessageAt,
+            }),
+            updatedAt: event.occurredAt,
+          });
           return;
         }
 

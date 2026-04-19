@@ -60,6 +60,7 @@ import {
 } from "../src/orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { DocumentationReactor } from "../src/orchestration/Services/DocumentationReactor.ts";
+import { ThreadChangeLifecycleReactor } from "../src/orchestration/Services/ThreadChangeLifecycleReactor.ts";
 import { DocumentationStatusResolverLive } from "../src/orchestration/Layers/DocumentationStatusResolver.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
@@ -337,11 +338,13 @@ export const makeOrchestrationIntegrationHarness = (
               hasOriginRemote: false,
               isDefaultBranch: true,
               branch: "main",
+              head: null,
               hasWorkingTreeChanges: false,
               workingTree: { files: [], insertions: 0, deletions: 0 },
             }),
           refreshStatus: () => Effect.die("refreshStatus should not be called in this test"),
           streamStatus: () => Stream.empty,
+          streamAllChanges: () => Stream.empty,
         }),
       ),
       Layer.provideMerge(
@@ -359,6 +362,12 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(checkpointReactorLayer),
       Layer.provideMerge(
         Layer.succeed(DocumentationReactor, {
+          start: () => Effect.void,
+          drain: Effect.void,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(ThreadChangeLifecycleReactor, {
           start: () => Effect.void,
           drain: Effect.void,
         }),

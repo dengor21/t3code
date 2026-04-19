@@ -220,6 +220,27 @@ export const OrchestrationSession = Schema.Struct({
 });
 export type OrchestrationSession = typeof OrchestrationSession.Type;
 
+export const ThreadRecordedCommitSource = Schema.Literals(["ui", "external"]);
+export type ThreadRecordedCommitSource = typeof ThreadRecordedCommitSource.Type;
+
+export const ThreadRecordedCommit = Schema.Struct({
+  sha: TrimmedNonEmptyString,
+  subject: Schema.NullOr(TrimmedNonEmptyString),
+  recordedAt: IsoDateTime,
+  source: ThreadRecordedCommitSource,
+});
+export type ThreadRecordedCommit = typeof ThreadRecordedCommit.Type;
+
+export const ThreadChangeState = Schema.Literals(["ongoing", "committed"]);
+export type ThreadChangeState = typeof ThreadChangeState.Type;
+
+export const ThreadChangeTracking = Schema.Struct({
+  baselineHeadSha: Schema.NullOr(TrimmedNonEmptyString),
+  lastCommit: Schema.NullOr(ThreadRecordedCommit),
+  state: ThreadChangeState,
+});
+export type ThreadChangeTracking = typeof ThreadChangeTracking.Type;
+
 export const OrchestrationCheckpointFile = Schema.Struct({
   path: TrimmedNonEmptyString,
   kind: TrimmedNonEmptyString,
@@ -293,6 +314,9 @@ export const OrchestrationThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  changeTracking: Schema.optional(Schema.NullOr(ThreadChangeTracking)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -342,6 +366,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  changeTracking: Schema.optional(Schema.NullOr(ThreadChangeTracking)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -691,6 +718,24 @@ const ThreadTurnDiffCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadChangeBaselineRecordCommand = Schema.Struct({
+  type: Schema.Literal("thread.change-baseline.record"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  baselineHeadSha: Schema.NullOr(TrimmedNonEmptyString),
+  createdAt: IsoDateTime,
+});
+
+const ThreadCommitRecordCommand = Schema.Struct({
+  type: Schema.Literal("thread.commit.record"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  commitSha: TrimmedNonEmptyString,
+  subject: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  source: ThreadRecordedCommitSource,
+  createdAt: IsoDateTime,
+});
+
 const ThreadActivityAppendCommand = Schema.Struct({
   type: Schema.Literal("thread.activity.append"),
   commandId: CommandId,
@@ -713,6 +758,8 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadMessageAssistantCompleteCommand,
   ThreadProposedPlanUpsertCommand,
   ThreadTurnDiffCompleteCommand,
+  ThreadChangeBaselineRecordCommand,
+  ThreadCommitRecordCommand,
   ThreadActivityAppendCommand,
   ThreadRevertCompleteCommand,
 ]);
@@ -746,6 +793,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.session-set",
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
+  "thread.change-baseline-recorded",
+  "thread.commit-recorded",
   "thread.activity-appended",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
@@ -921,6 +970,20 @@ export const ThreadTurnDiffCompletedPayload = Schema.Struct({
   completedAt: IsoDateTime,
 });
 
+export const ThreadChangeBaselineRecordedPayload = Schema.Struct({
+  threadId: ThreadId,
+  baselineHeadSha: Schema.NullOr(TrimmedNonEmptyString),
+  recordedAt: IsoDateTime,
+});
+
+export const ThreadCommitRecordedPayload = Schema.Struct({
+  threadId: ThreadId,
+  commitSha: TrimmedNonEmptyString,
+  subject: Schema.NullOr(TrimmedNonEmptyString),
+  source: ThreadRecordedCommitSource,
+  recordedAt: IsoDateTime,
+});
+
 export const ThreadActivityAppendedPayload = Schema.Struct({
   threadId: ThreadId,
   activity: OrchestrationThreadActivity,
@@ -1052,6 +1115,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.turn-diff-completed"),
     payload: ThreadTurnDiffCompletedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.change-baseline-recorded"),
+    payload: ThreadChangeBaselineRecordedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.commit-recorded"),
+    payload: ThreadCommitRecordedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

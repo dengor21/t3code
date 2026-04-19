@@ -93,6 +93,12 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
         hasActionableProposedPlan: 0,
+        changeBaselineHeadSha: null,
+        lastCommitSha: null,
+        lastCommitSubject: null,
+        lastCommitRecordedAt: null,
+        lastCommitSource: null,
+        changeState: "ongoing",
         deletedAt: null,
       });
 

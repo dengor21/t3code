@@ -641,6 +641,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
     hasOriginRemote: false,
     isDefaultBranch: false,
     branch: null,
+    head: null,
     upstreamRef: null,
     hasWorkingTreeChanges: false,
     workingTree: { files: [], insertions: 0, deletions: 0 },
@@ -664,6 +665,7 @@ export const makeGitManager = Effect.fn("makeGitManager")(function* () {
       hasOriginRemote: details.hasOriginRemote,
       isDefaultBranch: details.isDefaultBranch,
       branch: details.branch,
+      head: details.head,
       hasWorkingTreeChanges: details.hasWorkingTreeChanges,
       workingTree: details.workingTree,
     } satisfies GitStatusLocalResult;

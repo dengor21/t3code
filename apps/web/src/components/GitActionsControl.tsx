@@ -23,6 +23,7 @@ import {
   resolveThreadBranchUpdate,
 } from "./GitActionsControl.logic";
 import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
   Dialog,
@@ -47,6 +48,7 @@ import {
   gitRunStackedActionMutationOptions,
 } from "~/lib/gitReactQuery";
 import { refreshGitStatus, useGitStatus } from "~/lib/gitStatusState";
+import { isThreadChangeCommitted, resolveThreadChangeTracking } from "~/lib/threadChangeState";
 import { newCommandId, randomUUID } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -93,6 +95,13 @@ interface RunGitActionWithToastInput {
   featureBranch?: boolean;
   progressToastId?: GitActionToastId;
   filePaths?: string[];
+}
+
+interface CommittedFollowUpAction {
+  id: "pull" | "push" | "create_pr" | "view_pr";
+  label: string;
+  kind: "run_pull" | "run_action" | "open_pr";
+  action?: GitStackedAction;
 }
 
 const GIT_STATUS_WINDOW_REFRESH_DEBOUNCE_MS = 250;
@@ -210,6 +219,55 @@ function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
   return <InfoIcon className={iconClassName} />;
 }
 
+function resolveCommittedFollowUpActions(input: {
+  gitStatus: GitStatusResult | null;
+  isBusy: boolean;
+  hasOriginRemote: boolean;
+  isDefaultBranch: boolean;
+}): CommittedFollowUpAction[] {
+  const gitStatus = input.gitStatus;
+  if (!gitStatus || input.isBusy) {
+    return [];
+  }
+
+  const actions: CommittedFollowUpAction[] = [];
+  const hasBranch = gitStatus.branch !== null;
+  const hasOpenPr = gitStatus.pr?.state === "open";
+  const canPushWithoutUpstream = input.hasOriginRemote && !gitStatus.hasUpstream;
+  const canPush =
+    hasBranch &&
+    !gitStatus.hasWorkingTreeChanges &&
+    !gitStatus.behindCount &&
+    gitStatus.aheadCount > 0 &&
+    (gitStatus.hasUpstream || canPushWithoutUpstream);
+  const canCreatePr =
+    hasBranch &&
+    !gitStatus.hasWorkingTreeChanges &&
+    !hasOpenPr &&
+    gitStatus.aheadCount > 0 &&
+    !gitStatus.behindCount &&
+    (gitStatus.hasUpstream || canPushWithoutUpstream);
+
+  if (gitStatus.behindCount > 0 && gitStatus.aheadCount === 0) {
+    actions.push({ id: "pull", label: "Pull", kind: "run_pull" });
+  }
+  if (canPush) {
+    actions.push({ id: "push", label: "Push", kind: "run_action", action: "push" });
+  }
+  if (hasOpenPr) {
+    actions.push({ id: "view_pr", label: "View PR", kind: "open_pr" });
+  } else if (canCreatePr) {
+    actions.push({
+      id: "create_pr",
+      label: input.isDefaultBranch ? "Create PR" : "Create PR",
+      kind: "run_action",
+      action: "create_pr",
+    });
+  }
+
+  return actions;
+}
+
 export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
@@ -234,6 +292,7 @@ export default function GitActionsControl({
   );
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const setThreadBranch = useStore((store) => store.setThreadBranch);
+  const threadChangeTracking = resolveThreadChangeTracking(activeServerThread ?? {});
   const queryClient = useQueryClient();
   const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const [dialogCommitMessage, setDialogCommitMessage] = useState("");
@@ -393,6 +452,17 @@ export default function GitActionsControl({
   const quickAction = useMemo(
     () =>
       resolveQuickAction(gitStatusForActions, isGitActionRunning, isDefaultBranch, hasOriginRemote),
+    [gitStatusForActions, hasOriginRemote, isDefaultBranch, isGitActionRunning],
+  );
+  const isCommittedChange = isThreadChangeCommitted({ changeTracking: threadChangeTracking });
+  const committedFollowUpActions = useMemo(
+    () =>
+      resolveCommittedFollowUpActions({
+        gitStatus: gitStatusForActions,
+        isBusy: isGitActionRunning,
+        hasOriginRemote,
+        isDefaultBranch,
+      }),
     [gitStatusForActions, hasOriginRemote, isDefaultBranch, isGitActionRunning],
   );
   const quickActionDisabledReason = quickAction.disabled
@@ -629,6 +699,7 @@ export default function GitActionsControl({
       const promise = runImmediateGitActionMutation.mutateAsync({
         actionId,
         action,
+        ...(activeThreadRef ? { threadId: activeThreadRef.threadId } : {}),
         ...(commitMessage ? { commitMessage } : {}),
         ...(featureBranch ? { featureBranch } : {}),
         ...(filePaths ? { filePaths } : {}),
@@ -672,8 +743,14 @@ export default function GitActionsControl({
 
         const successToastBase = {
           type: "success",
-          title: result.toast.title,
-          description: result.toast.description,
+          title:
+            action === "commit" && result.commit.status === "created"
+              ? "Change committed"
+              : result.toast.title,
+          description:
+            action === "commit" && result.commit.status === "created"
+              ? (result.commit.subject ?? result.toast.description)
+              : result.toast.description,
           timeout: 0,
           data: {
             ...scopedToastData,
@@ -786,6 +863,37 @@ export default function GitActionsControl({
     }
   };
 
+  const runCommittedFollowUpAction = (action: CommittedFollowUpAction) => {
+    if (action.kind === "open_pr") {
+      void openExistingPr();
+      return;
+    }
+    if (action.kind === "run_pull") {
+      const promise = pullMutation.mutateAsync();
+      toastManager.promise(promise, {
+        loading: { title: "Pulling...", data: threadToastData },
+        success: (result) => ({
+          title: result.status === "pulled" ? "Pulled" : "Already up to date",
+          description:
+            result.status === "pulled"
+              ? `Updated ${result.branch} from ${result.upstreamBranch ?? "upstream"}`
+              : `${result.branch} is already synchronized.`,
+          data: threadToastData,
+        }),
+        error: (err) => ({
+          title: "Pull failed",
+          description: err instanceof Error ? err.message : "An error occurred.",
+          data: threadToastData,
+        }),
+      });
+      void promise.catch(() => undefined);
+      return;
+    }
+    if (action.action) {
+      void runGitActionWithToast({ action: action.action });
+    }
+  };
+
   const openDialogForMenuItem = (item: GitActionMenuItem) => {
     if (item.disabled) return;
     if (item.kind === "open_pr") {
@@ -858,40 +966,57 @@ export default function GitActionsControl({
         </Button>
       ) : (
         <Group aria-label="Git actions" className="shrink-0">
-          {quickActionDisabledReason ? (
-            <Popover>
-              <PopoverTrigger
-                openOnHover
-                render={
-                  <Button
-                    aria-disabled="true"
-                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-64 before:rounded-e-none"
-                    size="xs"
-                    variant="outline"
-                  />
-                }
+          {isCommittedChange ? (
+            <>
+              <Badge variant="outline" className="h-7 px-2 text-[11px]">
+                Committed
+              </Badge>
+              {committedFollowUpActions.map((action) => (
+                <Button
+                  key={action.id}
+                  variant="outline"
+                  size="xs"
+                  disabled={isGitActionRunning}
+                  onClick={() => runCommittedFollowUpAction(action)}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </>
+          ) : (
+            quickActionDisabledReason ? (
+              <Popover>
+                <PopoverTrigger
+                  openOnHover
+                  render={
+                    <Button
+                      aria-disabled="true"
+                      className="cursor-not-allowed rounded-e-none border-e-0 opacity-80 before:rounded-e-none"
+                      size="xs"
+                    />
+                  }
+                >
+                  <GitQuickActionIcon quickAction={quickAction} />
+                  <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+                    {quickAction.label}
+                  </span>
+                </PopoverTrigger>
+                <PopoverPopup tooltipStyle side="bottom" align="start">
+                  {quickActionDisabledReason}
+                </PopoverPopup>
+              </Popover>
+            ) : (
+              <Button
+                size="xs"
+                disabled={isGitActionRunning || quickAction.disabled}
+                onClick={runQuickAction}
               >
                 <GitQuickActionIcon quickAction={quickAction} />
                 <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
                   {quickAction.label}
                 </span>
-              </PopoverTrigger>
-              <PopoverPopup tooltipStyle side="bottom" align="start">
-                {quickActionDisabledReason}
-              </PopoverPopup>
-            </Popover>
-          ) : (
-            <Button
-              variant="outline"
-              size="xs"
-              disabled={isGitActionRunning || quickAction.disabled}
-              onClick={runQuickAction}
-            >
-              <GitQuickActionIcon quickAction={quickAction} />
-              <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-                {quickAction.label}
-              </span>
-            </Button>
+              </Button>
+            )
           )}
           <GroupSeparator className="hidden @3xl/header-actions:block" />
           <Menu

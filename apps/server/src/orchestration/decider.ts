@@ -1,8 +1,5 @@
-import type {
-  OrchestrationCommand,
-  OrchestrationEvent,
-  OrchestrationReadModel,
-} from "@t3tools/contracts";
+import { EventId } from "@t3tools/contracts";
+import type { OrchestrationCommand, OrchestrationEvent, OrchestrationReadModel } from "@t3tools/contracts";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -676,6 +673,89 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           activity: command.activity,
         },
       };
+    }
+
+    case "thread.change-baseline.record": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (thread.changeTracking?.baselineHeadSha === command.baselineHeadSha) {
+        return [];
+      }
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.change-baseline-recorded",
+        payload: {
+          threadId: command.threadId,
+          baselineHeadSha: command.baselineHeadSha,
+          recordedAt: command.createdAt,
+        },
+      };
+    }
+
+    case "thread.commit.record": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      if (thread.changeTracking?.lastCommit?.sha === command.commitSha) {
+        return [];
+      }
+
+      const commitRecordedEvent: Omit<OrchestrationEvent, "sequence"> = {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.commit-recorded",
+        payload: {
+          threadId: command.threadId,
+          commitSha: command.commitSha,
+          subject: command.subject ?? null,
+          source: command.source,
+          recordedAt: command.createdAt,
+        },
+      };
+
+      const activityEvent: Omit<OrchestrationEvent, "sequence"> = {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        }),
+        causationEventId: commitRecordedEvent.eventId,
+        type: "thread.activity-appended",
+        payload: {
+          threadId: command.threadId,
+          activity: {
+            id: EventId.make(crypto.randomUUID()),
+            tone: "info",
+            kind: "thread.commit.recorded",
+            summary:
+              command.source === "ui" ? "Committed change" : "External commit detected",
+            payload: {
+              sha: command.commitSha,
+              subject: command.subject ?? null,
+              source: command.source,
+            },
+            turnId: null,
+            createdAt: command.createdAt,
+          },
+        },
+      };
+
+      return [commitRecordedEvent, activityEvent];
     }
 
     default: {

@@ -18,6 +18,7 @@ import type {
   ProviderKind,
   ScopedProjectRef,
   ScopedThreadRef,
+  ThreadChangeTracking,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -248,6 +249,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    changeTracking: thread.changeTracking ?? null,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map((activity) => ({ ...activity })),
   };
@@ -278,6 +280,7 @@ function mapThreadShell(
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    changeTracking: thread.changeTracking ?? null,
   };
   const session = thread.session ? mapSession(thread.session) : null;
   const turnState: ThreadTurnState = {
@@ -298,6 +301,7 @@ function mapThreadShell(
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    changeTracking: thread.changeTracking ?? null,
     latestUserMessageAt: thread.latestUserMessageAt,
     hasPendingApprovals: thread.hasPendingApprovals,
     hasPendingUserInput: thread.hasPendingUserInput,
@@ -328,6 +332,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    changeTracking: thread.changeTracking ?? null,
   };
 }
 
@@ -383,6 +388,56 @@ function threadSessionsEqual(
   );
 }
 
+function recordedCommitsEqual(
+  left: ThreadChangeTracking["lastCommit"],
+  right: ThreadChangeTracking["lastCommit"],
+): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return (
+    left.sha === right.sha &&
+    left.subject === right.subject &&
+    left.recordedAt === right.recordedAt &&
+    left.source === right.source
+  );
+}
+
+function threadChangeTrackingEqual(
+  left: ThreadChangeTracking | null | undefined,
+  right: ThreadChangeTracking | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  return (
+    left.baselineHeadSha === right.baselineHeadSha &&
+    left.state === right.state &&
+    recordedCommitsEqual(left.lastCommit, right.lastCommit)
+  );
+}
+
+function latestUserMessageTimestamp(messages: ReadonlyArray<ChatMessage>): string | null {
+  return (
+    messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.createdAt)
+      .toSorted()
+      .at(-1) ?? null
+  );
+}
+
+function deriveThreadChangeState(
+  changeTracking: ThreadChangeTracking | null,
+  latestUserMessageAt: string | null,
+): "ongoing" | "committed" {
+  const lastCommit = changeTracking?.lastCommit ?? null;
+  if (lastCommit === null) {
+    return "ongoing";
+  }
+  return latestUserMessageAt === null || latestUserMessageAt <= lastCommit.recordedAt
+    ? "committed"
+    : "ongoing";
+}
+
 function sidebarThreadSummariesEqual(
   left: SidebarThreadSummary | undefined,
   right: SidebarThreadSummary,
@@ -401,6 +456,7 @@ function sidebarThreadSummariesEqual(
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
     left.scopedHostName === right.scopedHostName &&
+    threadChangeTrackingEqual(left.changeTracking, right.changeTracking) &&
     left.latestUserMessageAt === right.latestUserMessageAt &&
     left.hasPendingApprovals === right.hasPendingApprovals &&
     left.hasPendingUserInput === right.hasPendingUserInput &&
@@ -424,7 +480,8 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.archivedAt === right.archivedAt &&
     left.updatedAt === right.updatedAt &&
     left.branch === right.branch &&
-    left.worktreePath === right.worktreePath
+    left.worktreePath === right.worktreePath &&
+    threadChangeTrackingEqual(left.changeTracking, right.changeTracking)
   );
 }
 
@@ -1269,6 +1326,7 @@ function applyEnvironmentOrchestrationEvent(
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
           scopedHostName: event.payload.scopedHostName ?? null,
+          changeTracking: null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -1451,6 +1509,18 @@ function applyEnvironmentOrchestrationEvent(
         return {
           ...thread,
           messages: cappedMessages,
+          changeTracking:
+            event.payload.role === "user"
+              ? thread.changeTracking
+                ? {
+                    ...thread.changeTracking,
+                    state: deriveThreadChangeState(
+                      thread.changeTracking,
+                      latestUserMessageTimestamp(cappedMessages),
+                    ),
+                  }
+                : null
+              : (thread.changeTracking ?? null),
           turnDiffSummaries,
           latestTurn,
           updatedAt: event.occurredAt,
@@ -1567,6 +1637,59 @@ function applyEnvironmentOrchestrationEvent(
           ...thread,
           turnDiffSummaries,
           latestTurn,
+          updatedAt: event.occurredAt,
+        };
+      });
+
+    case "thread.change-baseline-recorded":
+      return updateThreadState(state, event.payload.threadId, (thread) => {
+        const previousTracking = thread.changeTracking ?? {
+          baselineHeadSha: null,
+          lastCommit: null,
+          state: "ongoing" as const,
+        };
+        return {
+          ...thread,
+          changeTracking: {
+            ...previousTracking,
+            baselineHeadSha: event.payload.baselineHeadSha,
+            state: deriveThreadChangeState(
+              previousTracking,
+              latestUserMessageTimestamp(thread.messages),
+            ),
+          },
+          updatedAt: event.occurredAt,
+        };
+      });
+
+    case "thread.commit-recorded":
+      return updateThreadState(state, event.payload.threadId, (thread) => {
+        const nextChangeTracking: ThreadChangeTracking = {
+          baselineHeadSha: event.payload.commitSha,
+          lastCommit: {
+            sha: event.payload.commitSha,
+            subject: event.payload.subject,
+            source: event.payload.source,
+            recordedAt: event.payload.recordedAt,
+          },
+          state: deriveThreadChangeState(
+            {
+              baselineHeadSha: event.payload.commitSha,
+              lastCommit: {
+                sha: event.payload.commitSha,
+                subject: event.payload.subject,
+                source: event.payload.source,
+                recordedAt: event.payload.recordedAt,
+              },
+              state: "committed",
+            },
+            latestUserMessageTimestamp(thread.messages),
+          ),
+        };
+
+        return {
+          ...thread,
+          changeTracking: nextChangeTracking,
           updatedAt: event.occurredAt,
         };
       });

@@ -277,12 +277,14 @@ describe("CheckpointReactor", () => {
             hasOriginRemote: false,
             isDefaultBranch: true,
             branch: "main",
+            head: null,
             hasWorkingTreeChanges: false,
             workingTree: { files: [], insertions: 0, deletions: 0 },
           }),
         ),
       refreshStatus: () => Effect.die("refreshStatus should not be called in this test"),
       streamStatus: () => Stream.empty,
+      streamAllChanges: () => Stream.empty,
     });
 
     const layer = CheckpointReactorLive.pipe(

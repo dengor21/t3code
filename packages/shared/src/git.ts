@@ -289,6 +289,7 @@ function toLocalStatusPart(status: GitStatusResult): GitStatusLocalResult {
     hasOriginRemote: status.hasOriginRemote,
     isDefaultBranch: status.isDefaultBranch,
     branch: status.branch,
+    head: status.head,
     hasWorkingTreeChanges: status.hasWorkingTreeChanges,
     workingTree: status.workingTree,
   };
@@ -311,6 +312,7 @@ export function applyGitStatusStreamEvent(
             hasOriginRemote: false,
             isDefaultBranch: false,
             branch: null,
+            head: null,
             hasWorkingTreeChanges: false,
             workingTree: { files: [], insertions: 0, deletions: 0 },
           },

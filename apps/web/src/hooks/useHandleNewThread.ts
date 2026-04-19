@@ -9,6 +9,7 @@ import {
   type DraftThreadState,
   useComposerDraftStore,
 } from "../composerDraftStore";
+import { shouldReuseDraftForThreadStart } from "../lib/threadStartDraftReuse";
 import { newDraftId, newThreadId } from "../lib/utils";
 import { orderItemsByPreferredIds } from "../components/Sidebar.logic";
 import { deriveLogicalProjectKeyFromSettings } from "../logicalProject";
@@ -81,7 +82,14 @@ function useNewThreadState() {
           ? getDraftThread(currentRouteTarget.threadRef)
           : getDraftSession(currentRouteTarget.draftId)
         : null;
-      if (storedDraftThread) {
+      const shouldReuseStoredDraft =
+        storedDraftThread !== null &&
+        shouldReuseDraftForThreadStart({
+          requestedScopedHostName: options?.scopedHostName ?? null,
+          existingScopedHostName: storedDraftThread.scopedHostName ?? null,
+          existingPrompt: getComposerDraft(storedDraftThread.draftId)?.prompt ?? "",
+        });
+      if (storedDraftThread && shouldReuseStoredDraft) {
         return (async () => {
           if (
             hasBranchOption ||
@@ -117,7 +125,12 @@ function useNewThreadState() {
         latestActiveDraftThread &&
         currentRouteTarget?.kind === "draft" &&
         latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
-        latestActiveDraftThread.promotedTo == null
+        latestActiveDraftThread.promotedTo == null &&
+        shouldReuseDraftForThreadStart({
+          requestedScopedHostName: options?.scopedHostName ?? null,
+          existingScopedHostName: latestActiveDraftThread.scopedHostName ?? null,
+          existingPrompt: getComposerDraft(currentRouteTarget.draftId)?.prompt ?? "",
+        })
       ) {
         if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption || hasScopedHostOption) {
           setDraftThreadContext(currentRouteTarget.draftId, {

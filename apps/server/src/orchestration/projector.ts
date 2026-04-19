@@ -1,4 +1,9 @@
-import type { OrchestrationEvent, OrchestrationReadModel, ThreadId } from "@t3tools/contracts";
+import type {
+  OrchestrationEvent,
+  OrchestrationReadModel,
+  ThreadChangeTracking,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   OrchestrationCheckpointSummary,
   OrchestrationMessage,
@@ -13,6 +18,8 @@ import {
   ProjectCreatedPayload,
   ProjectDeletedPayload,
   ProjectMetaUpdatedPayload,
+  ThreadChangeBaselineRecordedPayload,
+  ThreadCommitRecordedPayload,
   ThreadActivityAppendedPayload,
   ThreadArchivedPayload,
   ThreadCreatedPayload,
@@ -43,6 +50,28 @@ function updateThread(
   patch: ThreadPatch,
 ): OrchestrationThread[] {
   return threads.map((thread) => (thread.id === threadId ? { ...thread, ...patch } : thread));
+}
+
+function latestUserMessageAt(messages: ReadonlyArray<OrchestrationMessage>): string | null {
+  return (
+    messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.createdAt)
+      .toSorted()
+      .at(-1) ?? null
+  );
+}
+
+function deriveThreadChangeState(input: {
+  readonly lastCommit: ThreadChangeTracking["lastCommit"];
+  readonly latestUserMessageAt: string | null;
+}): "ongoing" | "committed" {
+  if (input.lastCommit === null) {
+    return "ongoing";
+  }
+  return input.latestUserMessageAt === null || input.latestUserMessageAt <= input.lastCommit.recordedAt
+    ? "committed"
+    : "ongoing";
 }
 
 function decodeForEvent<A>(
@@ -260,6 +289,11 @@ export function projectEvent(
             branch: payload.branch,
             worktreePath: payload.worktreePath,
             scopedHostName: payload.scopedHostName,
+            changeTracking: {
+              baselineHeadSha: null,
+              lastCommit: null,
+              state: "ongoing",
+            },
             latestTurn: null,
             createdAt: payload.createdAt,
             updatedAt: payload.updatedAt,
@@ -409,11 +443,21 @@ export function projectEvent(
             )
           : [...thread.messages, message];
         const cappedMessages = messages.slice(-MAX_THREAD_MESSAGES);
+        const nextChangeTracking = thread.changeTracking
+          ? {
+              ...thread.changeTracking,
+              state: deriveThreadChangeState({
+                lastCommit: thread.changeTracking.lastCommit,
+                latestUserMessageAt: latestUserMessageAt(cappedMessages),
+              }),
+            }
+          : null;
 
         return {
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             messages: cappedMessages,
+            changeTracking: nextChangeTracking,
             updatedAt: event.occurredAt,
           }),
         };
@@ -612,7 +656,84 @@ export function projectEvent(
               messages,
               proposedPlans,
               activities,
+              changeTracking: thread.changeTracking
+                ? {
+                    ...thread.changeTracking,
+                    state: deriveThreadChangeState({
+                      lastCommit: thread.changeTracking.lastCommit,
+                      latestUserMessageAt: latestUserMessageAt(messages),
+                    }),
+                  }
+                : null,
               latestTurn,
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }),
+      );
+
+    case "thread.change-baseline-recorded":
+      return decodeForEvent(
+        ThreadChangeBaselineRecordedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+
+          const previousTracking = thread.changeTracking ?? {
+            baselineHeadSha: null,
+            lastCommit: null,
+            state: "ongoing" as const,
+          };
+
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              changeTracking: {
+                ...previousTracking,
+                baselineHeadSha: payload.baselineHeadSha,
+                state: deriveThreadChangeState({
+                  lastCommit: previousTracking.lastCommit,
+                  latestUserMessageAt: latestUserMessageAt(thread.messages),
+                }),
+              },
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }),
+      );
+
+    case "thread.commit-recorded":
+      return decodeForEvent(ThreadCommitRecordedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+
+          const nextLastCommit = {
+            sha: payload.commitSha,
+            subject: payload.subject,
+            source: payload.source,
+            recordedAt: payload.recordedAt,
+          } as const;
+
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              changeTracking: {
+                baselineHeadSha: payload.commitSha,
+                lastCommit: nextLastCommit,
+                state: deriveThreadChangeState({
+                  lastCommit: nextLastCommit,
+                  latestUserMessageAt: latestUserMessageAt(thread.messages),
+                }),
+              },
               updatedAt: event.occurredAt,
             }),
           };

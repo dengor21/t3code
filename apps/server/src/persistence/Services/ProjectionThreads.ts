@@ -13,7 +13,9 @@ import {
   ProjectId,
   ProviderInteractionMode,
   RuntimeMode,
+  ThreadChangeState,
   ThreadId,
+  ThreadRecordedCommitSource,
   TurnId,
 } from "@t3tools/contracts";
 import { Option, Schema, Context } from "effect";
@@ -39,6 +41,12 @@ export const ProjectionThread = Schema.Struct({
   pendingApprovalCount: NonNegativeInt,
   pendingUserInputCount: NonNegativeInt,
   hasActionableProposedPlan: NonNegativeInt,
+  changeBaselineHeadSha: Schema.NullOr(Schema.String),
+  lastCommitSha: Schema.NullOr(Schema.String),
+  lastCommitSubject: Schema.NullOr(Schema.String),
+  lastCommitRecordedAt: Schema.NullOr(IsoDateTime),
+  lastCommitSource: Schema.NullOr(ThreadRecordedCommitSource),
+  changeState: ThreadChangeState,
   deletedAt: Schema.NullOr(IsoDateTime),
 });
 export type ProjectionThread = typeof ProjectionThread.Type;
