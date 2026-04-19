@@ -60,6 +60,7 @@ import { DocumentationStatusResolverLive } from "./orchestration/Layers/Document
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { GitCoreLive } from "./git/Layers/GitCore.ts";
 import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration.ts";
+import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { getAutoBootstrapDefaultModelSelection } from "./serverRuntimeStartup.ts";
 import {
@@ -511,6 +512,7 @@ const ProjectCliRuntimeBaseLive = Layer.mergeAll(
     ),
   ),
   RoutingTextGenerationLive,
+  DeployRsResolverLive,
   DocumentationStatusResolverLive,
   OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolverLive),

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
+  buildDeployRsCommand,
   type FlakeMetadata,
   type OrchestrationProjectShell,
   ProjectId,
@@ -17,6 +18,7 @@ import { ProjectionSnapshotQuery } from "../../orchestration/Services/Projection
 import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
 import { ProjectDashboardContentResolver } from "../Services/ProjectDashboardContentResolver.ts";
+import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
 import { ProjectDashboardContentResolverLive } from "./ProjectDashboardContentResolver.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -185,6 +187,31 @@ Current-state documentation for bc250.
         }),
       ),
       Layer.provideMerge(
+        Layer.succeed(DeployRsResolver, {
+          resolveHostDeployments: () =>
+            Effect.succeed(
+              new Map([
+                [
+                  "bc250",
+                  {
+                    status: "deployable" as const,
+                    reason: null,
+                    command: buildDeployRsCommand("bc250"),
+                  },
+                ],
+                [
+                  "nexus",
+                  {
+                    status: "unavailable" as const,
+                    reason: "missing-deploy-target" as const,
+                    command: null,
+                  },
+                ],
+              ]),
+            ),
+        }),
+      ),
+      Layer.provideMerge(
         Layer.succeed(ProjectionSnapshotQuery, makeProjectionSnapshotQuery(makeProjectShell(workspaceRoot))),
       ),
       Layer.provide(NodeServices.layer),
@@ -219,9 +246,19 @@ Current-state documentation for bc250.
     expect(result.hostSummaries.find((entry) => entry.host.name === "bc250")?.documentation.status).toBe(
       "current",
     );
+    expect(result.hostSummaries.find((entry) => entry.host.name === "bc250")?.deployment).toEqual({
+      status: "deployable",
+      reason: null,
+      command: buildDeployRsCommand("bc250"),
+    });
     expect(result.hostSummaries.find((entry) => entry.host.name === "nexus")?.documentation.status).toBe(
       "missing",
     );
+    expect(result.hostSummaries.find((entry) => entry.host.name === "nexus")?.deployment).toEqual({
+      status: "unavailable",
+      reason: "missing-deploy-target",
+      command: null,
+    });
   });
 
   it("returns host-level dashboard content with ambiguous and legacy host changes", async () => {

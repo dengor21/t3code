@@ -23,6 +23,7 @@ import {
   ProjectDashboardContentResolver,
   type ProjectDashboardContentResolverShape,
 } from "../Services/ProjectDashboardContentResolver.ts";
+import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
 
 const MAX_DASHBOARD_CHANGE_ENTRIES = 3;
@@ -60,6 +61,7 @@ function defaultDocumentationState(host: FlakeHost): HostDocumentationState {
 const make = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const flakeMetadataResolver = yield* FlakeMetadataResolver;
+  const deployRsResolver = yield* DeployRsResolver;
   const documentationStatusResolver = yield* DocumentationStatusResolver;
   const workspacePaths = yield* WorkspacePaths;
 
@@ -124,22 +126,36 @@ const make = Effect.gen(function* () {
         ),
       );
 
-      const flakeMetadata = yield* flakeMetadataResolver.resolve(project.workspaceRoot).pipe(
-        Effect.mapError((cause) =>
-          toDashboardError("Failed to resolve flake metadata.", cause),
-        ),
-      );
-      const documentationState = yield* documentationStatusResolver
-        .resolve({
+      const flakeMetadata =
+        project.flakeMetadata ??
+        (yield* flakeMetadataResolver.resolve(project.workspaceRoot).pipe(
+          Effect.mapError((cause) =>
+            toDashboardError("Failed to resolve flake metadata.", cause),
+          ),
+        ));
+      const documentationState =
+        project.documentationState ??
+        (yield* documentationStatusResolver
+          .resolve({
+            workspaceRoot: project.workspaceRoot,
+            flakeMetadata,
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              toDashboardError("Failed to resolve documentation status.", cause),
+            ),
+          ));
+      const hosts = resolveProjectHosts(flakeMetadata);
+      const deploymentByHost = yield* deployRsResolver
+        .resolveHostDeployments({
           workspaceRoot: project.workspaceRoot,
-          flakeMetadata,
+          hosts,
         })
         .pipe(
           Effect.mapError((cause) =>
-            toDashboardError("Failed to resolve documentation status.", cause),
+            toDashboardError("Failed to resolve deploy-rs host targets.", cause),
           ),
         );
-      const hosts = resolveProjectHosts(flakeMetadata);
       const documentationByHost = new Map(
         documentationState.hosts.map((entry) => [entry.hostName.toLowerCase(), entry] as const),
       );
@@ -217,6 +233,12 @@ const make = Effect.gen(function* () {
         host,
         documentation:
           documentationByHost.get(host.name.toLowerCase()) ?? defaultDocumentationState(host),
+        deployment:
+          deploymentByHost.get(host.name.toLowerCase()) ?? {
+            status: "unavailable" as const,
+            reason: "missing-deploy-target" as const,
+            command: null,
+          },
       }));
 
       return {

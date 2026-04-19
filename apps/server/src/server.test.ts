@@ -3,6 +3,7 @@ import * as NodeSocket from "@effect/platform-node/NodeSocket";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import {
+  buildDeployRsCommand,
   CommandId,
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
@@ -104,6 +105,10 @@ import {
   ProjectDashboardContentResolver,
   type ProjectDashboardContentResolverShape,
 } from "./project/Services/ProjectDashboardContentResolver.ts";
+import {
+  DeployRsResolver,
+  type DeployRsResolverShape,
+} from "./project/Services/DeployRsResolver.ts";
 import {
   ProjectSetupScriptRunner,
   type ProjectSetupScriptRunnerShape,
@@ -354,6 +359,7 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
+    deployRsResolver?: Partial<DeployRsResolverShape>;
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
   };
 }) =>
@@ -598,6 +604,12 @@ const buildAppUnderTest = (options?: {
               hostSummaries: [],
             }),
           ...options?.layers?.projectDashboardContentResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(DeployRsResolver)({
+          resolveHostDeployments: () => Effect.succeed(new Map()),
+          ...options?.layers?.deployRsResolver,
         }),
       ),
       Layer.provide(
@@ -2262,6 +2274,247 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         result.failure.message,
         "Workspace file path must stay within the project root.",
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.startHostDeployment", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-ws-project-deploy-",
+      });
+      let createdThreadId: ThreadId | null = null;
+
+      yield* fs.writeFileString(
+        path.join(workspaceRoot, "flake.nix"),
+        `{
+  outputs = { self }: {
+    t3hosts = {
+      bc250 = {
+        name = "bc250";
+        target = "bc250";
+        system = "x86_64-linux";
+        type = "nixos";
+      };
+    };
+  };
+}
+`,
+      );
+
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getProjectShellById: () =>
+              Effect.succeed(
+                Option.some({
+                  id: defaultProjectId,
+                  title: "nix",
+                  workspaceRoot,
+                  repositoryIdentity: null,
+                  flakeMetadata: null,
+                  documentationState: null,
+                  defaultModelSelection,
+                  scripts: [],
+                  createdAt: new Date(0).toISOString(),
+                  updatedAt: new Date(0).toISOString(),
+                }),
+              ),
+          },
+          deployRsResolver: {
+            resolveHostDeployments: () =>
+              Effect.succeed(
+                new Map([
+                  [
+                    "bc250",
+                  {
+                      status: "deployable" as const,
+                      reason: null,
+                      command: buildDeployRsCommand("bc250"),
+                    },
+                  ],
+                ]),
+              ),
+          },
+          gitStatusBroadcaster: {
+            refreshStatus: () =>
+              Effect.succeed({
+                isRepo: true,
+                hasOriginRemote: true,
+                isDefaultBranch: false,
+                branch: "main",
+                head: null,
+                hasWorkingTreeChanges: false,
+                workingTree: {
+                  files: [],
+                  insertions: 0,
+                  deletions: 0,
+                },
+                hasUpstream: true,
+                aheadCount: 0,
+                behindCount: 0,
+                pr: null,
+              }),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                if (command.type === "thread.create") {
+                  createdThreadId = command.threadId;
+                }
+                return { sequence: dispatchedCommands.length };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsStartHostDeployment]({
+            projectId: defaultProjectId,
+            hostName: "bc250",
+          }),
+        ),
+      );
+
+      assert.equal(response.title, "Deploy bc250");
+      assert.equal(response.cwd, workspaceRoot);
+      assert.equal(response.worktreePath, null);
+      assert.equal(response.terminalId, "default");
+      assert.equal(response.command, buildDeployRsCommand("bc250"));
+      assert.equal(response.scopedHostName, "bc250");
+      assert.equal(response.threadId, createdThreadId);
+      assert.equal(dispatchedCommands[0]?.type, "thread.create");
+      assert.equal(dispatchedCommands[1]?.type, "thread.activity.append");
+      const activityCommand = dispatchedCommands[1];
+      if (activityCommand?.type === "thread.activity.append") {
+        assert.equal(activityCommand.activity.kind, "deploy.requested");
+        assert.equal(activityCommand.activity.summary, "Deployment requested for bc250");
+        assert.deepEqual(activityCommand.activity.payload, {
+          hostName: "bc250",
+          command: buildDeployRsCommand("bc250"),
+          deployOnServer: false,
+          requestedAt: activityCommand.createdAt,
+        });
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.startHostDeployment with deployOnServer override", () =>
+    Effect.gen(function* () {
+      const dispatchedCommands: Array<OrchestrationCommand> = [];
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-ws-project-deploy-server-build-",
+      });
+
+      yield* fs.writeFileString(
+        path.join(workspaceRoot, "flake.nix"),
+        `{
+  outputs = { self }: {
+    t3hosts = {
+      thinkpad = {
+        name = "thinkpad";
+        target = "thinkpad";
+        system = "x86_64-linux";
+        type = "nixos";
+      };
+    };
+  };
+}
+`,
+      );
+
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getProjectShellById: () =>
+              Effect.succeed(
+                Option.some({
+                  id: defaultProjectId,
+                  title: "nix",
+                  workspaceRoot,
+                  repositoryIdentity: null,
+                  flakeMetadata: null,
+                  documentationState: null,
+                  defaultModelSelection,
+                  scripts: [],
+                  createdAt: new Date(0).toISOString(),
+                  updatedAt: new Date(0).toISOString(),
+                }),
+              ),
+          },
+          deployRsResolver: {
+            resolveHostDeployments: () =>
+              Effect.succeed(
+                new Map([
+                  [
+                    "thinkpad",
+                    {
+                      status: "deployable" as const,
+                      reason: null,
+                      command: buildDeployRsCommand("thinkpad"),
+                    },
+                  ],
+                ]),
+              ),
+          },
+          gitStatusBroadcaster: {
+            refreshStatus: () =>
+              Effect.succeed({
+                isRepo: true,
+                hasOriginRemote: true,
+                isDefaultBranch: false,
+                branch: "main",
+                head: null,
+                hasWorkingTreeChanges: false,
+                workingTree: {
+                  files: [],
+                  insertions: 0,
+                  deletions: 0,
+                },
+                hasUpstream: true,
+                aheadCount: 0,
+                behindCount: 0,
+                pr: null,
+              }),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatchedCommands.push(command);
+                return { sequence: dispatchedCommands.length };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsStartHostDeployment]({
+            projectId: defaultProjectId,
+            hostName: "thinkpad",
+            deployOnServer: true,
+          }),
+        ),
+      );
+
+      assert.equal(response.command, buildDeployRsCommand("thinkpad", { deployOnServer: true }));
+      const activityCommand = dispatchedCommands[1];
+      if (activityCommand?.type === "thread.activity.append") {
+        assert.deepEqual(activityCommand.activity.payload, {
+          hostName: "thinkpad",
+          command: buildDeployRsCommand("thinkpad", { deployOnServer: true }),
+          deployOnServer: true,
+          requestedAt: activityCommand.createdAt,
+        });
+      }
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

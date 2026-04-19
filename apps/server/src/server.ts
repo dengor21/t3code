@@ -46,6 +46,7 @@ import { ThreadChangeLifecycleReactorLive } from "./orchestration/Layers/ThreadC
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
+import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
 import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
@@ -236,6 +237,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(DocumentationLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
+  Layer.provideMerge(DeployRsResolverLive),
   Layer.provideMerge(FlakeMetadataResolverLive),
   Layer.provideMerge(ProjectDashboardContentResolverLive),
   Layer.provideMerge(RepositoryIdentityResolverLive),

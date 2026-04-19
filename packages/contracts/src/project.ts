@@ -1,5 +1,11 @@
 import { Schema } from "effect";
-import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  IsoDateTime,
+  PositiveInt,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./environment.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
@@ -89,9 +95,34 @@ export const ProjectDashboardChangeEntry = Schema.Struct({
 });
 export type ProjectDashboardChangeEntry = typeof ProjectDashboardChangeEntry.Type;
 
+const ProjectDashboardHostDeploymentStatus = Schema.Literals(["deployable", "unavailable"]);
+const ProjectDashboardHostDeploymentReason = Schema.NullOr(
+  Schema.Literals(["missing-deploy-target", "evaluation-failed"]),
+);
+
+export function buildDeployRsCommand(
+  hostName: string,
+  options?: {
+    deployOnServer?: boolean | null | undefined;
+  },
+): string {
+  const target = hostName.trim();
+  return options?.deployOnServer
+    ? `nix run github:serokell/deploy-rs -- .#${target}`
+    : `nix run github:serokell/deploy-rs -- --skip-checks --remote-build .#${target}`;
+}
+
+export const ProjectDashboardHostDeployment = Schema.Struct({
+  status: ProjectDashboardHostDeploymentStatus,
+  reason: ProjectDashboardHostDeploymentReason,
+  command: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ProjectDashboardHostDeployment = typeof ProjectDashboardHostDeployment.Type;
+
 export const ProjectDashboardHostSummary = Schema.Struct({
   host: FlakeHost,
   documentation: HostDocumentationState,
+  deployment: ProjectDashboardHostDeployment,
 });
 export type ProjectDashboardHostSummary = typeof ProjectDashboardHostSummary.Type;
 
@@ -129,6 +160,32 @@ export type ProjectDashboardContentResult = typeof ProjectDashboardContentResult
 
 export class ProjectGetDashboardContentError extends Schema.TaggedErrorClass<ProjectGetDashboardContentError>()(
   "ProjectGetDashboardContentError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+export const ProjectStartHostDeploymentInput = Schema.Struct({
+  projectId: ProjectId,
+  hostName: TrimmedNonEmptyString,
+  deployOnServer: Schema.optional(Schema.Boolean),
+});
+export type ProjectStartHostDeploymentInput = typeof ProjectStartHostDeploymentInput.Type;
+
+export const ProjectStartHostDeploymentResult = Schema.Struct({
+  threadId: ThreadId,
+  title: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+  worktreePath: Schema.Null,
+  terminalId: Schema.Literal("default"),
+  command: TrimmedNonEmptyString,
+  scopedHostName: TrimmedNonEmptyString,
+});
+export type ProjectStartHostDeploymentResult = typeof ProjectStartHostDeploymentResult.Type;
+
+export class ProjectStartHostDeploymentError extends Schema.TaggedErrorClass<ProjectStartHostDeploymentError>()(
+  "ProjectStartHostDeploymentError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

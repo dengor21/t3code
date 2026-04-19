@@ -1,4 +1,10 @@
-import type { FlakeHost, HostDocumentationStatus, ProjectDashboardChangeEntry } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime";
+import {
+  buildDeployRsCommand,
+  type FlakeHost,
+  type HostDocumentationStatus,
+  type ProjectDashboardChangeEntry,
+} from "@t3tools/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -7,22 +13,35 @@ import {
   FileTextIcon,
   PlayIcon,
   RefreshCcwIcon,
+  RocketIcon,
   ServerIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import ChatMarkdown from "../components/ChatMarkdown";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { buildHostThreadPrompt } from "../lib/flakeHosts";
+import { useGitStatus } from "../lib/gitStatusState";
 import { projectDashboardContentQueryOptions, projectQueryKeys } from "../lib/projectReactQuery";
 import { cn } from "../lib/utils";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
-import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
+import { useTerminalStateStore } from "../terminalStateStore";
+import { buildFlakeRouteParams, buildThreadRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
 
 export interface FlakeDashboardSearch {
   host?: string;
@@ -43,6 +62,9 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
 }
 
 type FlakeDashboardView = "changes" | "doc" | "flake";
+
+const DEPLOY_TERMINAL_COLS = 120;
+const DEPLOY_TERMINAL_ROWS = 30;
 
 function buildDashboardSearch(input: {
   hostName: string | null;
@@ -80,6 +102,19 @@ function documentationStatusClasses(status: HostDocumentationStatus | null | und
     case "missing":
     default:
       return "border-border/70 bg-background/70 text-muted-foreground";
+  }
+}
+
+function deploymentReasonLabel(
+  reason: "missing-deploy-target" | "evaluation-failed" | null | undefined,
+): string | null {
+  switch (reason) {
+    case "missing-deploy-target":
+      return "No deploy-rs target configured";
+    case "evaluation-failed":
+      return "Could not evaluate deploy-rs targets";
+    default:
+      return null;
   }
 }
 
@@ -205,6 +240,13 @@ function FlakeDashboardRouteView() {
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
   const { handleNewThread } = useNewThreadHandler();
   const [generatingDocsByHost, setGeneratingDocsByHost] = useState<Record<string, true>>({});
+  const [deployDialogHostName, setDeployDialogHostName] = useState<string | null>(null);
+  const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
+  const [deployOnServer, setDeployOnServer] = useState(false);
+  const gitStatusQuery = useGitStatus({
+    environmentId: projectRef?.environmentId ?? null,
+    cwd: project?.cwd ?? null,
+  });
 
   useEffect(() => {
     if (!projectRef || !bootstrapComplete) {
@@ -356,6 +398,104 @@ function FlakeDashboardRouteView() {
     [generatingDocsByHost, invalidateDashboardQueries, project, projectRef],
   );
 
+  const handleOpenDeployDialog = useCallback((hostName: string) => {
+    setDeployOnServer(false);
+    setDeployDialogHostName(hostName);
+  }, []);
+
+  const handleCloseDeployDialog = useCallback(() => {
+    if (deployingHostName !== null) {
+      return;
+    }
+    setDeployOnServer(false);
+    setDeployDialogHostName(null);
+  }, [deployingHostName]);
+
+  const handleConfirmDeployment = useCallback(async () => {
+    if (!projectRef || !project || !deployDialogHostName) {
+      return;
+    }
+
+    const hostSummary =
+      dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === deployDialogHostName) ??
+      null;
+    if (!hostSummary || hostSummary.deployment.status !== "deployable" || !hostSummary.deployment.command) {
+      toastManager.add({
+        type: "error",
+        title: "Deployment is unavailable",
+        description:
+          deploymentReasonLabel(hostSummary?.deployment.reason) ??
+          "This host does not have a deploy-rs target.",
+      });
+      return;
+    }
+
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setDeployingHostName(hostSummary.host.name);
+    try {
+      const result = await api.projects.startHostDeployment({
+        projectId: project.id,
+        hostName: hostSummary.host.name,
+        deployOnServer,
+      });
+      const threadRef = scopeThreadRef(projectRef.environmentId, result.threadId);
+      const terminalState = useTerminalStateStore.getState();
+
+      terminalState.ensureTerminal(threadRef, result.terminalId, { open: true, active: true });
+      terminalState.setTerminalOpen(threadRef, true);
+      terminalState.setTerminalLaunchContext(threadRef, {
+        cwd: result.cwd,
+        worktreePath: null,
+      });
+
+      setDeployDialogHostName(null);
+      setDeployingHostName(null);
+      setDeployOnServer(false);
+
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+      });
+
+      try {
+        await api.terminal.open({
+          threadId: result.threadId,
+          terminalId: result.terminalId,
+          cwd: result.cwd,
+          worktreePath: null,
+          cols: DEPLOY_TERMINAL_COLS,
+          rows: DEPLOY_TERMINAL_ROWS,
+        });
+        await api.terminal.write({
+          threadId: result.threadId,
+          terminalId: result.terminalId,
+          data: `${result.command}\r`,
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Deployment thread created, but the terminal failed to start",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      }
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to start deployment for ${hostSummary.host.name}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+      setDeployingHostName(null);
+    }
+  }, [dashboardQuery.data?.hostSummaries, deployDialogHostName, deployOnServer, navigate, project, projectRef]);
+
   const selectedHostSummary = useMemo(() => {
     const hostName = dashboardQuery.data?.selectedHostName;
     if (!hostName) {
@@ -365,6 +505,15 @@ function FlakeDashboardRouteView() {
       dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === hostName) ?? null
     );
   }, [dashboardQuery.data]);
+  const deployDialogHostSummary = useMemo(() => {
+    if (!deployDialogHostName) {
+      return null;
+    }
+    return (
+      dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === deployDialogHostName) ??
+      null
+    );
+  }, [dashboardQuery.data, deployDialogHostName]);
 
   const flakeSourceMarkdown = useMemo(
     () => renderFlakeSourceMarkdown(dashboardQuery.data?.flakeSource.contents ?? ""),
@@ -379,6 +528,13 @@ function FlakeDashboardRouteView() {
   const visibleChangeEntries = selectedHostSummary
     ? dashboardQuery.data?.hostChanges ?? []
     : dashboardQuery.data?.generalChanges ?? [];
+  const deployDialogCommand =
+    deployDialogHostSummary?.deployment.status === "deployable"
+      ? buildDeployRsCommand(deployDialogHostSummary.host.name, { deployOnServer })
+      : null;
+  const deployDialogDisabledReason = deploymentReasonLabel(
+    deployDialogHostSummary?.deployment.reason ?? null,
+  );
 
   if (!projectRef || !bootstrapComplete || !project) {
     return null;
@@ -450,8 +606,10 @@ function FlakeDashboardRouteView() {
                         const isSelected =
                           dashboardQuery.data?.selectedHostName === summary.host.name;
                         const generating = generatingDocsByHost[summary.host.name] === true;
+                        const deploying = deployingHostName === summary.host.name;
                         const hostChangesSelected = isSelected && activeView === "changes";
                         const hostDocSelected = isSelected && activeView === "doc";
+                        const deployDisabledReason = deploymentReasonLabel(summary.deployment.reason);
                         return (
                           <div
                             key={`${summary.host.name}:${summary.host.target}`}
@@ -548,7 +706,25 @@ function FlakeDashboardRouteView() {
                                 {generating ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : null}
                                 {summary.documentation.status === "missing" ? "Generate doc" : "Refresh doc"}
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={summary.deployment.status !== "deployable" || deploying}
+                                title={deployDisabledReason ?? undefined}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleOpenDeployDialog(summary.host.name);
+                                }}
+                              >
+                                {deploying ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : <RocketIcon className="size-3.5" />}
+                                Deploy
+                              </Button>
                             </div>
+                            {summary.deployment.status !== "deployable" && deployDisabledReason ? (
+                              <p className="mt-3 text-xs text-muted-foreground">
+                                {deployDisabledReason}
+                              </p>
+                            ) : null}
                           </div>
                         );
                       })
@@ -684,6 +860,132 @@ function FlakeDashboardRouteView() {
           </div>
         </div>
       </div>
+      <Dialog
+        open={deployDialogHostSummary !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseDeployDialog();
+          }
+        }}
+      >
+        <DialogPopup className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {deployDialogHostSummary ? `Deploy ${deployDialogHostSummary.host.name}?` : "Deploy host?"}
+            </DialogTitle>
+            <DialogDescription>
+              Confirm the deploy-rs command before starting a dedicated deployment thread.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-4">
+            {deployDialogHostSummary ? (
+              <>
+                <div className="grid gap-3 rounded-2xl border border-border/60 bg-background/45 p-4 text-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        Host
+                      </div>
+                      <div className="mt-1 font-medium text-foreground">
+                        {deployDialogHostSummary.host.name}
+                      </div>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                        documentationStatusClasses(deployDialogHostSummary.documentation.status),
+                      )}
+                    >
+                      {formatDocumentationStatusLabel(deployDialogHostSummary.documentation.status)}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      Target
+                    </div>
+                    <div className="mt-1 break-all text-foreground">
+                      {deployDialogHostSummary.host.target}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      Command
+                    </div>
+                    <code className="mt-1 block overflow-x-auto rounded-xl bg-muted px-3 py-2 text-[12px] text-foreground">
+                      {deployDialogCommand ?? deployDialogDisabledReason ?? "Unavailable"}
+                    </code>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/55 p-3">
+                    <label className="flex items-start gap-3">
+                      <Checkbox
+                        checked={deployOnServer}
+                        disabled={deployingHostName !== null}
+                        onCheckedChange={(checked) => {
+                          setDeployOnServer(checked === true);
+                        }}
+                        aria-label="Deploy on server"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          Deploy on server
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          Unchecked is the standard path and adds deploy-rs remote build plus
+                          skip-checks so the target host builds the system itself without local
+                          cross-architecture deployment checks.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      Branch
+                    </div>
+                    <div className="mt-1 text-foreground">
+                      {gitStatusQuery.data?.branch ?? "Unavailable"}
+                    </div>
+                  </div>
+                </div>
+
+                {gitStatusQuery.data?.hasWorkingTreeChanges ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+                    This flake repo has uncommitted changes. Deployment will still run from the
+                    current workspace state.
+                  </div>
+                ) : gitStatusQuery.data ? (
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-200">
+                    This flake repo is clean{gitStatusQuery.data.branch ? ` on ${gitStatusQuery.data.branch}` : ""}.
+                  </div>
+                ) : gitStatusQuery.isPending ? (
+                  <div className="rounded-2xl border border-border/60 bg-background/45 p-4 text-sm text-muted-foreground">
+                    Checking Git status for this flake repo.
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-border/60 bg-background/45 p-4 text-sm text-muted-foreground">
+                    Git status could not be determined for this flake repo.
+                  </div>
+                )}
+              </>
+            ) : null}
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseDeployDialog} disabled={deployingHostName !== null}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleConfirmDeployment()}
+              disabled={
+                deployDialogHostSummary === null ||
+                deployDialogHostSummary.deployment.status !== "deployable" ||
+                deployingHostName !== null
+              }
+            >
+              {deployingHostName !== null ? <RefreshCcwIcon className="size-4 animate-spin" /> : <RocketIcon className="size-4" />}
+              Deploy
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </SidebarInset>
   );
 }

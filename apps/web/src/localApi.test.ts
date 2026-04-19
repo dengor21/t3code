@@ -50,7 +50,9 @@ const rpcClientMock = {
   projects: {
     searchEntries: vi.fn(),
     writeFile: vi.fn(),
-    generateInitialDocs: vi.fn(),
+    getDashboardContent: vi.fn(),
+    generateHostDocumentation: vi.fn(),
+    startHostDeployment: vi.fn(),
   },
   filesystem: {
     browse: vi.fn(),

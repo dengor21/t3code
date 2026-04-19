@@ -55,6 +55,9 @@ import {
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentError,
   ProjectGetDashboardContentInput,
+  ProjectStartHostDeploymentError,
+  ProjectStartHostDeploymentInput,
+  ProjectStartHostDeploymentResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -92,6 +95,7 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
+  projectsStartHostDeployment: "projects.startHostDeployment",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -190,6 +194,15 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   success: ProjectDashboardContentResult,
   error: ProjectGetDashboardContentError,
 });
+
+export const WsProjectsStartHostDeploymentRpc = Rpc.make(
+  WS_METHODS.projectsStartHostDeployment,
+  {
+    payload: ProjectStartHostDeploymentInput,
+    success: ProjectStartHostDeploymentResult,
+    error: ProjectStartHostDeploymentError,
+  },
+);
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: OpenInEditorInput,
@@ -388,6 +401,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
+  WsProjectsStartHostDeploymentRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeGitStatusRpc,

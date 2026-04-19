@@ -24,6 +24,8 @@ import type {
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentInput,
+  ProjectStartHostDeploymentInput,
+  ProjectStartHostDeploymentResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -254,6 +256,9 @@ export interface EnvironmentApi {
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,
     ) => Promise<ProjectGenerateHostDocumentationResult>;
+    startHostDeployment: (
+      input: ProjectStartHostDeploymentInput,
+    ) => Promise<ProjectStartHostDeploymentResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

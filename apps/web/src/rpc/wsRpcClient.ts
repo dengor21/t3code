@@ -71,6 +71,7 @@ export interface WsRpcClient {
     readonly generateHostDocumentation: RpcUnaryMethod<
       typeof WS_METHODS.projectsGenerateHostDocumentation
     >;
+    readonly startHostDeployment: RpcUnaryMethod<typeof WS_METHODS.projectsStartHostDeployment>;
   };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
@@ -155,6 +156,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsGetDashboardContent](input)),
       generateHostDocumentation: (input) =>
         transport.request((client) => client[WS_METHODS.projectsGenerateHostDocumentation](input)),
+      startHostDeployment: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsStartHostDeployment](input)),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),
