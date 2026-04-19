@@ -846,9 +846,12 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
   const showMoreButtonRender = useMemo(() => <button type="button" />, []);
   const showLessButtonRender = useMemo(() => <button type="button" />, []);
   const folderRowButtonRender = useMemo(() => <div role="button" tabIndex={0} />, []);
-  const stopFolderActionPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-  }, []);
+  const stopFolderActionPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
 
   return (
     <SidebarMenuSub
@@ -933,7 +936,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                     </SidebarMenuSubItem>
                   ) : null}
                   {folder.threads.map((thread) => {
-                    const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+                    const threadKey = scopedThreadKey(
+                      scopeThreadRef(thread.environmentId, thread.id),
+                    );
                     return (
                       <SidebarThreadRow
                         key={threadKey}
@@ -3580,10 +3585,10 @@ export default function Sidebar() {
             deleteThread={deleteThread}
             sortedProjects={sortedProjects}
             expandedThreadListsByProject={expandedThreadListsByProject}
-        activeRouteProjectKey={activeRouteProjectKey}
-        routeThreadKey={routeThreadKey}
-        routeDashboardHostName={routeDashboardHostName}
-        newThreadShortcutLabel={newThreadShortcutLabel}
+            activeRouteProjectKey={activeRouteProjectKey}
+            routeThreadKey={routeThreadKey}
+            routeDashboardHostName={routeDashboardHostName}
+            newThreadShortcutLabel={newThreadShortcutLabel}
             commandPaletteShortcutLabel={commandPaletteShortcutLabel}
             threadJumpLabelByKey={visibleThreadJumpLabelByKey}
             navigateToProjectOverview={navigateToProjectOverview}

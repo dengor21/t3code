@@ -2329,7 +2329,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 new Map([
                   [
                     "bc250",
-                  {
+                    {
                       status: "deployable" as const,
                       reason: null,
                       command: buildDeployRsCommand("bc250"),

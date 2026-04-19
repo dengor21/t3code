@@ -10,11 +10,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircleIcon,
   BookOpenIcon,
+  EllipsisIcon,
   FileTextIcon,
+  InboxIcon,
+  LoaderIcon,
   PlayIcon,
   RefreshCcwIcon,
   RocketIcon,
-  ServerIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -30,6 +32,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../components/ui/dialog";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
@@ -41,7 +44,11 @@ import { cn } from "../lib/utils";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
 import { useTerminalStateStore } from "../terminalStateStore";
-import { buildFlakeRouteParams, buildThreadRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
+import {
+  buildFlakeRouteParams,
+  buildThreadRouteParams,
+  resolveFlakeRouteRef,
+} from "../threadRoutes";
 
 export interface FlakeDashboardSearch {
   host?: string;
@@ -77,7 +84,9 @@ function buildDashboardSearch(input: {
   return input.view === "flake" ? { view: "flake" } : {};
 }
 
-function formatDocumentationStatusLabel(status: HostDocumentationStatus | null | undefined): string {
+function formatDocumentationStatusLabel(
+  status: HostDocumentationStatus | null | undefined,
+): string {
   switch (status) {
     case "current":
       return "Current";
@@ -134,26 +143,31 @@ function renderFlakeSourceMarkdown(contents: string): string {
 function EmptyPanel(props: {
   title: string;
   description: string;
+  icon?: React.ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   pending?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/70 bg-background/40 px-5 py-6">
-      <div className="flex flex-col gap-3">
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/30 px-5 py-8">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="rounded-xl bg-muted/50 p-2.5 text-muted-foreground/60">
+          {props.icon ?? <InboxIcon className="size-5" />}
+        </div>
         <div>
           <h3 className="text-sm font-semibold text-foreground">{props.title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{props.description}</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">{props.description}</p>
         </div>
         {props.actionLabel && props.onAction ? (
-          <div>
+          <div className="mt-1">
             <Button
               variant="outline"
+              size="sm"
               onClick={props.onAction}
               disabled={props.pending}
               className="gap-2"
             >
-              {props.pending ? <RefreshCcwIcon className="size-4 animate-spin" /> : null}
+              {props.pending ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : null}
               {props.actionLabel}
             </Button>
           </div>
@@ -163,57 +177,54 @@ function EmptyPanel(props: {
   );
 }
 
-function ChangeEntryCard(props: {
-  entry: ProjectDashboardChangeEntry;
-  cwd: string;
-}) {
+function ChangeEntryCard(props: { entry: ProjectDashboardChangeEntry; cwd: string }) {
   const { entry, cwd } = props;
   return (
     <article className="rounded-2xl border border-border/60 bg-background/55 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-          {kindLabel(entry.kind)}
-        </span>
-        {entry.ambiguous ? (
-          <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-orange-700 dark:text-orange-300">
-            Needs review
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            {kindLabel(entry.kind)}
           </span>
-        ) : null}
-        {entry.hosts.map((host) => (
-          <span
-            key={`${entry.id}:${host}`}
-            className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground"
-          >
-            {host}
-          </span>
-        ))}
-      </div>
-      <div className="mt-3">
-        <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground/70">
-          {formatTimestamp(entry.completedAt)}
+          {entry.ambiguous ? (
+            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-orange-700 dark:text-orange-300">
+              Needs review
+            </span>
+          ) : null}
+          {entry.hosts.map((host) => (
+            <span
+              key={`${entry.id}:${host}`}
+              className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              {host}
+            </span>
+          ))}
         </div>
-        <h3 className="mt-2 text-base font-semibold text-foreground">{entry.title}</h3>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+          {formatTimestamp(entry.completedAt)}
+        </span>
       </div>
+      <h3 className="mt-2.5 text-[15px] font-semibold leading-snug text-foreground">
+        {entry.title}
+      </h3>
       {entry.markdown.trim().length > 0 ? (
-        <div className="mt-4 rounded-xl bg-card/40 p-3">
+        <div className="mt-3 rounded-xl bg-card/40 p-3">
           <ChatMarkdown text={entry.markdown} cwd={cwd} />
         </div>
       ) : null}
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground/80">Files:</span>
-        {entry.files.length > 0 ? (
-          entry.files.map((file) => (
+      {entry.files.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/70">Files:</span>
+          {entry.files.map((file) => (
             <code
               key={`${entry.id}:${file}`}
-              className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+              className="rounded-md bg-muted/80 px-1.5 py-0.5 font-mono text-[11px] text-foreground/80"
             >
               {file}
             </code>
-          ))
-        ) : (
-          <span>None recorded</span>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -264,7 +275,9 @@ function FlakeDashboardRouteView() {
   }, [project?.flakeMetadata]);
   const requestedHostName = search.host?.trim() ? search.host.trim() : null;
   const matchedRouteHostName =
-    requestedHostName === null ? null : routeHostsByName.get(requestedHostName.toLowerCase()) ?? null;
+    requestedHostName === null
+      ? null
+      : (routeHostsByName.get(requestedHostName.toLowerCase()) ?? null);
 
   useEffect(() => {
     if (!projectRef || !requestedHostName || routeHostsByName.size === 0 || matchedRouteHostName) {
@@ -417,9 +430,14 @@ function FlakeDashboardRouteView() {
     }
 
     const hostSummary =
-      dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === deployDialogHostName) ??
-      null;
-    if (!hostSummary || hostSummary.deployment.status !== "deployable" || !hostSummary.deployment.command) {
+      dashboardQuery.data?.hostSummaries.find(
+        (summary) => summary.host.name === deployDialogHostName,
+      ) ?? null;
+    if (
+      !hostSummary ||
+      hostSummary.deployment.status !== "deployable" ||
+      !hostSummary.deployment.command
+    ) {
       toastManager.add({
         type: "error",
         title: "Deployment is unavailable",
@@ -494,7 +512,14 @@ function FlakeDashboardRouteView() {
       });
       setDeployingHostName(null);
     }
-  }, [dashboardQuery.data?.hostSummaries, deployDialogHostName, deployOnServer, navigate, project, projectRef]);
+  }, [
+    dashboardQuery.data?.hostSummaries,
+    deployDialogHostName,
+    deployOnServer,
+    navigate,
+    project,
+    projectRef,
+  ]);
 
   const selectedHostSummary = useMemo(() => {
     const hostName = dashboardQuery.data?.selectedHostName;
@@ -510,8 +535,9 @@ function FlakeDashboardRouteView() {
       return null;
     }
     return (
-      dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === deployDialogHostName) ??
-      null
+      dashboardQuery.data?.hostSummaries.find(
+        (summary) => summary.host.name === deployDialogHostName,
+      ) ?? null
     );
   }, [dashboardQuery.data, deployDialogHostName]);
 
@@ -526,8 +552,8 @@ function FlakeDashboardRouteView() {
     return search.view === "flake" ? "flake" : "changes";
   }, [search.view, selectedHostSummary]);
   const visibleChangeEntries = selectedHostSummary
-    ? dashboardQuery.data?.hostChanges ?? []
-    : dashboardQuery.data?.generalChanges ?? [];
+    ? (dashboardQuery.data?.hostChanges ?? [])
+    : (dashboardQuery.data?.generalChanges ?? []);
   const deployDialogCommand =
     deployDialogHostSummary?.deployment.status === "deployable"
       ? buildDeployRsCommand(deployDialogHostSummary.host.name, { deployOnServer })
@@ -552,55 +578,64 @@ function FlakeDashboardRouteView() {
 
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-            <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
               <aside className="flex min-w-0 flex-col gap-4">
-                <section className="rounded-3xl border border-border/70 bg-card/60 p-6 shadow-sm">
-                  <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground/70">
-                    <ServerIcon className="size-3.5" />
-                    <span>Selected flake</span>
+                <section className="rounded-2xl border border-border/60 bg-card/60 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                        {project.name}
+                      </h1>
+                      <p className="mt-0.5 break-all text-xs text-muted-foreground/70">
+                        {project.cwd}
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-4">
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                      {project.name}
-                    </h1>
-                    <p className="mt-1 break-all text-sm text-muted-foreground">{project.cwd}</p>
-                  </div>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <Button onClick={handleStartThread}>
-                      <PlayIcon className="size-4" />
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button size="sm" onClick={handleStartThread}>
+                      <PlayIcon className="size-3.5" />
                       Start thread
                     </Button>
                     <Button
-                      variant={selectedHostSummary === null && activeView === "changes" ? "default" : "outline"}
+                      size="sm"
+                      variant={
+                        selectedHostSummary === null && activeView === "changes"
+                          ? "secondary"
+                          : "ghost"
+                      }
                       onClick={() => selectDashboardView(null, "changes")}
                     >
                       Changes
                     </Button>
                     <Button
-                      variant={selectedHostSummary === null && activeView === "flake" ? "default" : "outline"}
+                      size="sm"
+                      variant={
+                        selectedHostSummary === null && activeView === "flake"
+                          ? "secondary"
+                          : "ghost"
+                      }
                       onClick={() => selectDashboardView(null, "flake")}
                     >
-                      <FileTextIcon className="size-4" />
+                      <FileTextIcon className="size-3.5" />
                       flake.nix
                     </Button>
                   </div>
                 </section>
 
-                <section className="rounded-3xl border border-border/70 bg-card/50 p-4 sm:p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-sm font-semibold tracking-wide text-foreground">Hosts</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Select a host to inspect its changes and documentation.
-                      </p>
-                    </div>
+                <section className="rounded-2xl border border-border/60 bg-card/50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                      Hosts
+                    </h2>
                   </div>
 
-                  <div className="mt-4 grid gap-3">
+                  <div className="grid gap-2">
                     {dashboardQuery.isPending && !dashboardQuery.data ? (
-                      <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
-                        Loading hosts...
-                      </div>
+                      <EmptyPanel
+                        title="Loading hosts"
+                        description="Resolving flake host configuration..."
+                        icon={<LoaderIcon className="size-5 animate-spin" />}
+                      />
                     ) : dashboardQuery.data && dashboardQuery.data.hostSummaries.length > 0 ? (
                       dashboardQuery.data.hostSummaries.map((summary) => {
                         const isSelected =
@@ -609,7 +644,9 @@ function FlakeDashboardRouteView() {
                         const deploying = deployingHostName === summary.host.name;
                         const hostChangesSelected = isSelected && activeView === "changes";
                         const hostDocSelected = isSelected && activeView === "doc";
-                        const deployDisabledReason = deploymentReasonLabel(summary.deployment.reason);
+                        const deployDisabledReason = deploymentReasonLabel(
+                          summary.deployment.reason,
+                        );
                         return (
                           <div
                             key={`${summary.host.name}:${summary.host.target}`}
@@ -623,24 +660,24 @@ function FlakeDashboardRouteView() {
                               }
                             }}
                             className={cn(
-                              "rounded-2xl border p-4 text-left transition-colors",
+                              "group rounded-xl border p-3 text-left transition-all",
                               isSelected
-                                ? "border-primary/40 bg-primary/8 shadow-sm"
-                                : "border-border/60 bg-background/55 hover:border-primary/30 hover:bg-background/80",
+                                ? "border-primary/40 bg-primary/6 shadow-sm"
+                                : "border-border/50 bg-background/40 hover:border-border hover:bg-background/70",
                             )}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-base font-semibold text-foreground">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="text-sm font-semibold text-foreground">
                                   {summary.host.name}
-                                </div>
-                                <div className="mt-1 break-all text-sm text-muted-foreground">
+                                </span>
+                                <span className="truncate text-xs text-muted-foreground/60">
                                   {summary.host.target}
-                                </div>
+                                </span>
                               </div>
                               <span
                                 className={cn(
-                                  "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                  "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
                                   documentationStatusClasses(summary.documentation.status),
                                 )}
                               >
@@ -648,23 +685,23 @@ function FlakeDashboardRouteView() {
                               </span>
                             </div>
 
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="mt-2 flex items-center gap-1.5">
                               {summary.host.type ? (
-                                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                <span className="rounded-md border border-border/50 bg-muted/40 px-1.5 py-px text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
                                   {summary.host.type}
                                 </span>
                               ) : null}
                               {summary.host.system ? (
-                                <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                <span className="rounded-md border border-border/50 bg-muted/40 px-1.5 py-px text-[10px] font-medium uppercase tracking-wider text-muted-foreground/80">
                                   {summary.host.system}
                                 </span>
                               ) : null}
                             </div>
 
-                            <div className="mt-4 flex flex-wrap gap-2">
+                            <div className="mt-3 flex items-center gap-1.5">
                               <Button
-                                size="sm"
-                                variant={hostChangesSelected ? "default" : "outline"}
+                                size="xs"
+                                variant={hostChangesSelected ? "secondary" : "ghost"}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   selectDashboardView(summary.host.name, "changes");
@@ -673,55 +710,81 @@ function FlakeDashboardRouteView() {
                                 Changes
                               </Button>
                               <Button
-                                size="sm"
-                                variant={hostDocSelected ? "default" : "outline"}
+                                size="xs"
+                                variant={hostDocSelected ? "secondary" : "ghost"}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   selectDashboardView(summary.host.name, "doc");
                                 }}
                               >
-                                <BookOpenIcon className="size-3.5" />
+                                <BookOpenIcon className="size-3" />
                                 Doc
                               </Button>
                               <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleStartHostThread(summary.host);
-                                }}
-                              >
-                                <PlayIcon className="size-3.5" />
-                                Start thread
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={generating}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleGenerateHostDoc(summary.host);
-                                }}
-                              >
-                                {generating ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : null}
-                                {summary.documentation.status === "missing" ? "Generate doc" : "Refresh doc"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={summary.deployment.status !== "deployable" || deploying}
+                                size="xs"
+                                variant="ghost"
+                                disabled={
+                                  summary.deployment.status !== "deployable" || deploying
+                                }
                                 title={deployDisabledReason ?? undefined}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleOpenDeployDialog(summary.host.name);
                                 }}
                               >
-                                {deploying ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : <RocketIcon className="size-3.5" />}
+                                {deploying ? (
+                                  <RefreshCcwIcon className="size-3 animate-spin" />
+                                ) : (
+                                  <RocketIcon className="size-3" />
+                                )}
                                 Deploy
                               </Button>
+
+                              <div className="ml-auto">
+                                <Menu>
+                                  <MenuTrigger
+                                    className={cn(
+                                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground sm:size-5",
+                                      isSelected
+                                        ? "text-muted-foreground"
+                                        : "opacity-0 group-hover:opacity-100",
+                                    )}
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    <EllipsisIcon className="size-4 sm:size-3.5" />
+                                  </MenuTrigger>
+                                  <MenuPopup align="end" sideOffset={4}>
+                                    <MenuItem
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleStartHostThread(summary.host);
+                                      }}
+                                    >
+                                      <PlayIcon />
+                                      Start thread
+                                    </MenuItem>
+                                    <MenuItem
+                                      disabled={generating}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleGenerateHostDoc(summary.host);
+                                      }}
+                                    >
+                                      {generating ? (
+                                        <RefreshCcwIcon className="animate-spin" />
+                                      ) : (
+                                        <BookOpenIcon />
+                                      )}
+                                      {summary.documentation.status === "missing"
+                                        ? "Generate doc"
+                                        : "Refresh doc"}
+                                    </MenuItem>
+                                  </MenuPopup>
+                                </Menu>
+                              </div>
                             </div>
                             {summary.deployment.status !== "deployable" && deployDisabledReason ? (
-                              <p className="mt-3 text-xs text-muted-foreground">
+                              <p className="mt-2 text-[11px] text-muted-foreground/60">
                                 {deployDisabledReason}
                               </p>
                             ) : null}
@@ -729,9 +792,10 @@ function FlakeDashboardRouteView() {
                         );
                       })
                     ) : (
-                      <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
-                        No hosts were resolved for this flake yet.
-                      </div>
+                      <EmptyPanel
+                        title="No hosts resolved"
+                        description="No hosts were resolved for this flake yet."
+                      />
                     )}
                   </div>
                 </section>
@@ -739,14 +803,14 @@ function FlakeDashboardRouteView() {
 
               <main className="min-w-0">
                 {dashboardQuery.isError && !dashboardQuery.data ? (
-                  <section className="rounded-3xl border border-destructive/30 bg-destructive/5 p-6">
+                  <section className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
                     <div className="flex items-start gap-3">
                       <AlertCircleIcon className="mt-0.5 size-5 text-destructive" />
                       <div>
                         <h2 className="text-base font-semibold text-foreground">
                           Unable to load flake dashboard
                         </h2>
-                        <p className="mt-2 text-sm text-muted-foreground">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {dashboardQuery.error instanceof Error
                             ? dashboardQuery.error.message
                             : "An unexpected error occurred."}
@@ -755,7 +819,7 @@ function FlakeDashboardRouteView() {
                     </div>
                   </section>
                 ) : (
-                  <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
+                  <section className="rounded-2xl border border-border/60 bg-card/50 p-5">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h2 className="text-lg font-semibold text-foreground">
@@ -767,7 +831,7 @@ function FlakeDashboardRouteView() {
                                 ? `Recent changes for ${selectedHostSummary.host.name}`
                                 : "Recent changes"}
                         </h2>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-0.5 text-sm text-muted-foreground">
                           {activeView === "doc"
                             ? selectedHostSummary?.documentation.generatedAt
                               ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
@@ -791,19 +855,23 @@ function FlakeDashboardRouteView() {
                       ) : null}
                     </div>
 
-                    <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/45">
+                    <div className="mt-4 overflow-hidden rounded-xl border border-border/50 bg-background/40">
                       {activeView === "doc" && selectedHostSummary ? (
                         dashboardQuery.data?.hostDoc &&
                         dashboardQuery.data.hostDoc.status !== "missing" &&
                         dashboardQuery.data.hostDoc.markdown.trim().length > 0 ? (
                           <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
-                            <ChatMarkdown text={dashboardQuery.data.hostDoc.markdown} cwd={project.cwd} />
+                            <ChatMarkdown
+                              text={dashboardQuery.data.hostDoc.markdown}
+                              cwd={project.cwd}
+                            />
                           </div>
                         ) : (
                           <div className="p-4 sm:p-5">
                             <EmptyPanel
                               title="No host doc yet"
                               description={`Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`}
+                              icon={<BookOpenIcon className="size-5" />}
                               actionLabel={
                                 generatingDocsByHost[selectedHostSummary.host.name]
                                   ? "Generating doc"
@@ -824,19 +892,26 @@ function FlakeDashboardRouteView() {
                             <EmptyPanel
                               title="Loading flake source"
                               description="Fetching flake.nix for the selected flake."
+                              icon={<LoaderIcon className="size-5 animate-spin" />}
                             />
                           </div>
                         )
                       ) : (
                         <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
-                          <div className="grid gap-4">
+                          <div className="grid gap-3">
                             {dashboardQuery.isPending && !dashboardQuery.data ? (
-                              <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
-                                Loading recent changes...
-                              </div>
+                              <EmptyPanel
+                                title="Loading changes"
+                                description="Fetching recent changelog entries..."
+                                icon={<LoaderIcon className="size-5 animate-spin" />}
+                              />
                             ) : visibleChangeEntries.length > 0 ? (
                               visibleChangeEntries.map((entry) => (
-                                <ChangeEntryCard key={`${entry.kind}:${entry.id}`} entry={entry} cwd={project.cwd} />
+                                <ChangeEntryCard
+                                  key={`${entry.kind}:${entry.id}`}
+                                  entry={entry}
+                                  cwd={project.cwd}
+                                />
                               ))
                             ) : (
                               <EmptyPanel
@@ -852,7 +927,6 @@ function FlakeDashboardRouteView() {
                         </div>
                       )}
                     </div>
-
                   </section>
                 )}
               </main>
@@ -871,7 +945,9 @@ function FlakeDashboardRouteView() {
         <DialogPopup className="max-w-xl">
           <DialogHeader>
             <DialogTitle>
-              {deployDialogHostSummary ? `Deploy ${deployDialogHostSummary.host.name}?` : "Deploy host?"}
+              {deployDialogHostSummary
+                ? `Deploy ${deployDialogHostSummary.host.name}?`
+                : "Deploy host?"}
             </DialogTitle>
             <DialogDescription>
               Confirm the deploy-rs command before starting a dedicated deployment thread.
@@ -880,19 +956,19 @@ function FlakeDashboardRouteView() {
           <DialogPanel className="space-y-4">
             {deployDialogHostSummary ? (
               <>
-                <div className="grid gap-3 rounded-2xl border border-border/60 bg-background/45 p-4 text-sm">
+                <div className="grid gap-3 rounded-xl border border-border/50 bg-background/40 p-4 text-sm">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                         Host
                       </div>
-                      <div className="mt-1 font-medium text-foreground">
+                      <div className="mt-0.5 font-medium text-foreground">
                         {deployDialogHostSummary.host.name}
                       </div>
                     </div>
                     <span
                       className={cn(
-                        "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                        "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
                         documentationStatusClasses(deployDialogHostSummary.documentation.status),
                       )}
                     >
@@ -900,22 +976,22 @@ function FlakeDashboardRouteView() {
                     </span>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                       Target
                     </div>
-                    <div className="mt-1 break-all text-foreground">
+                    <div className="mt-0.5 break-all text-foreground">
                       {deployDialogHostSummary.host.target}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                       Command
                     </div>
-                    <code className="mt-1 block overflow-x-auto rounded-xl bg-muted px-3 py-2 text-[12px] text-foreground">
+                    <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
                       {deployDialogCommand ?? deployDialogDisabledReason ?? "Unavailable"}
                     </code>
                   </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/55 p-3">
+                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
                     <label className="flex items-start gap-3">
                       <Checkbox
                         checked={deployOnServer}
@@ -929,7 +1005,7 @@ function FlakeDashboardRouteView() {
                         <span className="block text-sm font-medium text-foreground">
                           Deploy on server
                         </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
                           Unchecked is the standard path and adds deploy-rs remote build plus
                           skip-checks so the target host builds the system itself without local
                           cross-architecture deployment checks.
@@ -938,30 +1014,31 @@ function FlakeDashboardRouteView() {
                     </label>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                       Branch
                     </div>
-                    <div className="mt-1 text-foreground">
+                    <div className="mt-0.5 text-foreground">
                       {gitStatusQuery.data?.branch ?? "Unavailable"}
                     </div>
                   </div>
                 </div>
 
                 {gitStatusQuery.data?.hasWorkingTreeChanges ? (
-                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
                     This flake repo has uncommitted changes. Deployment will still run from the
                     current workspace state.
                   </div>
                 ) : gitStatusQuery.data ? (
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-200">
-                    This flake repo is clean{gitStatusQuery.data.branch ? ` on ${gitStatusQuery.data.branch}` : ""}.
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+                    This flake repo is clean
+                    {gitStatusQuery.data.branch ? ` on ${gitStatusQuery.data.branch}` : ""}.
                   </div>
                 ) : gitStatusQuery.isPending ? (
-                  <div className="rounded-2xl border border-border/60 bg-background/45 p-4 text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
                     Checking Git status for this flake repo.
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-border/60 bg-background/45 p-4 text-sm text-muted-foreground">
+                  <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
                     Git status could not be determined for this flake repo.
                   </div>
                 )}
@@ -969,7 +1046,11 @@ function FlakeDashboardRouteView() {
             ) : null}
           </DialogPanel>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDeployDialog} disabled={deployingHostName !== null}>
+            <Button
+              variant="outline"
+              onClick={handleCloseDeployDialog}
+              disabled={deployingHostName !== null}
+            >
               Cancel
             </Button>
             <Button
@@ -980,7 +1061,11 @@ function FlakeDashboardRouteView() {
                 deployingHostName !== null
               }
             >
-              {deployingHostName !== null ? <RefreshCcwIcon className="size-4 animate-spin" /> : <RocketIcon className="size-4" />}
+              {deployingHostName !== null ? (
+                <RefreshCcwIcon className="size-4 animate-spin" />
+              ) : (
+                <RocketIcon className="size-4" />
+              )}
               Deploy
             </Button>
           </DialogFooter>

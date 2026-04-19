@@ -9,7 +9,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TextGeneration, type TextGenerationShape } from "../../git/Services/TextGeneration.ts";
 import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { WorkspaceFileSystem, type WorkspaceFileSystemShape } from "../../workspace/Services/WorkspaceFileSystem.ts";
+import {
+  WorkspaceFileSystem,
+  type WorkspaceFileSystemShape,
+} from "../../workspace/Services/WorkspaceFileSystem.ts";
 import { DocumentationStatusResolver } from "../Services/DocumentationStatusResolver.ts";
 import { HostDocumentationService } from "../Services/HostDocumentationService.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -101,7 +104,9 @@ describe("HostDocumentationService", () => {
       ),
       Layer.provide(Layer.mock(TextGeneration)({ generateHostDocumentation })),
       Layer.provide(ServerSettingsService.layerTest()),
-      Layer.provide(Layer.mock(FlakeMetadataResolver)({ resolve: () => Effect.succeed(flakeMetadata) })),
+      Layer.provide(
+        Layer.mock(FlakeMetadataResolver)({ resolve: () => Effect.succeed(flakeMetadata) }),
+      ),
       Layer.provide(Layer.mock(WorkspaceFileSystem)({ writeFile })),
       Layer.provide(
         Layer.mock(DocumentationStatusResolver)({

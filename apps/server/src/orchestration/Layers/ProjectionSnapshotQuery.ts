@@ -215,7 +215,9 @@ function mapThreadChangeTrackingRow(
   return {
     baselineHeadSha: row.changeBaselineHeadSha,
     lastCommit:
-      row.lastCommitSha === null || row.lastCommitRecordedAt === null || row.lastCommitSource === null
+      row.lastCommitSha === null ||
+      row.lastCommitRecordedAt === null ||
+      row.lastCommitSource === null
         ? null
         : {
             sha: row.lastCommitSha,
@@ -1085,19 +1087,19 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             const projectMetadata = new Map(
               yield* Effect.forEach(
                 projectRows,
-                  (row) =>
-                    Effect.all({
-                      repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
-                      flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
-                      documentationState: flakeMetadataResolver.resolve(row.workspaceRoot).pipe(
-                        Effect.flatMap((flakeMetadata) =>
-                          documentationStatusResolver.resolve({
-                            workspaceRoot: row.workspaceRoot,
-                            flakeMetadata,
-                          }),
-                        ),
+                (row) =>
+                  Effect.all({
+                    repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
+                    flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
+                    documentationState: flakeMetadataResolver.resolve(row.workspaceRoot).pipe(
+                      Effect.flatMap((flakeMetadata) =>
+                        documentationStatusResolver.resolve({
+                          workspaceRoot: row.workspaceRoot,
+                          flakeMetadata,
+                        }),
                       ),
-                    }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
+                    ),
+                  }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
                 { concurrency: repositoryIdentityResolutionConcurrency },
               ),
             );

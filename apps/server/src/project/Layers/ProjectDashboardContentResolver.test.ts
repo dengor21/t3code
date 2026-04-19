@@ -212,7 +212,10 @@ Current-state documentation for bc250.
         }),
       ),
       Layer.provideMerge(
-        Layer.succeed(ProjectionSnapshotQuery, makeProjectionSnapshotQuery(makeProjectShell(workspaceRoot))),
+        Layer.succeed(
+          ProjectionSnapshotQuery,
+          makeProjectionSnapshotQuery(makeProjectShell(workspaceRoot)),
+        ),
       ),
       Layer.provide(NodeServices.layer),
     );
@@ -221,7 +224,9 @@ Current-state documentation for bc250.
   it("returns flake-level dashboard content with the latest 3 general changes", async () => {
     const workspaceRoot = createWorkspace();
     const resolver = await Effect.runPromise(
-      Effect.service(ProjectDashboardContentResolver).pipe(Effect.provide(makeLayer(workspaceRoot))),
+      Effect.service(ProjectDashboardContentResolver).pipe(
+        Effect.provide(makeLayer(workspaceRoot)),
+      ),
     );
 
     const result = await Effect.runPromise(
@@ -243,17 +248,17 @@ Current-state documentation for bc250.
     expect(result.hostChanges).toEqual([]);
     expect(result.hostDoc).toBeNull();
     expect(result.hostSummaries).toHaveLength(2);
-    expect(result.hostSummaries.find((entry) => entry.host.name === "bc250")?.documentation.status).toBe(
-      "current",
-    );
+    expect(
+      result.hostSummaries.find((entry) => entry.host.name === "bc250")?.documentation.status,
+    ).toBe("current");
     expect(result.hostSummaries.find((entry) => entry.host.name === "bc250")?.deployment).toEqual({
       status: "deployable",
       reason: null,
       command: buildDeployRsCommand("bc250"),
     });
-    expect(result.hostSummaries.find((entry) => entry.host.name === "nexus")?.documentation.status).toBe(
-      "missing",
-    );
+    expect(
+      result.hostSummaries.find((entry) => entry.host.name === "nexus")?.documentation.status,
+    ).toBe("missing");
     expect(result.hostSummaries.find((entry) => entry.host.name === "nexus")?.deployment).toEqual({
       status: "unavailable",
       reason: "missing-deploy-target",
@@ -264,7 +269,9 @@ Current-state documentation for bc250.
   it("returns host-level dashboard content with ambiguous and legacy host changes", async () => {
     const workspaceRoot = createWorkspace();
     const resolver = await Effect.runPromise(
-      Effect.service(ProjectDashboardContentResolver).pipe(Effect.provide(makeLayer(workspaceRoot))),
+      Effect.service(ProjectDashboardContentResolver).pipe(
+        Effect.provide(makeLayer(workspaceRoot)),
+      ),
     );
 
     const result = await Effect.runPromise(
@@ -290,7 +297,9 @@ Current-state documentation for bc250.
   it("fails with a typed error when the requested host is unknown", async () => {
     const workspaceRoot = createWorkspace();
     const resolver = await Effect.runPromise(
-      Effect.service(ProjectDashboardContentResolver).pipe(Effect.provide(makeLayer(workspaceRoot))),
+      Effect.service(ProjectDashboardContentResolver).pipe(
+        Effect.provide(makeLayer(workspaceRoot)),
+      ),
     );
 
     await expect(

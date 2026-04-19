@@ -143,7 +143,7 @@ describe("buildInitialDocumentationPrompt", () => {
       projectTitle: "nix",
       summaryLabel: "Initial documentation bootstrap",
       currentFilesSummary: "flake.nix\nhosts/nexus/default.nix",
-      currentStateSnapshot: "--- flake.nix ---\n{ description = \"nix\"; }",
+      currentStateSnapshot: '--- flake.nix ---\n{ description = "nix"; }',
       hosts: [
         {
           name: "nexus",

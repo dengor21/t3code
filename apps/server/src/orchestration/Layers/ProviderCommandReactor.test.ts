@@ -233,14 +233,13 @@ describe("ProviderCommandReactor", () => {
           }),
         ),
     );
-    const generateHostDocumentation = vi.fn<TextGenerationShape["generateHostDocumentation"]>(
-      (_) =>
-        Effect.fail(
-          new TextGenerationError({
-            operation: "generateHostDocumentation",
-            detail: "disabled in test harness",
-          }),
-        ),
+    const generateHostDocumentation = vi.fn<TextGenerationShape["generateHostDocumentation"]>((_) =>
+      Effect.fail(
+        new TextGenerationError({
+          operation: "generateHostDocumentation",
+          detail: "disabled in test harness",
+        }),
+      ),
     );
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;

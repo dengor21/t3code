@@ -195,14 +195,11 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   error: ProjectGetDashboardContentError,
 });
 
-export const WsProjectsStartHostDeploymentRpc = Rpc.make(
-  WS_METHODS.projectsStartHostDeployment,
-  {
-    payload: ProjectStartHostDeploymentInput,
-    success: ProjectStartHostDeploymentResult,
-    error: ProjectStartHostDeploymentError,
-  },
-);
+export const WsProjectsStartHostDeploymentRpc = Rpc.make(WS_METHODS.projectsStartHostDeployment, {
+  payload: ProjectStartHostDeploymentInput,
+  success: ProjectStartHostDeploymentResult,
+  error: ProjectStartHostDeploymentError,
+});
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: OpenInEditorInput,

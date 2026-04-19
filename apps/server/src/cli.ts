@@ -498,17 +498,11 @@ type ProjectCliDispatchCommand = Extract<
 
 const ProjectCliRuntimeBaseLive = Layer.mergeAll(
   WorkspacePathsLive,
-  WorkspaceEntriesLive.pipe(
-    Layer.provide(WorkspacePathsLive),
-    Layer.provideMerge(GitCoreLive),
-  ),
+  WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive), Layer.provideMerge(GitCoreLive)),
   WorkspaceFileSystemLive.pipe(
     Layer.provide(WorkspacePathsLive),
     Layer.provide(
-      WorkspaceEntriesLive.pipe(
-        Layer.provide(WorkspacePathsLive),
-        Layer.provideMerge(GitCoreLive),
-      ),
+      WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive), Layer.provideMerge(GitCoreLive)),
     ),
   ),
   RoutingTextGenerationLive,

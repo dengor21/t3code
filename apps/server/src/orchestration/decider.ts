@@ -1,5 +1,9 @@
 import { EventId } from "@t3tools/contracts";
-import type { OrchestrationCommand, OrchestrationEvent, OrchestrationReadModel } from "@t3tools/contracts";
+import type {
+  OrchestrationCommand,
+  OrchestrationEvent,
+  OrchestrationReadModel,
+} from "@t3tools/contracts";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -742,8 +746,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             id: EventId.make(crypto.randomUUID()),
             tone: "info",
             kind: "thread.commit.recorded",
-            summary:
-              command.source === "ui" ? "Committed change" : "External commit detected",
+            summary: command.source === "ui" ? "Committed change" : "External commit detected",
             payload: {
               sha: command.commitSha,
               subject: command.subject ?? null,

@@ -65,13 +65,15 @@ export const ProjectGenerateHostDocumentationInput = Schema.Struct({
   projectId: ProjectId,
   hostName: TrimmedNonEmptyString,
 });
-export type ProjectGenerateHostDocumentationInput = typeof ProjectGenerateHostDocumentationInput.Type;
+export type ProjectGenerateHostDocumentationInput =
+  typeof ProjectGenerateHostDocumentationInput.Type;
 
 export const ProjectGenerateHostDocumentationResult = Schema.Struct({
   docPath: TrimmedNonEmptyString,
   generatedAt: TrimmedNonEmptyString,
 });
-export type ProjectGenerateHostDocumentationResult = typeof ProjectGenerateHostDocumentationResult.Type;
+export type ProjectGenerateHostDocumentationResult =
+  typeof ProjectGenerateHostDocumentationResult.Type;
 
 export class ProjectGenerateHostDocumentationError extends Schema.TaggedErrorClass<ProjectGenerateHostDocumentationError>()(
   "ProjectGenerateHostDocumentationError",

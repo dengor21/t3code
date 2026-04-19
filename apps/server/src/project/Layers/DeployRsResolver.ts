@@ -1,4 +1,8 @@
-import { buildDeployRsCommand, type FlakeHost, type ProjectDashboardHostDeployment } from "@t3tools/contracts";
+import {
+  buildDeployRsCommand,
+  type FlakeHost,
+  type ProjectDashboardHostDeployment,
+} from "@t3tools/contracts";
 import { Cache, Duration, Effect, Exit, Layer } from "effect";
 
 import { runProcess } from "../../processRunner.ts";
@@ -91,9 +95,7 @@ export const makeDeployRsResolver = Effect.fn("makeDeployRsResolver")(function* 
 ) {
   const deployNodesCache = yield* Cache.makeWith<string, DeployNodesResolution>(
     (workspaceRoot) =>
-      Effect.promise(() =>
-        evaluateDeployNodes(workspaceRoot, options.nixCommand ?? "nix"),
-      ),
+      Effect.promise(() => evaluateDeployNodes(workspaceRoot, options.nixCommand ?? "nix")),
     {
       capacity: options.cacheCapacity ?? DEFAULT_CACHE_CAPACITY,
       timeToLive: Exit.match({

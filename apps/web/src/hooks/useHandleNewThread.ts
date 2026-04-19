@@ -91,12 +91,7 @@ function useNewThreadState() {
         });
       if (storedDraftThread && shouldReuseStoredDraft) {
         return (async () => {
-          if (
-            hasBranchOption ||
-            hasWorktreePathOption ||
-            hasEnvModeOption ||
-            hasScopedHostOption
-          ) {
+          if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption || hasScopedHostOption) {
             setDraftThreadContext(storedDraftThread.draftId, {
               ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
               ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),

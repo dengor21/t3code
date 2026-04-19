@@ -30,14 +30,19 @@ export function slugHostName(name: string): string {
 }
 
 export function resolveProjectHosts(
-  metadata: FlakeMetadata | { host?: FlakeHost | null; hosts?: ReadonlyArray<FlakeHost> } | null | undefined,
+  metadata:
+    | FlakeMetadata
+    | { host?: FlakeHost | null; hosts?: ReadonlyArray<FlakeHost> }
+    | null
+    | undefined,
 ): ReadonlyArray<FlakeHost> {
   const normalizedMetadata = metadata ?? null;
   if (!normalizedMetadata) {
     return [];
   }
   const hosts = normalizedMetadata.hosts ?? [];
-  const normalizedHosts = hosts.length > 0 ? hosts : normalizedMetadata.host ? [normalizedMetadata.host] : [];
+  const normalizedHosts =
+    hosts.length > 0 ? hosts : normalizedMetadata.host ? [normalizedMetadata.host] : [];
   const seen = new Set<string>();
   return normalizedHosts.filter((host): host is FlakeHost => {
     if (!host) {
@@ -157,8 +162,9 @@ export function parseChangeLogEntries(input: {
       .replace(/^###\s+[0-9T:.-]+Z\s+-\s+.+$\n?/m, "")
       .replace(/^Files:\s*.+$/m, "")
       .trim();
-    const inferredHosts =
-      metadata?.hosts.length ? metadata.hosts : inferHostsFromPaths({ hosts: input.hosts, paths: files });
+    const inferredHosts = metadata?.hosts.length
+      ? metadata.hosts
+      : inferHostsFromPaths({ hosts: input.hosts, paths: files });
     entries.push({
       id: id.length > 0 ? id : completedAt,
       kind: markerKind,
@@ -189,5 +195,7 @@ export function renderInlineCodeList(paths: ReadonlyArray<string>): string {
   }
   const visible = paths.slice(0, 8).map((file) => `\`${file}\``);
   const remainder = paths.length - visible.length;
-  return remainder > 0 ? `${visible.join(", ")}, +${remainder.toString()} more` : visible.join(", ");
+  return remainder > 0
+    ? `${visible.join(", ")}, +${remainder.toString()} more`
+    : visible.join(", ");
 }

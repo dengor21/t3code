@@ -69,7 +69,8 @@ function deriveThreadChangeState(input: {
   if (input.lastCommit === null) {
     return "ongoing";
   }
-  return input.latestUserMessageAt === null || input.latestUserMessageAt <= input.lastCommit.recordedAt
+  return input.latestUserMessageAt === null ||
+    input.latestUserMessageAt <= input.lastCommit.recordedAt
     ? "committed"
     : "ongoing";
 }

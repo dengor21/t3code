@@ -66,14 +66,16 @@ const make = Effect.gen(function* () {
   const workspacePaths = yield* WorkspacePaths;
 
   const resolveWithinWorkspace = (workspaceRoot: string, relativePath: string) =>
-    workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot,
-      relativePath,
-    }).pipe(
-      Effect.mapError((cause) =>
-        toDashboardError(`Invalid flake dashboard path: ${relativePath}`, cause),
-      ),
-    );
+    workspacePaths
+      .resolveRelativePathWithinRoot({
+        workspaceRoot,
+        relativePath,
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          toDashboardError(`Invalid flake dashboard path: ${relativePath}`, cause),
+        ),
+      );
 
   const readWorkspaceRelativeFile = (input: {
     workspaceRoot: string;
@@ -115,9 +117,7 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
-        Effect.mapError((cause) =>
-          toDashboardError("Failed to load the selected flake.", cause),
-        ),
+        Effect.mapError((cause) => toDashboardError("Failed to load the selected flake.", cause)),
         Effect.flatMap((result) =>
           Option.match(result, {
             onNone: () => Effect.fail(toDashboardError(`Flake ${input.projectId} was not found.`)),
@@ -128,11 +128,13 @@ const make = Effect.gen(function* () {
 
       const flakeMetadata =
         project.flakeMetadata ??
-        (yield* flakeMetadataResolver.resolve(project.workspaceRoot).pipe(
-          Effect.mapError((cause) =>
-            toDashboardError("Failed to resolve flake metadata.", cause),
-          ),
-        ));
+        (yield* flakeMetadataResolver
+          .resolve(project.workspaceRoot)
+          .pipe(
+            Effect.mapError((cause) =>
+              toDashboardError("Failed to resolve flake metadata.", cause),
+            ),
+          ));
       const documentationState =
         project.documentationState ??
         (yield* documentationStatusResolver
@@ -163,7 +165,7 @@ const make = Effect.gen(function* () {
       const selectedHost =
         requestedHostName === null
           ? null
-          : hosts.find((host) => normalizeHostName(host.name) === requestedHostName) ?? null;
+          : (hosts.find((host) => normalizeHostName(host.name) === requestedHostName) ?? null);
 
       if (requestedHostName !== null && selectedHost === null) {
         return yield* toDashboardError(
@@ -210,15 +212,16 @@ const make = Effect.gen(function* () {
           ? []
           : parsedEntries
               .filter(
-                (entry) => entry.ambiguous || entry.hosts.some((host) => host === selectedHost.name),
+                (entry) =>
+                  entry.ambiguous || entry.hosts.some((host) => host === selectedHost.name),
               )
               .slice(0, MAX_DASHBOARD_CHANGE_ENTRIES);
 
       const hostDocState =
         selectedHost === null
           ? null
-          : documentationByHost.get(selectedHost.name.toLowerCase()) ??
-            defaultDocumentationState(selectedHost);
+          : (documentationByHost.get(selectedHost.name.toLowerCase()) ??
+            defaultDocumentationState(selectedHost));
 
       let hostDocFile: { path: string; contents: string } | null = null;
       if (selectedHost !== null) {
@@ -233,12 +236,11 @@ const make = Effect.gen(function* () {
         host,
         documentation:
           documentationByHost.get(host.name.toLowerCase()) ?? defaultDocumentationState(host),
-        deployment:
-          deploymentByHost.get(host.name.toLowerCase()) ?? {
-            status: "unavailable" as const,
-            reason: "missing-deploy-target" as const,
-            command: null,
-          },
+        deployment: deploymentByHost.get(host.name.toLowerCase()) ?? {
+          status: "unavailable" as const,
+          reason: "missing-deploy-target" as const,
+          command: null,
+        },
       }));
 
       return {

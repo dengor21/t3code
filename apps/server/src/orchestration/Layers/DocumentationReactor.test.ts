@@ -58,7 +58,7 @@ function createGitRepository() {
   runGit(cwd, ["init", "--initial-branch=main"]);
   runGit(cwd, ["config", "user.email", "test@example.com"]);
   runGit(cwd, ["config", "user.name", "Test User"]);
-  fs.writeFileSync(path.join(cwd, "flake.nix"), "{ description = \"test\"; }\n", "utf8");
+  fs.writeFileSync(path.join(cwd, "flake.nix"), '{ description = "test"; }\n', "utf8");
   fs.writeFileSync(path.join(cwd, "README.md"), "v1\n", "utf8");
   runGit(cwd, ["add", "."]);
   runGit(cwd, ["commit", "-m", "Initial"]);

@@ -11,14 +11,22 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 
-import { checkpointRefForThreadTurn, resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
+import {
+  checkpointRefForThreadTurn,
+  resolveThreadWorkspaceCwd,
+} from "../../checkpointing/Utils.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { WorkspaceFileSystem } from "../../workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
-import { GENERAL_CHANGELOG_PATH, inferHostsFromPaths, renderInlineCodeList, resolveProjectHosts } from "../DocumentationUtils.ts";
+import {
+  GENERAL_CHANGELOG_PATH,
+  inferHostsFromPaths,
+  renderInlineCodeList,
+  resolveProjectHosts,
+} from "../DocumentationUtils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   DocumentationReactor,
@@ -115,7 +123,9 @@ function renderDocumentationBlock(input: {
     input.generated.summary,
     "",
     ...(changeLines.length > 0 ? [changeLines, ""] : []),
-    ...(input.generated.hostImpact.length > 0 ? [`Host impact: ${input.generated.hostImpact}`, ""] : []),
+    ...(input.generated.hostImpact.length > 0
+      ? [`Host impact: ${input.generated.hostImpact}`, ""]
+      : []),
     input.referenceLabel,
     `Files: ${input.filesLabel}`,
     endMarker,
@@ -170,7 +180,9 @@ const make = Effect.gen(function* () {
       workspaceRoot: input.cwd,
       relativePath: input.relativePath,
     });
-    return yield* fileSystem.readFileString(resolved.absolutePath).pipe(Effect.orElseSucceed(() => ""));
+    return yield* fileSystem
+      .readFileString(resolved.absolutePath)
+      .pipe(Effect.orElseSucceed(() => ""));
   });
 
   const appendChangelogActivity = (input: {
@@ -293,11 +305,7 @@ const make = Effect.gen(function* () {
       hosts: impactedHosts.hosts,
       ambiguous: impactedHosts.ambiguous,
     });
-    const nextEntries = upsertEntryBlock(
-      extractEntries(existingDoc),
-      event.payload.turnId,
-      block,
-    );
+    const nextEntries = upsertEntryBlock(extractEntries(existingDoc), event.payload.turnId, block);
     yield* workspaceFileSystem.writeFile({
       cwd: project.workspaceRoot,
       relativePath: GENERAL_CHANGELOG_PATH,

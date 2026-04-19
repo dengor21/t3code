@@ -1240,30 +1240,31 @@ export const makeGitCore = Effect.fn("makeGitCore")(function* (options?: {
       );
     }
 
-    const [unstagedNumstatStdout, stagedNumstatStdout, defaultRefResult, hasOriginRemote, headResult] =
-      yield* Effect.all(
-        [
-          runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
-          runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, [
-            "diff",
-            "--cached",
-            "--numstat",
-          ]),
-          executeGit(
-            "GitCore.statusDetails.defaultRef",
-            cwd,
-            ["symbolic-ref", "refs/remotes/origin/HEAD"],
-            {
-              allowNonZeroExit: true,
-            },
-          ),
-          originRemoteExists(cwd).pipe(Effect.catch(() => Effect.succeed(false))),
-          executeGit("GitCore.statusDetails.head", cwd, ["log", "-1", "--format=%H%x00%s"], {
+    const [
+      unstagedNumstatStdout,
+      stagedNumstatStdout,
+      defaultRefResult,
+      hasOriginRemote,
+      headResult,
+    ] = yield* Effect.all(
+      [
+        runGitStdout("GitCore.statusDetails.unstagedNumstat", cwd, ["diff", "--numstat"]),
+        runGitStdout("GitCore.statusDetails.stagedNumstat", cwd, ["diff", "--cached", "--numstat"]),
+        executeGit(
+          "GitCore.statusDetails.defaultRef",
+          cwd,
+          ["symbolic-ref", "refs/remotes/origin/HEAD"],
+          {
             allowNonZeroExit: true,
-          }),
-        ],
-        { concurrency: "unbounded" },
-      );
+          },
+        ),
+        originRemoteExists(cwd).pipe(Effect.catch(() => Effect.succeed(false))),
+        executeGit("GitCore.statusDetails.head", cwd, ["log", "-1", "--format=%H%x00%s"], {
+          allowNonZeroExit: true,
+        }),
+      ],
+      { concurrency: "unbounded" },
+    );
     const statusStdout = statusResult.stdout;
     const defaultBranch =
       defaultRefResult.code === 0

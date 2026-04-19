@@ -250,9 +250,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ServerLifecycleEventsLive),
 );
 
-const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
-  Layer.provide(RuntimeDependenciesLive),
-);
+const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(Layer.provide(RuntimeDependenciesLive));
 
 export const makeRoutesLayer = Layer.mergeAll(
   authBearerBootstrapRouteLayer,

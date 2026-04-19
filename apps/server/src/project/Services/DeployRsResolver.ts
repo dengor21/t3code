@@ -1,7 +1,4 @@
-import type {
-  FlakeHost,
-  ProjectDashboardHostDeployment,
-} from "@t3tools/contracts";
+import type { FlakeHost, ProjectDashboardHostDeployment } from "@t3tools/contracts";
 import { Context } from "effect";
 import type { Effect } from "effect";
 
@@ -12,7 +9,6 @@ export interface DeployRsResolverShape {
   }) => Effect.Effect<ReadonlyMap<string, ProjectDashboardHostDeployment>>;
 }
 
-export class DeployRsResolver extends Context.Service<
-  DeployRsResolver,
-  DeployRsResolverShape
->()("t3/project/Services/DeployRsResolver") {}
+export class DeployRsResolver extends Context.Service<DeployRsResolver, DeployRsResolverShape>()(
+  "t3/project/Services/DeployRsResolver",
+) {}

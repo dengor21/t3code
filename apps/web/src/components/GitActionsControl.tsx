@@ -983,40 +983,38 @@ export default function GitActionsControl({
                 </Button>
               ))}
             </>
-          ) : (
-            quickActionDisabledReason ? (
-              <Popover>
-                <PopoverTrigger
-                  openOnHover
-                  render={
-                    <Button
-                      aria-disabled="true"
-                      className="cursor-not-allowed rounded-e-none border-e-0 opacity-80 before:rounded-e-none"
-                      size="xs"
-                    />
-                  }
-                >
-                  <GitQuickActionIcon quickAction={quickAction} />
-                  <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-                    {quickAction.label}
-                  </span>
-                </PopoverTrigger>
-                <PopoverPopup tooltipStyle side="bottom" align="start">
-                  {quickActionDisabledReason}
-                </PopoverPopup>
-              </Popover>
-            ) : (
-              <Button
-                size="xs"
-                disabled={isGitActionRunning || quickAction.disabled}
-                onClick={runQuickAction}
+          ) : quickActionDisabledReason ? (
+            <Popover>
+              <PopoverTrigger
+                openOnHover
+                render={
+                  <Button
+                    aria-disabled="true"
+                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-80 before:rounded-e-none"
+                    size="xs"
+                  />
+                }
               >
                 <GitQuickActionIcon quickAction={quickAction} />
                 <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
                   {quickAction.label}
                 </span>
-              </Button>
-            )
+              </PopoverTrigger>
+              <PopoverPopup tooltipStyle side="bottom" align="start">
+                {quickActionDisabledReason}
+              </PopoverPopup>
+            </Popover>
+          ) : (
+            <Button
+              size="xs"
+              disabled={isGitActionRunning || quickAction.disabled}
+              onClick={runQuickAction}
+            >
+              <GitQuickActionIcon quickAction={quickAction} />
+              <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+                {quickAction.label}
+              </span>
+            </Button>
           )}
           <GroupSeparator className="hidden @3xl/header-actions:block" />
           <Menu

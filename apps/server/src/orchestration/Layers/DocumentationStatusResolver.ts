@@ -75,7 +75,10 @@ const make = Effect.gen(function* () {
             const latestAmbiguousChangeAt = changeEntries
               .filter((entry) => entry.ambiguous)
               .reduce<string | null>((latest, entry) => maxIso(latest, entry.completedAt), null);
-            const latestRelevantChangeAt = maxIso(latestHostSpecificChangeAt, latestAmbiguousChangeAt);
+            const latestRelevantChangeAt = maxIso(
+              latestHostSpecificChangeAt,
+              latestAmbiguousChangeAt,
+            );
             const coverageCutoff =
               frontmatter?.coversChangesThrough ?? frontmatter?.generatedAt ?? null;
             const status: HostDocumentationStatus =

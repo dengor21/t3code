@@ -1,10 +1,6 @@
 import { Effect, Option, Schema, SchemaIssue, Struct } from "effect";
 import { ClaudeModelOptions, CodexModelOptions } from "./model.ts";
-import {
-  FlakeMetadata,
-  ProjectDocumentationState,
-  RepositoryIdentity,
-} from "./environment.ts";
+import { FlakeMetadata, ProjectDocumentationState, RepositoryIdentity } from "./environment.ts";
 import {
   ApprovalRequestId,
   CheckpointRef,

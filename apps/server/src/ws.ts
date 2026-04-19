@@ -878,36 +878,37 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.projectsStartHostDeployment,
             Effect.gen(function* () {
-              const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
-                Effect.mapError((cause) =>
-                  toProjectStartHostDeploymentError(
-                    "Failed to load the selected flake.",
-                    cause,
+              const project = yield* projectionSnapshotQuery
+                .getProjectShellById(input.projectId)
+                .pipe(
+                  Effect.mapError((cause) =>
+                    toProjectStartHostDeploymentError("Failed to load the selected flake.", cause),
                   ),
-                ),
-                Effect.flatMap((result) =>
-                  Option.match(result, {
-                    onNone: () =>
-                      Effect.fail(
-                        toProjectStartHostDeploymentError(
-                          `Flake ${input.projectId} was not found.`,
+                  Effect.flatMap((result) =>
+                    Option.match(result, {
+                      onNone: () =>
+                        Effect.fail(
+                          toProjectStartHostDeploymentError(
+                            `Flake ${input.projectId} was not found.`,
+                          ),
                         ),
-                      ),
-                    onSome: (value) => Effect.succeed(value),
-                  }),
-                ),
-              );
+                      onSome: (value) => Effect.succeed(value),
+                    }),
+                  ),
+                );
 
               const flakeMetadata =
                 project.flakeMetadata ??
-                (yield* flakeMetadataResolver.resolve(project.workspaceRoot).pipe(
-                  Effect.mapError((cause) =>
-                    toProjectStartHostDeploymentError(
-                      "Failed to resolve flake host metadata.",
-                      cause,
+                (yield* flakeMetadataResolver
+                  .resolve(project.workspaceRoot)
+                  .pipe(
+                    Effect.mapError((cause) =>
+                      toProjectStartHostDeploymentError(
+                        "Failed to resolve flake host metadata.",
+                        cause,
+                      ),
                     ),
-                  ),
-                ));
+                  ));
               const hosts =
                 flakeMetadata.hosts.length > 0
                   ? flakeMetadata.hosts
@@ -939,7 +940,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   ),
                 );
 
-              const deployment = hostDeployments.get(selectedHost.name.trim().toLowerCase()) ?? null;
+              const deployment =
+                hostDeployments.get(selectedHost.name.trim().toLowerCase()) ?? null;
               if (deployment === null || deployment.status !== "deployable") {
                 const message =
                   deployment?.reason === "evaluation-failed"
@@ -965,55 +967,59 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               const modelSelection =
                 project.defaultModelSelection ?? getAutoBootstrapDefaultModelSelection();
 
-              yield* orchestrationEngine.dispatch({
-                type: "thread.create",
-                commandId: serverCommandId("deploy-thread-create"),
-                threadId,
-                projectId: project.id,
-                title,
-                modelSelection,
-                runtimeMode: "full-access",
-                interactionMode: "default",
-                branch: gitStatus?.branch ?? null,
-                worktreePath: null,
-                scopedHostName: selectedHost.name,
-                createdAt: now,
-              }).pipe(
-                Effect.mapError((cause) =>
-                  toProjectStartHostDeploymentError(
-                    "Failed to create the deployment thread.",
-                    cause,
-                  ),
-                ),
-              );
-
-              yield* orchestrationEngine.dispatch({
-                type: "thread.activity.append",
-                commandId: serverCommandId("deploy-thread-activity"),
-                threadId,
-                activity: {
-                  id: EventId.make(crypto.randomUUID()),
-                  tone: "info",
-                  kind: "deploy.requested",
-                  summary: `Deployment requested for ${selectedHost.name}`,
-                  payload: {
-                    hostName: selectedHost.name,
-                    command: deployCommand,
-                    deployOnServer,
-                    requestedAt: now,
-                  },
-                  turnId: null,
+              yield* orchestrationEngine
+                .dispatch({
+                  type: "thread.create",
+                  commandId: serverCommandId("deploy-thread-create"),
+                  threadId,
+                  projectId: project.id,
+                  title,
+                  modelSelection,
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  branch: gitStatus?.branch ?? null,
+                  worktreePath: null,
+                  scopedHostName: selectedHost.name,
                   createdAt: now,
-                },
-                createdAt: now,
-              }).pipe(
-                Effect.mapError((cause) =>
-                  toProjectStartHostDeploymentError(
-                    "Failed to record the deployment request.",
-                    cause,
+                })
+                .pipe(
+                  Effect.mapError((cause) =>
+                    toProjectStartHostDeploymentError(
+                      "Failed to create the deployment thread.",
+                      cause,
+                    ),
                   ),
-                ),
-              );
+                );
+
+              yield* orchestrationEngine
+                .dispatch({
+                  type: "thread.activity.append",
+                  commandId: serverCommandId("deploy-thread-activity"),
+                  threadId,
+                  activity: {
+                    id: EventId.make(crypto.randomUUID()),
+                    tone: "info",
+                    kind: "deploy.requested",
+                    summary: `Deployment requested for ${selectedHost.name}`,
+                    payload: {
+                      hostName: selectedHost.name,
+                      command: deployCommand,
+                      deployOnServer,
+                      requestedAt: now,
+                    },
+                    turnId: null,
+                    createdAt: now,
+                  },
+                  createdAt: now,
+                })
+                .pipe(
+                  Effect.mapError((cause) =>
+                    toProjectStartHostDeploymentError(
+                      "Failed to record the deployment request.",
+                      cause,
+                    ),
+                  ),
+                );
 
               return {
                 threadId,

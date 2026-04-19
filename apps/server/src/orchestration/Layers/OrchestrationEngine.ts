@@ -156,8 +156,9 @@ const makeOrchestrationEngine = Effect.gen(function* () {
                 const acceptedAt = new Date().toISOString();
                 yield* commandReceiptRepository.upsert({
                   commandId: envelope.command.commandId,
-                  aggregateKind:
-                    envelope.command.type.startsWith("project.") ? "project" : "thread",
+                  aggregateKind: envelope.command.type.startsWith("project.")
+                    ? "project"
+                    : "thread",
                   aggregateId:
                     "projectId" in envelope.command
                       ? envelope.command.projectId
