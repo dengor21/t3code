@@ -723,9 +723,7 @@ function FlakeDashboardRouteView() {
                               <Button
                                 size="xs"
                                 variant="ghost"
-                                disabled={
-                                  summary.deployment.status !== "deployable" || deploying
-                                }
+                                disabled={summary.deployment.status !== "deployable" || deploying}
                                 title={deployDisabledReason ?? undefined}
                                 onClick={(event) => {
                                   event.stopPropagation();
