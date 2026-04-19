@@ -60,6 +60,51 @@ it.layer(NodeServices.layer)("providerStatusCache", (it) => {
     }),
   );
 
+  it.effect("uses unique temp paths when the same cache file is written concurrently", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-provider-cache-race-" });
+      const filePath = resolveProviderStatusCachePath({
+        cacheDir: tempDir,
+        provider: "claudeAgent",
+      });
+      const originalDateNow = Date.now;
+      Date.now = () => 1_776_607_307_129;
+
+      try {
+        const readyProvider = makeProvider("claudeAgent", {
+          status: "ready",
+          auth: { status: "authenticated" },
+        });
+        const warningProvider = makeProvider("claudeAgent", {
+          status: "warning",
+          auth: { status: "unknown" },
+        });
+
+        yield* Effect.all(
+          [
+            writeProviderStatusCache({
+              filePath,
+              provider: readyProvider,
+            }),
+            writeProviderStatusCache({
+              filePath,
+              provider: warningProvider,
+            }),
+          ],
+          { concurrency: "unbounded" },
+        );
+
+        const cached = yield* readProviderStatusCache(filePath);
+        assert.isDefined(cached);
+        assert.strictEqual(cached?.provider, "claudeAgent");
+        assert.ok(cached?.status === "ready" || cached?.status === "warning");
+      } finally {
+        Date.now = originalDateNow;
+      }
+    }),
+  );
+
   it("hydrates cached provider status onto current settings-derived models", () => {
     const cachedCodex = makeProvider("codex", {
       checkedAt: "2026-04-10T12:00:00.000Z",

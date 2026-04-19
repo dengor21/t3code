@@ -15,24 +15,44 @@ import ChatMarkdown from "../components/ChatMarkdown";
 import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
-import { openInPreferredEditor } from "../editorPreferences";
 import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { buildHostThreadPrompt } from "../lib/flakeHosts";
 import { projectDashboardContentQueryOptions, projectQueryKeys } from "../lib/projectReactQuery";
 import { cn } from "../lib/utils";
-import { readLocalApi } from "../localApi";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
 import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
 
 export interface FlakeDashboardSearch {
   host?: string;
+  view?: "changes" | "doc" | "flake";
 }
 
 function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashboardSearch {
   const host = typeof search.host === "string" ? search.host.trim() : "";
-  return host.length > 0 ? { host } : {};
+  const view = search.view;
+  const next: FlakeDashboardSearch = {};
+  if (host.length > 0) {
+    next.host = host;
+  }
+  if (view === "changes" || view === "doc" || view === "flake") {
+    next.view = view;
+  }
+  return next;
+}
+
+type FlakeDashboardView = "changes" | "doc" | "flake";
+
+function buildDashboardSearch(input: {
+  hostName: string | null;
+  view: FlakeDashboardView;
+}): FlakeDashboardSearch {
+  if (input.hostName) {
+    return input.view === "doc" ? { host: input.hostName, view: "doc" } : { host: input.hostName };
+  }
+
+  return input.view === "flake" ? { view: "flake" } : {};
 }
 
 function formatDocumentationStatusLabel(status: HostDocumentationStatus | null | undefined): string {
@@ -243,38 +263,18 @@ function FlakeDashboardRouteView() {
     });
   }, [dashboardQuery.error, dashboardQuery.isError, navigate, projectRef, requestedHostName]);
 
-  const localApiAvailable = readLocalApi() !== null;
-
-  const openPathInEditor = useCallback(async (targetPath: string) => {
-    const api = readLocalApi();
-    if (!api) {
-      toastManager.add({
-        type: "error",
-        title: "Open in editor is unavailable",
-      });
-      return;
-    }
-
-    try {
-      await openInPreferredEditor(api, targetPath);
-    } catch (error) {
-      toastManager.add({
-        type: "error",
-        title: "Unable to open file",
-        description: error instanceof Error ? error.message : "An error occurred.",
-      });
-    }
-  }, []);
-
-  const selectHost = useCallback(
-    (hostName: string | null) => {
+  const selectDashboardView = useCallback(
+    (hostName: string | null, view: FlakeDashboardView) => {
       if (!projectRef) {
         return;
       }
       void navigate({
         to: "/$environmentId/flake/$projectId",
         params: buildFlakeRouteParams(projectRef),
-        search: hostName ? { host: hostName } : {},
+        search: buildDashboardSearch({
+          hostName,
+          view,
+        }),
       });
     },
     [navigate, projectRef],
@@ -370,6 +370,12 @@ function FlakeDashboardRouteView() {
     () => renderFlakeSourceMarkdown(dashboardQuery.data?.flakeSource.contents ?? ""),
     [dashboardQuery.data?.flakeSource.contents],
   );
+  const activeView: FlakeDashboardView = useMemo(() => {
+    if (selectedHostSummary) {
+      return search.view === "doc" ? "doc" : "changes";
+    }
+    return search.view === "flake" ? "flake" : "changes";
+  }, [search.view, selectedHostSummary]);
   const visibleChangeEntries = selectedHostSummary
     ? dashboardQuery.data?.hostChanges ?? []
     : dashboardQuery.data?.generalChanges ?? [];
@@ -408,20 +414,19 @@ function FlakeDashboardRouteView() {
                       <PlayIcon className="size-4" />
                       Start thread
                     </Button>
-                    {dashboardQuery.data?.selectedHostName ? (
-                      <Button variant="outline" onClick={() => selectHost(null)}>
-                        View flake
-                      </Button>
-                    ) : null}
-                    {localApiAvailable ? (
-                      <Button
-                        variant="outline"
-                        onClick={() => void openPathInEditor(`${project.cwd}/flake.nix`)}
-                      >
-                        <FileTextIcon className="size-4" />
-                        Open flake in editor
-                      </Button>
-                    ) : null}
+                    <Button
+                      variant={selectedHostSummary === null && activeView === "changes" ? "default" : "outline"}
+                      onClick={() => selectDashboardView(null, "changes")}
+                    >
+                      Changes
+                    </Button>
+                    <Button
+                      variant={selectedHostSummary === null && activeView === "flake" ? "default" : "outline"}
+                      onClick={() => selectDashboardView(null, "flake")}
+                    >
+                      <FileTextIcon className="size-4" />
+                      flake.nix
+                    </Button>
                   </div>
                 </section>
 
@@ -445,17 +450,18 @@ function FlakeDashboardRouteView() {
                         const isSelected =
                           dashboardQuery.data?.selectedHostName === summary.host.name;
                         const generating = generatingDocsByHost[summary.host.name] === true;
-                        const docPath = `${project.cwd}/${summary.documentation.docPath}`;
+                        const hostChangesSelected = isSelected && activeView === "changes";
+                        const hostDocSelected = isSelected && activeView === "doc";
                         return (
                           <div
                             key={`${summary.host.name}:${summary.host.target}`}
                             role="button"
                             tabIndex={0}
-                            onClick={() => selectHost(summary.host.name)}
+                            onClick={() => selectDashboardView(summary.host.name, "changes")}
                             onKeyDown={(event) => {
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                selectHost(summary.host.name);
+                                selectDashboardView(summary.host.name, "changes");
                               }
                             }}
                             className={cn(
@@ -500,6 +506,28 @@ function FlakeDashboardRouteView() {
                             <div className="mt-4 flex flex-wrap gap-2">
                               <Button
                                 size="sm"
+                                variant={hostChangesSelected ? "default" : "outline"}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectDashboardView(summary.host.name, "changes");
+                                }}
+                              >
+                                Changes
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={hostDocSelected ? "default" : "outline"}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectDashboardView(summary.host.name, "doc");
+                                }}
+                              >
+                                <BookOpenIcon className="size-3.5" />
+                                Doc
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleStartHostThread(summary.host);
@@ -520,19 +548,6 @@ function FlakeDashboardRouteView() {
                                 {generating ? <RefreshCcwIcon className="size-3.5 animate-spin" /> : null}
                                 {summary.documentation.status === "missing" ? "Generate doc" : "Refresh doc"}
                               </Button>
-                              {localApiAvailable ? (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={summary.documentation.status === "missing"}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void openPathInEditor(docPath);
-                                  }}
-                                >
-                                  Open in editor
-                                </Button>
-                              ) : null}
                             </div>
                           </div>
                         );
@@ -546,7 +561,7 @@ function FlakeDashboardRouteView() {
                 </section>
               </aside>
 
-              <main className="grid min-w-0 gap-6">
+              <main className="min-w-0">
                 {dashboardQuery.isError && !dashboardQuery.data ? (
                   <section className="rounded-3xl border border-destructive/30 bg-destructive/5 p-6">
                     <div className="flex items-start gap-3">
@@ -564,96 +579,68 @@ function FlakeDashboardRouteView() {
                     </div>
                   </section>
                 ) : (
-                  <>
-                    <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="text-lg font-semibold text-foreground">
-                            {selectedHostSummary
-                              ? `Recent changes for ${selectedHostSummary.host.name}`
-                              : "Recent changes"}
-                          </h2>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {selectedHostSummary
-                              ? "Shows the latest host-specific and ambiguous changes that may affect this host."
-                              : "Shows the latest flake-wide changes recorded by T3code."}
-                          </p>
-                        </div>
+                  <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          {activeView === "doc"
+                            ? `Documentation for ${selectedHostSummary?.host.name ?? "host"}`
+                            : activeView === "flake"
+                              ? "flake.nix"
+                              : selectedHostSummary
+                                ? `Recent changes for ${selectedHostSummary.host.name}`
+                                : "Recent changes"}
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {activeView === "doc"
+                            ? selectedHostSummary?.documentation.generatedAt
+                              ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
+                              : "Manual host documentation is missing or needs to be generated."
+                            : activeView === "flake"
+                              ? "Read-only source preview for the selected flake."
+                              : selectedHostSummary
+                                ? "Shows the latest host-specific and ambiguous changes that may affect this host."
+                                : "Shows the latest flake-wide changes recorded by T3code."}
+                        </p>
                       </div>
+                      {activeView === "doc" && selectedHostSummary ? (
+                        <span
+                          className={cn(
+                            "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                            documentationStatusClasses(selectedHostSummary.documentation.status),
+                          )}
+                        >
+                          {formatDocumentationStatusLabel(selectedHostSummary.documentation.status)}
+                        </span>
+                      ) : null}
+                    </div>
 
-                      <div className="mt-4 grid gap-4">
-                        {dashboardQuery.isPending && !dashboardQuery.data ? (
-                          <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
-                            Loading recent changes...
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/45">
+                      {activeView === "doc" && selectedHostSummary ? (
+                        dashboardQuery.data?.hostDoc &&
+                        dashboardQuery.data.hostDoc.status !== "missing" &&
+                        dashboardQuery.data.hostDoc.markdown.trim().length > 0 ? (
+                          <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
+                            <ChatMarkdown text={dashboardQuery.data.hostDoc.markdown} cwd={project.cwd} />
                           </div>
-                        ) : visibleChangeEntries.length > 0 ? (
-                          visibleChangeEntries.map((entry) => (
-                            <ChangeEntryCard key={`${entry.kind}:${entry.id}`} entry={entry} cwd={project.cwd} />
-                          ))
                         ) : (
-                          <EmptyPanel
-                            title="No changes recorded yet"
-                            description={
-                              selectedHostSummary
-                                ? "This host does not have any matching changelog entries yet."
-                                : "T3code has not written any general changelog entries for this flake yet."
-                            }
-                          />
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="rounded-3xl border border-border/70 bg-card/50 p-5 sm:p-6">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="text-lg font-semibold text-foreground">
-                            {selectedHostSummary ? "Host documentation" : "flake.nix"}
-                          </h2>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {selectedHostSummary
-                              ? selectedHostSummary.documentation.generatedAt
-                                ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
-                                : "Manual host documentation is missing or needs to be refreshed."
-                              : "Read-only source preview for the selected flake."}
-                          </p>
-                        </div>
-                        {selectedHostSummary ? (
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
-                              documentationStatusClasses(selectedHostSummary.documentation.status),
-                            )}
-                          >
-                            {formatDocumentationStatusLabel(selectedHostSummary.documentation.status)}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/45">
-                        {selectedHostSummary ? (
-                          dashboardQuery.data?.hostDoc &&
-                          dashboardQuery.data.hostDoc.status !== "missing" &&
-                          dashboardQuery.data.hostDoc.markdown.trim().length > 0 ? (
-                            <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
-                              <ChatMarkdown text={dashboardQuery.data.hostDoc.markdown} cwd={project.cwd} />
-                            </div>
-                          ) : (
-                            <div className="p-4 sm:p-5">
-                              <EmptyPanel
-                                title="No host doc yet"
-                                description={`Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`}
-                                actionLabel={
-                                  generatingDocsByHost[selectedHostSummary.host.name]
-                                    ? "Generating doc"
-                                    : "Generate doc"
-                                }
-                                onAction={() => void handleGenerateHostDoc(selectedHostSummary.host)}
-                                pending={generatingDocsByHost[selectedHostSummary.host.name] === true}
-                              />
-                            </div>
-                          )
-                        ) : dashboardQuery.data ? (
-                          <div className="max-h-[68vh] overflow-y-auto p-4 sm:p-5">
+                          <div className="p-4 sm:p-5">
+                            <EmptyPanel
+                              title="No host doc yet"
+                              description={`Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`}
+                              actionLabel={
+                                generatingDocsByHost[selectedHostSummary.host.name]
+                                  ? "Generating doc"
+                                  : "Generate doc"
+                              }
+                              onAction={() => void handleGenerateHostDoc(selectedHostSummary.host)}
+                              pending={generatingDocsByHost[selectedHostSummary.host.name] === true}
+                            />
+                          </div>
+                        )
+                      ) : activeView === "flake" ? (
+                        dashboardQuery.data ? (
+                          <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
                             <ChatMarkdown text={flakeSourceMarkdown} cwd={project.cwd} />
                           </div>
                         ) : (
@@ -663,27 +650,34 @@ function FlakeDashboardRouteView() {
                               description="Fetching flake.nix for the selected flake."
                             />
                           </div>
-                        )}
-                      </div>
-
-                      {selectedHostSummary && localApiAvailable ? (
-                        <div className="mt-4 flex justify-end">
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              void openPathInEditor(
-                                `${project.cwd}/${selectedHostSummary.documentation.docPath}`,
-                              )
-                            }
-                            disabled={selectedHostSummary.documentation.status === "missing"}
-                          >
-                            <BookOpenIcon className="size-4" />
-                            Open in editor
-                          </Button>
+                        )
+                      ) : (
+                        <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
+                          <div className="grid gap-4">
+                            {dashboardQuery.isPending && !dashboardQuery.data ? (
+                              <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-4 py-5 text-sm text-muted-foreground">
+                                Loading recent changes...
+                              </div>
+                            ) : visibleChangeEntries.length > 0 ? (
+                              visibleChangeEntries.map((entry) => (
+                                <ChangeEntryCard key={`${entry.kind}:${entry.id}`} entry={entry} cwd={project.cwd} />
+                              ))
+                            ) : (
+                              <EmptyPanel
+                                title="No changes recorded yet"
+                                description={
+                                  selectedHostSummary
+                                    ? "This host does not have any matching changelog entries yet."
+                                    : "T3code has not written any general changelog entries for this flake yet."
+                                }
+                              />
+                            )}
+                          </div>
                         </div>
-                      ) : null}
-                    </section>
-                  </>
+                      )}
+                    </div>
+
+                  </section>
                 )}
               </main>
             </div>

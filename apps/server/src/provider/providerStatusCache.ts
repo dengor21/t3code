@@ -55,6 +55,11 @@ export const resolveProviderStatusCachePath = (input: {
   readonly provider: ServerProvider["provider"];
 }) => nodePath.join(input.cacheDir, `${input.provider}.json`);
 
+let providerStatusCacheTempFileSequence = 0;
+
+const resolveProviderStatusCacheTempPath = (filePath: string) =>
+  `${filePath}.${process.pid}.${Date.now()}.${providerStatusCacheTempFileSequence++}.tmp`;
+
 export const readProviderStatusCache = (filePath: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -85,7 +90,7 @@ export const writeProviderStatusCache = (input: {
   readonly filePath: string;
   readonly provider: ServerProvider;
 }) => {
-  const tempPath = `${input.filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tempPath = resolveProviderStatusCacheTempPath(input.filePath);
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
