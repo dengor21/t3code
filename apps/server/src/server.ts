@@ -40,6 +40,8 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { DocumentationReactorLive } from "./orchestration/Layers/DocumentationReactor.ts";
+import { DocumentationStatusResolverLive } from "./orchestration/Layers/DocumentationStatusResolver.ts";
+import { HostDocumentationServiceLive } from "./orchestration/Layers/HostDocumentationService.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
@@ -180,6 +182,11 @@ const GitManagerLayerLive = GitManagerLive.pipe(
   Layer.provideMerge(RoutingTextGenerationLive),
 );
 
+const DocumentationLayerLive = Layer.empty.pipe(
+  Layer.provideMerge(DocumentationStatusResolverLive),
+  Layer.provideMerge(HostDocumentationServiceLive),
+);
+
 const GitLayerLive = Layer.empty.pipe(
   Layer.provideMerge(GitManagerLayerLive),
   Layer.provideMerge(GitStatusBroadcasterLive.pipe(Layer.provide(GitManagerLayerLive))),
@@ -215,7 +222,6 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
 );
 
 const RuntimeDependenciesLive = ReactorLayerLive.pipe(
-  // Core Services
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(ProviderRuntimeLayerLive),
@@ -225,6 +231,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProviderRegistryLive),
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
+  Layer.provideMerge(DocumentationLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
   Layer.provideMerge(FlakeMetadataResolverLive),
   Layer.provideMerge(RepositoryIdentityResolverLive),
@@ -238,7 +245,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
 );
 
 const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
-  Layer.provideMerge(RuntimeDependenciesLive),
+  Layer.provide(RuntimeDependenciesLive),
 );
 
 export const makeRoutesLayer = Layer.mergeAll(
@@ -306,18 +313,15 @@ export const makeServerLayer = Layer.unwrap(
     );
 
     return serverApplicationLayer.pipe(
-      Layer.provideMerge(RuntimeServicesLive),
-      Layer.provideMerge(HttpServerLive),
+      Layer.provide(RuntimeDependenciesLive),
+      Layer.provide(RuntimeServicesLive),
+      Layer.provide(HttpServerLive),
       Layer.provide(ObservabilityLive),
-      Layer.provideMerge(FetchHttpClient.layer),
-      Layer.provideMerge(PlatformServicesLive),
+      Layer.provide(FetchHttpClient.layer),
+      Layer.provide(PlatformServicesLive),
     );
   }),
 );
 
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer) satisfies Effect.Effect<
-  never,
-  any,
-  ServerConfig
->;
+export const runServer = Layer.launch(makeServerLayer);

@@ -43,7 +43,7 @@ import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
-const COMPOSER_DRAFT_STORAGE_VERSION = 5;
+const COMPOSER_DRAFT_STORAGE_VERSION = 6;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 const isRuntimeMode = Schema.is(RuntimeMode);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
@@ -162,6 +162,7 @@ const PersistedDraftThreadState = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   envMode: DraftThreadEnvModeSchema,
+  scopedHostName: Schema.optionalKey(Schema.NullOr(Schema.String)),
   promotedTo: Schema.optionalKey(
     Schema.NullOr(
       Schema.Struct({
@@ -222,6 +223,7 @@ export interface DraftSessionState {
   branch: string | null;
   worktreePath: string | null;
   envMode: DraftThreadEnvMode;
+  scopedHostName?: string | null;
   promotedTo?: ScopedThreadRef | null;
 }
 
@@ -281,6 +283,7 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
+      scopedHostName?: string | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       runtimeMode?: RuntimeMode;
@@ -295,6 +298,7 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
+      scopedHostName?: string | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       runtimeMode?: RuntimeMode;
@@ -307,6 +311,7 @@ interface ComposerDraftStoreState {
     options: {
       branch?: string | null;
       worktreePath?: string | null;
+      scopedHostName?: string | null;
       projectRef?: ScopedProjectRef;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
@@ -994,6 +999,7 @@ function createDraftThreadState(
     threadId?: ThreadId;
     branch?: string | null;
     worktreePath?: string | null;
+    scopedHostName?: string | null;
     createdAt?: string;
     envMode?: DraftThreadEnvMode;
     runtimeMode?: RuntimeMode;
@@ -1027,6 +1033,12 @@ function createDraftThreadState(
       options?.interactionMode ?? existingThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
+    scopedHostName:
+      options?.scopedHostName === undefined
+        ? projectChanged
+          ? null
+          : (existingThread?.scopedHostName ?? null)
+        : (options.scopedHostName ?? null),
     envMode:
       options?.envMode ??
       (nextWorktreePath
@@ -1064,6 +1076,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.interactionMode === right.interactionMode &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
+    left.scopedHostName === right.scopedHostName &&
     left.envMode === right.envMode &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
   );
@@ -1204,6 +1217,11 @@ function normalizePersistedDraftThreads(
             : DEFAULT_INTERACTION_MODE,
         branch: typeof branch === "string" ? branch : null,
         worktreePath: normalizedWorktreePath,
+        scopedHostName:
+          typeof candidateDraftThread.scopedHostName === "string" &&
+          candidateDraftThread.scopedHostName.length > 0
+            ? candidateDraftThread.scopedHostName
+            : null,
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         promotedTo,
       };
@@ -1753,6 +1771,7 @@ function toHydratedDraftThreadState(
     interactionMode: persistedDraftThread.interactionMode,
     branch: persistedDraftThread.branch,
     worktreePath: persistedDraftThread.worktreePath,
+    scopedHostName: persistedDraftThread.scopedHostName ?? null,
     envMode: persistedDraftThread.envMode,
     promotedTo: persistedDraftThread.promotedTo
       ? scopeThreadRef(
@@ -1952,6 +1971,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               interactionMode: options.interactionMode ?? existing.interactionMode,
               branch: nextBranch,
               worktreePath: nextWorktreePath,
+              scopedHostName:
+                options.scopedHostName === undefined
+                  ? projectChanged
+                    ? null
+                    : (existing.scopedHostName ?? null)
+                  : (options.scopedHostName ?? null),
               envMode:
                 options.envMode ??
                 (nextWorktreePath
@@ -1970,6 +1995,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.interactionMode === existing.interactionMode &&
               nextDraftThread.branch === existing.branch &&
               nextDraftThread.worktreePath === existing.worktreePath &&
+              nextDraftThread.scopedHostName === existing.scopedHostName &&
               nextDraftThread.envMode === existing.envMode &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);
             if (isUnchanged) {

@@ -269,3 +269,126 @@ export function buildChangeDocumentationPrompt(input: ChangeDocumentationPromptI
 
   return { prompt, outputSchema };
 }
+
+export interface InitialDocumentationPromptInput {
+  projectTitle: string;
+  summaryLabel: string;
+  currentFilesSummary: string;
+  currentStateSnapshot: string;
+  hosts: ReadonlyArray<{
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  }>;
+}
+
+export function buildInitialDocumentationPrompt(input: InitialDocumentationPromptInput) {
+  const hostLines =
+    input.hosts.length > 0
+      ? input.hosts.map((host) =>
+          [
+            `- ${host.name}`,
+            `target=${host.target}`,
+            ...(host.system ? [`system=${host.system}`] : []),
+            ...(host.type ? [`type=${host.type}`] : []),
+          ].join(", "),
+        )
+      : ["- No host metadata available"];
+
+  const prompt = [
+    "You bootstrap concise living deployment documentation for a Nix flake.",
+    "Return a JSON object with keys: headline, summary, changes, hostImpact.",
+    "Rules:",
+    "- headline must be a short title for the initial documentation entry",
+    "- summary must be 1-2 sentences and describe the current flake state in plain language",
+    "- changes must be 2-4 short bullet-style statements without markdown bullets",
+    "- hostImpact must explain the current host layout or deployment scope, or be an empty string if unknown",
+    "- focus on durable system/deployment structure, not implementation chatter",
+    "- treat this as an initial snapshot, not a diff or migration log",
+    "- do not mention files that are not present in the supplied context",
+    "- do not use markdown headings or code fences in any field",
+    "",
+    `Flake: ${input.projectTitle}`,
+    `Scope: ${input.summaryLabel}`,
+    "",
+    "Hosts:",
+    limitSection(hostLines.join("\n"), 4_000),
+    "",
+    "Relevant files:",
+    limitSection(input.currentFilesSummary, 8_000),
+    "",
+    "Current state snapshot:",
+    limitSection(input.currentStateSnapshot, 40_000),
+  ].join("\n");
+
+  const outputSchema = Schema.Struct({
+    headline: Schema.String,
+    summary: Schema.String,
+    changes: Schema.Array(Schema.String),
+    hostImpact: Schema.String,
+  });
+
+  return { prompt, outputSchema };
+}
+
+export interface HostDocumentationPromptInput {
+  projectTitle: string;
+  host: {
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  };
+  contextFiles: ReadonlyArray<{
+    path: string;
+    contents: string;
+  }>;
+}
+
+export function buildHostDocumentationPrompt(input: HostDocumentationPromptInput) {
+  const sourceSections =
+    input.contextFiles.length > 0
+      ? input.contextFiles
+          .map((file) => [`--- ${file.path} ---`, limitSection(file.contents, 12_000)].join("\n"))
+          .join("\n\n")
+      : "No source files were collected.";
+
+  const prompt = [
+    "You write current-state infrastructure documentation for a single host in a Nix flake.",
+    "Return a JSON object with keys: overview, rolesAndPurpose, appsAndUserEnvironment, servicesAndSystemBehavior, networkingAndAccess, storageAndHardware, deploymentAndOperations, knownGaps.",
+    "Rules:",
+    "- overview must be a short paragraph describing the host's current role and shape",
+    "- every array field must contain 2-6 concise bullet-style statements without markdown bullets",
+    "- focus on current state, not change history",
+    "- derive claims only from the supplied files and host metadata",
+    "- if something is uncertain, put it in knownGaps instead of guessing",
+    "- mention apps, services, deployment behavior, and networking only when supported by the context",
+    "- do not use markdown headings or code fences in any field",
+    "",
+    `Flake: ${input.projectTitle}`,
+    `Host: ${input.host.name}`,
+    `Target: ${input.host.target}`,
+    ...(input.host.system ? [`System: ${input.host.system}`] : []),
+    ...(input.host.type ? [`Type: ${input.host.type}`] : []),
+    "",
+    "Source files:",
+    limitSection(input.contextFiles.map((file) => file.path).join("\n"), 8_000),
+    "",
+    "Source contents:",
+    limitSection(sourceSections, 45_000),
+  ].join("\n");
+
+  const outputSchema = Schema.Struct({
+    overview: Schema.String,
+    rolesAndPurpose: Schema.Array(Schema.String),
+    appsAndUserEnvironment: Schema.Array(Schema.String),
+    servicesAndSystemBehavior: Schema.Array(Schema.String),
+    networkingAndAccess: Schema.Array(Schema.String),
+    storageAndHardware: Schema.Array(Schema.String),
+    deploymentAndOperations: Schema.Array(Schema.String),
+    knownGaps: Schema.Array(Schema.String),
+  });
+
+  return { prompt, outputSchema };
+}

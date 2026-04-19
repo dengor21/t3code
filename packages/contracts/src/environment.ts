@@ -84,6 +84,31 @@ export const FlakeMetadata = Schema.Struct({
 });
 export type FlakeMetadata = typeof FlakeMetadata.Type;
 
+export const HostDocumentationStatus = Schema.Literals([
+  "missing",
+  "current",
+  "stale",
+  "needs-review",
+]);
+export type HostDocumentationStatus = typeof HostDocumentationStatus.Type;
+
+export const HostDocumentationState = Schema.Struct({
+  hostName: TrimmedNonEmptyString,
+  docPath: TrimmedNonEmptyString,
+  status: HostDocumentationStatus,
+  generatedAt: Schema.NullOr(TrimmedNonEmptyString),
+  coversChangesThrough: Schema.NullOr(TrimmedNonEmptyString),
+  latestRelevantChangeAt: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type HostDocumentationState = typeof HostDocumentationState.Type;
+
+export const ProjectDocumentationState = Schema.Struct({
+  docsRoot: TrimmedNonEmptyString,
+  legacyDocsDetected: Schema.Boolean,
+  hosts: Schema.Array(HostDocumentationState),
+});
+export type ProjectDocumentationState = typeof ProjectDocumentationState.Type;
+
 export const ScopedProjectRef = Schema.Struct({
   environmentId: EnvironmentId,
   projectId: ProjectId,

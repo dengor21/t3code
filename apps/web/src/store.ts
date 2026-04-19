@@ -216,6 +216,7 @@ function mapProject(
     cwd: project.workspaceRoot,
     repositoryIdentity: project.repositoryIdentity ?? null,
     flakeMetadata: project.flakeMetadata ?? null,
+    documentationState: project.documentationState ?? null,
     defaultModelSelection: project.defaultModelSelection
       ? normalizeModelSelection(project.defaultModelSelection)
       : null,
@@ -246,6 +247,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    scopedHostName: thread.scopedHostName ?? null,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map((activity) => ({ ...activity })),
   };
@@ -275,6 +277,7 @@ function mapThreadShell(
     updatedAt: thread.updatedAt,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    scopedHostName: thread.scopedHostName ?? null,
   };
   const session = thread.session ? mapSession(thread.session) : null;
   const turnState: ThreadTurnState = {
@@ -323,6 +326,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     updatedAt: thread.updatedAt,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    scopedHostName: thread.scopedHostName ?? null,
   };
 }
 
@@ -1154,6 +1158,7 @@ function applyEnvironmentOrchestrationEvent(
           workspaceRoot: event.payload.workspaceRoot,
           repositoryIdentity: event.payload.repositoryIdentity ?? null,
           flakeMetadata: event.payload.flakeMetadata ?? null,
+          documentationState: event.payload.documentationState ?? null,
           defaultModelSelection: event.payload.defaultModelSelection,
           scripts: event.payload.scripts,
           createdAt: event.payload.createdAt,
@@ -1213,6 +1218,9 @@ function applyEnvironmentOrchestrationEvent(
         ...(event.payload.flakeMetadata !== undefined
           ? { flakeMetadata: event.payload.flakeMetadata ?? null }
           : {}),
+        ...(event.payload.documentationState !== undefined
+          ? { documentationState: event.payload.documentationState ?? null }
+          : {}),
         ...(event.payload.defaultModelSelection !== undefined
           ? {
               defaultModelSelection: event.payload.defaultModelSelection
@@ -1258,6 +1266,7 @@ function applyEnvironmentOrchestrationEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
+          scopedHostName: event.payload.scopedHostName ?? null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,

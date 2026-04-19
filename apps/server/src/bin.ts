@@ -6,9 +6,14 @@ import { Command } from "effect/unstable/cli";
 
 import { NetService } from "@t3tools/shared/Net";
 import { cli } from "./cli.ts";
+import { ServerSettingsService } from "./serverSettings.ts";
 import packageJson from "../package.json" with { type: "json" };
 
-const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
+const CliRuntimeLayer = Layer.mergeAll(
+  NodeServices.layer,
+  NetService.layer,
+  ServerSettingsService.layerTest(),
+);
 
 Command.run(cli, { version: packageJson.version }).pipe(
   Effect.scoped,

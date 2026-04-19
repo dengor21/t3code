@@ -37,6 +37,7 @@ function useNewThreadState() {
         branch?: string | null;
         worktreePath?: string | null;
         envMode?: DraftThreadEnvMode;
+        scopedHostName?: string | null;
         initialPrompt?: string;
       },
     ): Promise<void> => {
@@ -62,6 +63,7 @@ function useNewThreadState() {
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
+      const hasScopedHostOption = options?.scopedHostName !== undefined;
       const normalizedInitialPrompt = options?.initialPrompt?.trim() ?? "";
       const seedDraftPromptIfEmpty = (draftId: DraftId) => {
         if (normalizedInitialPrompt.length === 0) {
@@ -81,11 +83,17 @@ function useNewThreadState() {
         : null;
       if (storedDraftThread) {
         return (async () => {
-          if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
+          if (
+            hasBranchOption ||
+            hasWorktreePathOption ||
+            hasEnvModeOption ||
+            hasScopedHostOption
+          ) {
             setDraftThreadContext(storedDraftThread.draftId, {
               ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
               ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+              ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
             });
           }
           seedDraftPromptIfEmpty(storedDraftThread.draftId);
@@ -111,11 +119,12 @@ function useNewThreadState() {
         latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
         latestActiveDraftThread.promotedTo == null
       ) {
-        if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
+        if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption || hasScopedHostOption) {
           setDraftThreadContext(currentRouteTarget.draftId, {
             ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
             ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
             ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+            ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
           });
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, currentRouteTarget.draftId, {
@@ -126,6 +135,7 @@ function useNewThreadState() {
           ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
           ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+          ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
         });
         seedDraftPromptIfEmpty(currentRouteTarget.draftId);
         return Promise.resolve();
@@ -141,6 +151,7 @@ function useNewThreadState() {
           branch: options?.branch ?? null,
           worktreePath: options?.worktreePath ?? null,
           envMode: options?.envMode ?? "local",
+          scopedHostName: options?.scopedHostName ?? null,
           runtimeMode: DEFAULT_RUNTIME_MODE,
         });
         applyStickyState(draftId);

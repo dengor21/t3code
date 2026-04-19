@@ -56,14 +56,20 @@ import type { AuthControlPlaneShape } from "./auth/Services/AuthControlPlane.ts"
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import { DocumentationStatusResolverLive } from "./orchestration/Layers/DocumentationStatusResolver.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
+import { GitCoreLive } from "./git/Layers/GitCore.ts";
+import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { getAutoBootstrapDefaultModelSelection } from "./serverRuntimeStartup.ts";
 import {
   clearPersistedServerRuntimeState,
   readPersistedServerRuntimeState,
 } from "./serverRuntimeState.ts";
+import { ServerSettingsLive } from "./serverSettings.ts";
 import { WorkspacePaths } from "./workspace/Services/WorkspacePaths.ts";
+import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
+import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 
 const PortSchema = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }));
@@ -489,12 +495,31 @@ type ProjectCliDispatchCommand = Extract<
   { type: "project.create" | "project.meta.update" | "project.delete" }
 >;
 
-const ProjectCliRuntimeLive = Layer.mergeAll(
+const ProjectCliRuntimeBaseLive = Layer.mergeAll(
   WorkspacePathsLive,
+  WorkspaceEntriesLive.pipe(
+    Layer.provide(WorkspacePathsLive),
+    Layer.provideMerge(GitCoreLive),
+  ),
+  WorkspaceFileSystemLive.pipe(
+    Layer.provide(WorkspacePathsLive),
+    Layer.provide(
+      WorkspaceEntriesLive.pipe(
+        Layer.provide(WorkspacePathsLive),
+        Layer.provideMerge(GitCoreLive),
+      ),
+    ),
+  ),
+  RoutingTextGenerationLive,
+  DocumentationStatusResolverLive,
   OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolverLive),
     Layer.provideMerge(SqlitePersistenceLayerLive),
   ),
+);
+
+const ProjectCliRuntimeLive = ProjectCliRuntimeBaseLive.pipe(
+  Layer.provideMerge(ServerSettingsLive),
 );
 
 const PROJECT_CLI_LIVE_SERVER_TIMEOUT = Duration.seconds(1);
@@ -1106,7 +1131,10 @@ const runServerCommand = (
   Effect.gen(function* () {
     const logLevel = yield* GlobalFlag.LogLevel;
     const config = yield* resolveServerConfig(flags, logLevel, options);
-    return yield* runServer.pipe(Effect.provideService(ServerConfig, config));
+    return yield* runServer.pipe(
+      Effect.provide(ProjectCliRuntimeLive),
+      Effect.provideService(ServerConfig, config),
+    );
   });
 
 const startCommand = Command.make("start", { ...sharedServerCommandFlags }).pipe(

@@ -107,6 +107,55 @@ interface FakeGitTextGeneration {
     },
     TextGenerationError
   >;
+  generateInitialDocumentation: (input: {
+    cwd: string;
+    projectTitle: string;
+    summaryLabel: string;
+    currentFilesSummary: string;
+    currentStateSnapshot: string;
+    hosts: ReadonlyArray<{
+      name: string;
+      target: string;
+      system?: string | undefined;
+      type?: string | undefined;
+    }>;
+    modelSelection: ModelSelection;
+  }) => Effect.Effect<
+    {
+      headline: string;
+      summary: string;
+      changes: ReadonlyArray<string>;
+      hostImpact: string;
+    },
+    TextGenerationError
+  >;
+  generateHostDocumentation: (input: {
+    cwd: string;
+    projectTitle: string;
+    host: {
+      name: string;
+      target: string;
+      system?: string | undefined;
+      type?: string | undefined;
+    };
+    contextFiles: ReadonlyArray<{
+      path: string;
+      contents: string;
+    }>;
+    modelSelection: ModelSelection;
+  }) => Effect.Effect<
+    {
+      overview: string;
+      rolesAndPurpose: ReadonlyArray<string>;
+      appsAndUserEnvironment: ReadonlyArray<string>;
+      servicesAndSystemBehavior: ReadonlyArray<string>;
+      networkingAndAccess: ReadonlyArray<string>;
+      storageAndHardware: ReadonlyArray<string>;
+      deploymentAndOperations: ReadonlyArray<string>;
+      knownGaps: ReadonlyArray<string>;
+    },
+    TextGenerationError
+  >;
 }
 
 type FakePullRequest = NonNullable<FakeGhScenario["pullRequest"]>;
@@ -322,6 +371,24 @@ function createTextGeneration(overrides: Partial<FakeGitTextGeneration> = {}): T
         changes: ["Adjusted workflow behavior"],
         hostImpact: "",
       }),
+    generateInitialDocumentation: () =>
+      Effect.succeed({
+        headline: "Bootstrap workflow documentation",
+        summary: "Captured the current workflow state.",
+        changes: ["Documented the current workflow layout"],
+        hostImpact: "",
+      }),
+    generateHostDocumentation: () =>
+      Effect.succeed({
+        overview: "Workflow host overview",
+        rolesAndPurpose: ["Role"],
+        appsAndUserEnvironment: ["App"],
+        servicesAndSystemBehavior: ["Service"],
+        networkingAndAccess: ["Network"],
+        storageAndHardware: ["Storage"],
+        deploymentAndOperations: ["Deploy"],
+        knownGaps: ["Gap"],
+      }),
     ...overrides,
   };
 
@@ -376,6 +443,28 @@ function createTextGeneration(overrides: Partial<FakeGitTextGeneration> = {}): T
           (cause) =>
             new TextGenerationError({
               operation: "generateChangeDocumentation",
+              detail: "fake text generation failed",
+              ...(cause !== undefined ? { cause } : {}),
+            }),
+        ),
+      ),
+    generateInitialDocumentation: (input) =>
+      implementation.generateInitialDocumentation(input).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation: "generateInitialDocumentation",
+              detail: "fake text generation failed",
+              ...(cause !== undefined ? { cause } : {}),
+            }),
+        ),
+      ),
+    generateHostDocumentation: (input) =>
+      implementation.generateHostDocumentation(input).pipe(
+        Effect.mapError(
+          (cause) =>
+            new TextGenerationError({
+              operation: "generateHostDocumentation",
               detail: "fake text generation failed",
               ...(cause !== undefined ? { cause } : {}),
             }),

@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Layer, Stream, Cause } from "effect";
+import { Cause, Effect, FileSystem, Layer, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
   CommandId,
@@ -14,18 +14,16 @@ import {
 import { checkpointRefForThreadTurn, resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { CheckpointStore } from "../../checkpointing/Services/CheckpointStore.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
+import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
+import { WorkspaceFileSystem } from "../../workspace/Services/WorkspaceFileSystem.ts";
+import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
+import { GENERAL_CHANGELOG_PATH, inferHostsFromPaths, renderInlineCodeList, resolveProjectHosts } from "../DocumentationUtils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   DocumentationReactor,
   type DocumentationReactorShape,
 } from "../Services/DocumentationReactor.ts";
-import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
-import { WorkspaceFileSystem } from "../../workspace/Services/WorkspaceFileSystem.ts";
-import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
-import { ServerSettingsService } from "../../serverSettings.ts";
-
-const GENERAL_DOC_PATH = ".t3code/changes.md";
-const HOST_DOCS_DIR = ".t3code/hosts";
 
 const serverCommandId = (tag: string): CommandId =>
   CommandId.make(`server:${tag}:${crypto.randomUUID()}`);
@@ -46,102 +44,8 @@ function summarizeChangedFiles(files: ReadonlyArray<OrchestrationCheckpointFile>
     .join("\n");
 }
 
-function renderChangedFileList(files: ReadonlyArray<OrchestrationCheckpointFile>): string {
-  const visible = files.slice(0, 8).map((file) => `\`${file.path}\``);
-  const remainder = files.length - visible.length;
-  return remainder > 0 ? `${visible.join(", ")}, +${remainder.toString()} more` : visible.join(", ");
-}
-
-function normalizeHosts(hosts: ReadonlyArray<FlakeHost>): ReadonlyArray<FlakeHost> {
-  const seen = new Set<string>();
-  return hosts.filter((host) => {
-    const key = host.name.trim().toLowerCase();
-    if (key.length === 0 || seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function splitPathSegments(value: string): ReadonlyArray<string> {
-  return value
-    .split("/")
-    .map((segment) => segment.trim().toLowerCase())
-    .filter((segment) => segment.length > 0);
-}
-
-function stripFileExtension(value: string): string {
-  const lastDotIndex = value.lastIndexOf(".");
-  return lastDotIndex <= 0 ? value : value.slice(0, lastDotIndex);
-}
-
-function resolveImpactedHosts(input: {
-  hosts: ReadonlyArray<FlakeHost>;
-  changedFiles: ReadonlyArray<OrchestrationCheckpointFile>;
-}): ReadonlyArray<FlakeHost> {
-  if (input.hosts.length === 0) {
-    return [];
-  }
-
-  const changedPathSegments = input.changedFiles.map((file) => splitPathSegments(file.path));
-  const impactedHosts = input.hosts.filter((host) => {
-    const normalizedHostName = host.name.trim().toLowerCase();
-    if (normalizedHostName.length === 0) {
-      return false;
-    }
-
-    return changedPathSegments.some((segments) =>
-      segments.some(
-        (segment) =>
-          segment === normalizedHostName || stripFileExtension(segment) === normalizedHostName,
-      ),
-    );
-  });
-
-  if (impactedHosts.length > 0) {
-    return impactedHosts;
-  }
-
-  return input.hosts.length === 1 ? input.hosts : [];
-}
-
-function resolveProjectHosts(
-  metadata: { host?: FlakeHost | null; hosts?: ReadonlyArray<FlakeHost> } | null | undefined,
-): ReadonlyArray<FlakeHost> {
-  const normalizedMetadata = metadata ?? null;
-  if (!normalizedMetadata) {
-    return [];
-  }
-  const hosts = normalizedMetadata.hosts ?? [];
-  if (hosts.length > 0) {
-    return normalizeHosts(hosts);
-  }
-  return normalizedMetadata.host ? normalizeHosts([normalizedMetadata.host]) : [];
-}
-
-function slugHostName(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug.length > 0 ? slug : "host";
-}
-
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function upsertTurnBlock(existingEntries: string, turnId: TurnId, block: string): string {
-  const startMarker = `<!-- t3code:turn:${turnId}:start -->`;
-  const endMarker = `<!-- t3code:turn:${turnId}:end -->`;
-  const withoutExisting = existingEntries.replace(
-    new RegExp(`${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\n*`, "g"),
-    "",
-  );
-  const trimmedExisting = withoutExisting.trim();
-  return trimmedExisting.length > 0 ? `${block}\n\n${trimmedExisting}\n` : `${block}\n`;
 }
 
 function extractEntries(existing: string): string {
@@ -153,49 +57,51 @@ function extractEntries(existing: string): string {
   return existing.trim();
 }
 
-function renderGeneralDoc(input: { entries: string }): string {
+function upsertEntryBlock(existingEntries: string, entryKey: string, block: string): string {
+  const startMarker = `<!-- t3code:turn:${entryKey}:start -->`;
+  const endMarker = `<!-- t3code:turn:${entryKey}:end -->`;
+  const withoutExisting = existingEntries.replace(
+    new RegExp(`${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\n*`, "g"),
+    "",
+  );
+  const trimmedExisting = withoutExisting.trim();
+  return trimmedExisting.length > 0 ? `${block}\n\n${trimmedExisting}\n` : `${block}\n`;
+}
+
+function renderGeneralDoc(entries: string): string {
   return [
     "# T3code Change Log",
     "",
     "This file is maintained automatically by T3code.",
     "",
     "## Entries",
-    input.entries.trim(),
-    "",
-  ].join("\n");
-}
-
-function renderHostDoc(input: { host: FlakeHost; entries: string }): string {
-  return [
-    `# Host: ${input.host.name}`,
-    "",
-    "This file is maintained automatically by T3code.",
-    "",
-    `- Target: \`${input.host.target}\``,
-    ...(input.host.system ? [`- System: \`${input.host.system}\``] : []),
-    ...(input.host.type ? [`- Type: \`${input.host.type}\``] : []),
-    "",
-    "## Entries",
-    input.entries.trim(),
+    entries.trim(),
     "",
   ].join("\n");
 }
 
 function renderDocumentationBlock(input: {
-  turnId: TurnId;
+  entryKey: string;
   completedAt: string;
-  threadTitle: string;
-  changedFiles: ReadonlyArray<OrchestrationCheckpointFile>;
+  referenceLabel: string;
+  filesLabel: string;
   generated: {
     headline: string;
     summary: string;
     changes: ReadonlyArray<string>;
     hostImpact: string;
   };
-  host?: FlakeHost | undefined;
+  hosts: ReadonlyArray<string>;
+  ambiguous: boolean;
 }): string {
-  const startMarker = `<!-- t3code:turn:${input.turnId}:start -->`;
-  const endMarker = `<!-- t3code:turn:${input.turnId}:end -->`;
+  const startMarker = `<!-- t3code:turn:${input.entryKey}:start -->`;
+  const endMarker = `<!-- t3code:turn:${input.entryKey}:end -->`;
+  const metadataComment = `<!-- t3code:meta ${JSON.stringify({
+    kind: "change",
+    completedAt: input.completedAt,
+    hosts: input.hosts,
+    ambiguous: input.ambiguous,
+  })} -->`;
   const changeLines = input.generated.changes
     .slice(0, 6)
     .map((entry) => `- ${entry}`)
@@ -203,19 +109,47 @@ function renderDocumentationBlock(input: {
 
   return [
     startMarker,
+    metadataComment,
     `### ${input.completedAt} - ${input.generated.headline}`,
     "",
     input.generated.summary,
     "",
     ...(changeLines.length > 0 ? [changeLines, ""] : []),
     ...(input.generated.hostImpact.length > 0 ? [`Host impact: ${input.generated.hostImpact}`, ""] : []),
-    ...(input.host
-      ? [`Host: \`${input.host.name}\` (\`${input.host.target}\`)`, ""]
-      : []),
-    `Thread: ${input.threadTitle}`,
-    `Files: ${renderChangedFileList(input.changedFiles)}`,
+    input.referenceLabel,
+    `Files: ${input.filesLabel}`,
     endMarker,
   ].join("\n");
+}
+
+function resolveImpactedHosts(input: {
+  hosts: ReadonlyArray<FlakeHost>;
+  changedFiles: ReadonlyArray<OrchestrationCheckpointFile>;
+  scopedHostName: string | null;
+}): {
+  hosts: ReadonlyArray<string>;
+  ambiguous: boolean;
+} {
+  if (input.scopedHostName?.trim()) {
+    return {
+      hosts: [input.scopedHostName.trim()],
+      ambiguous: false,
+    };
+  }
+  const inferredHosts = inferHostsFromPaths({
+    hosts: input.hosts,
+    paths: input.changedFiles.map((file) => file.path),
+  });
+  if (inferredHosts.length > 0) {
+    return {
+      hosts: inferredHosts,
+      ambiguous: false,
+    };
+  }
+  return {
+    hosts: [],
+    ambiguous: input.hosts.length > 0,
+  };
 }
 
 const make = Effect.gen(function* () {
@@ -239,10 +173,10 @@ const make = Effect.gen(function* () {
     return yield* fileSystem.readFileString(resolved.absolutePath).pipe(Effect.orElseSucceed(() => ""));
   });
 
-  const appendDocumentationActivity = (input: {
+  const appendChangelogActivity = (input: {
     threadId: ThreadId;
     turnId: TurnId;
-    kind: "flake.documentation.updated" | "flake.documentation.failed";
+    kind: "flake.changelog.updated" | "flake.changelog.failed";
     tone: "info" | "error";
     summary: string;
     payload: Record<string, unknown>;
@@ -250,7 +184,7 @@ const make = Effect.gen(function* () {
   }) =>
     orchestrationEngine.dispatch({
       type: "thread.activity.append",
-      commandId: serverCommandId("flake-documentation-activity"),
+      commandId: serverCommandId("flake-changelog-activity"),
       threadId: input.threadId,
       activity: {
         id: EventId.make(crypto.randomUUID()),
@@ -264,7 +198,7 @@ const make = Effect.gen(function* () {
       createdAt: input.createdAt,
     });
 
-  const resolveModelSelection = Effect.fn("resolveModelSelection")(function* (input: {
+  const resolveModelSelection = Effect.fn("resolveChangeLogModelSelection")(function* (input: {
     projectDefaultModelSelection: ModelSelection | null;
   }) {
     if (input.projectDefaultModelSelection) {
@@ -272,67 +206,6 @@ const make = Effect.gen(function* () {
     }
     const settings = yield* serverSettings.getSettings;
     return settings.textGenerationModelSelection;
-  });
-
-  const updateDocumentationFiles = Effect.fn("updateDocumentationFiles")(function* (input: {
-    docsRoot: string;
-    turnId: TurnId;
-    completedAt: string;
-    threadTitle: string;
-    changedFiles: ReadonlyArray<OrchestrationCheckpointFile>;
-    generated: {
-      headline: string;
-      summary: string;
-      changes: ReadonlyArray<string>;
-      hostImpact: string;
-    };
-    impactedHosts: ReadonlyArray<FlakeHost>;
-  }) {
-    const updatedPaths: string[] = [];
-
-    const generalExisting = yield* readWorkspaceFile({
-      cwd: input.docsRoot,
-      relativePath: GENERAL_DOC_PATH,
-    });
-    const generalBlock = renderDocumentationBlock({
-      turnId: input.turnId,
-      completedAt: input.completedAt,
-      threadTitle: input.threadTitle,
-      changedFiles: input.changedFiles,
-      generated: input.generated,
-    });
-    const generalEntries = upsertTurnBlock(extractEntries(generalExisting), input.turnId, generalBlock);
-    yield* workspaceFileSystem.writeFile({
-      cwd: input.docsRoot,
-      relativePath: GENERAL_DOC_PATH,
-      contents: renderGeneralDoc({ entries: generalEntries }),
-    });
-    updatedPaths.push(GENERAL_DOC_PATH);
-
-    for (const host of input.impactedHosts) {
-      const relativePath = `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`;
-      const existing = yield* readWorkspaceFile({
-        cwd: input.docsRoot,
-        relativePath,
-      });
-      const block = renderDocumentationBlock({
-        turnId: input.turnId,
-        completedAt: input.completedAt,
-        threadTitle: input.threadTitle,
-        changedFiles: input.changedFiles,
-        generated: input.generated,
-        host,
-      });
-      const entries = upsertTurnBlock(extractEntries(existing), input.turnId, block);
-      yield* workspaceFileSystem.writeFile({
-        cwd: input.docsRoot,
-        relativePath,
-        contents: renderHostDoc({ host, entries }),
-      });
-      updatedPaths.push(relativePath);
-    }
-
-    return updatedPaths as ReadonlyArray<string>;
   });
 
   const processDocumentationEvent = Effect.fn("processDocumentationEvent")(function* (
@@ -391,6 +264,7 @@ const make = Effect.gen(function* () {
     const impactedHosts = resolveImpactedHosts({
       hosts,
       changedFiles: event.payload.files,
+      scopedHostName: thread.scopedHostName ?? null,
     });
     const modelSelection = yield* resolveModelSelection({
       projectDefaultModelSelection: project.defaultModelSelection,
@@ -405,24 +279,46 @@ const make = Effect.gen(function* () {
       hosts,
       modelSelection,
     });
-    const updatedPaths = yield* updateDocumentationFiles({
-      docsRoot: project.workspaceRoot,
-      turnId: event.payload.turnId,
+
+    const existingDoc = yield* readWorkspaceFile({
+      cwd: project.workspaceRoot,
+      relativePath: GENERAL_CHANGELOG_PATH,
+    });
+    const block = renderDocumentationBlock({
+      entryKey: event.payload.turnId,
       completedAt: event.payload.completedAt,
-      threadTitle: thread.title,
-      changedFiles: event.payload.files,
+      referenceLabel: `Thread: ${thread.title}`,
+      filesLabel: renderInlineCodeList(event.payload.files.map((file) => file.path)),
       generated,
-      impactedHosts,
+      hosts: impactedHosts.hosts,
+      ambiguous: impactedHosts.ambiguous,
+    });
+    const nextEntries = upsertEntryBlock(
+      extractEntries(existingDoc),
+      event.payload.turnId,
+      block,
+    );
+    yield* workspaceFileSystem.writeFile({
+      cwd: project.workspaceRoot,
+      relativePath: GENERAL_CHANGELOG_PATH,
+      contents: renderGeneralDoc(nextEntries),
+    });
+    yield* orchestrationEngine.dispatch({
+      type: "project.meta.update",
+      commandId: serverCommandId("flake-changelog-project-refresh"),
+      projectId: project.id,
     });
 
-    yield* appendDocumentationActivity({
+    yield* appendChangelogActivity({
       threadId: thread.id,
       turnId: event.payload.turnId,
-      kind: "flake.documentation.updated",
+      kind: "flake.changelog.updated",
       tone: "info",
-      summary: "Living documentation updated",
+      summary: "Change log updated",
       payload: {
-        updatedPaths,
+        updatedPaths: [GENERAL_CHANGELOG_PATH],
+        hosts: impactedHosts.hosts,
+        ambiguous: impactedHosts.ambiguous,
       },
       createdAt: event.payload.completedAt,
     });
@@ -437,12 +333,12 @@ const make = Effect.gen(function* () {
           return Effect.failCause(cause);
         }
         const detail = Cause.pretty(cause);
-        return appendDocumentationActivity({
+        return appendChangelogActivity({
           threadId: event.payload.threadId,
           turnId: event.payload.turnId,
-          kind: "flake.documentation.failed",
+          kind: "flake.changelog.failed",
           tone: "error",
-          summary: "Living documentation update failed",
+          summary: "Change log update failed",
           payload: {
             detail,
           },

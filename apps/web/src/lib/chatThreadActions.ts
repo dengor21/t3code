@@ -20,6 +20,7 @@ interface NewThreadHandler {
       branch?: string | null;
       worktreePath?: string | null;
       envMode?: DraftThreadEnvMode;
+      scopedHostName?: string | null;
       initialPrompt?: string;
     },
   ): Promise<void>;

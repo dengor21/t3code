@@ -29,6 +29,7 @@ import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryI
 import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { DocumentationReactorLive } from "./DocumentationReactor.ts";
+import { DocumentationStatusResolverLive } from "./DocumentationStatusResolver.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import { DocumentationReactor } from "../Services/DocumentationReactor.ts";
@@ -132,6 +133,26 @@ describe("DocumentationReactor", () => {
         },
       ),
     );
+    const generateInitialDocumentation = vi.fn(() =>
+      Effect.succeed({
+        headline: "Bootstrap flake documentation",
+        summary: "Captured the current flake state.",
+        changes: ["Documented the current host layout"],
+        hostImpact: "Applies to the current flake host inventory.",
+      }),
+    );
+    const generateHostDocumentation = vi.fn(() =>
+      Effect.succeed({
+        overview: "Host overview",
+        rolesAndPurpose: ["Role"],
+        appsAndUserEnvironment: ["App"],
+        servicesAndSystemBehavior: ["Service"],
+        networkingAndAccess: ["Network"],
+        storageAndHardware: ["Storage"],
+        deploymentAndOperations: ["Deploy"],
+        knownGaps: ["Gap"],
+      }),
+    );
 
     const orchestrationLayer = OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
@@ -181,11 +202,14 @@ describe("DocumentationReactor", () => {
           generateBranchName: () => Effect.die("unused in test"),
           generateThreadTitle: () => Effect.die("unused in test"),
           generateChangeDocumentation,
+          generateInitialDocumentation,
+          generateHostDocumentation,
         }),
       ),
       Layer.provideMerge(workspaceFileSystemLayer),
       Layer.provideMerge(workspaceEntriesLayer),
       Layer.provideMerge(WorkspacePathsLive),
+      Layer.provideMerge(DocumentationStatusResolverLive),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(GitCoreLive),
       Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-doc-reactor-test-" })),
@@ -230,6 +254,7 @@ describe("DocumentationReactor", () => {
         runtimeMode: "full-access",
         branch: null,
         worktreePath: cwd,
+        scopedHostName: null,
         createdAt,
       }),
     );
@@ -241,10 +266,12 @@ describe("DocumentationReactor", () => {
       checkpointStore,
       drain,
       generateChangeDocumentation,
+      generateInitialDocumentation,
+      generateHostDocumentation,
     };
   }
 
-  it("writes general and per-host docs for a completed turn", async () => {
+  it("writes changelog entries for a completed turn", async () => {
     const harness = await createHarness();
     const turnId = asTurnId("turn-1");
     const messageId = MessageId.make("assistant-turn-1");
@@ -308,19 +335,17 @@ describe("DocumentationReactor", () => {
       }),
     );
 
-    await waitForThreadActivity(harness.engine, "flake.documentation.updated");
+    await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
     const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
-    const hostDoc = fs.readFileSync(path.join(harness.cwd, ".t3code", "hosts", "nexus.md"), "utf8");
 
     expect(changeLog).toContain("# T3code Change Log");
     expect(changeLog).toContain("Materialize flake host updates");
     expect(changeLog).toContain("README.md");
     expect(changeLog).toContain("<!-- t3code:turn:turn-1:start -->");
-    expect(hostDoc).toContain("# Host: nexus");
-    expect(hostDoc).toContain("10.0.0.115");
-    expect(hostDoc).toContain("Host: `nexus` (`10.0.0.115`)");
+    expect(changeLog).toContain("<!-- t3code:meta ");
+    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "nexus.md"))).toBe(false);
     expect(harness.generateChangeDocumentation).toHaveBeenCalledTimes(1);
   });
 
@@ -387,7 +412,7 @@ describe("DocumentationReactor", () => {
       );
     }
 
-    await waitForThreadActivity(harness.engine, "flake.documentation.updated");
+    await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
     const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
@@ -427,7 +452,7 @@ describe("DocumentationReactor", () => {
     expect(harness.generateChangeDocumentation).not.toHaveBeenCalled();
   });
 
-  it("writes per-host docs only for hosts implicated by changed file paths", async () => {
+  it("tags changelog metadata with the impacted host", async () => {
     const harness = await createHarness({
       flakeMetadata: {
         source: "parsed-flake",
@@ -509,14 +534,12 @@ describe("DocumentationReactor", () => {
       }),
     );
 
-    await waitForThreadActivity(harness.engine, "flake.documentation.updated");
+    await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
-    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"))).toBe(true);
-    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "nexus.md"))).toBe(false);
-
-    const bc250Doc = fs.readFileSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"), "utf8");
-    expect(bc250Doc).toContain("Add mpv video player on bc250");
-    expect(bc250Doc).toContain("Host: `bc250` (`bc250`)");
+    const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
+    expect(changeLog).toContain('"hosts":["bc250"]');
+    expect(changeLog).toContain('"ambiguous":false');
+    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"))).toBe(false);
   });
 });

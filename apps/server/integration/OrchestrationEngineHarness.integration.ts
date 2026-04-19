@@ -60,6 +60,7 @@ import {
 } from "../src/orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationReactor } from "../src/orchestration/Services/OrchestrationReactor.ts";
 import { DocumentationReactor } from "../src/orchestration/Services/DocumentationReactor.ts";
+import { DocumentationStatusResolverLive } from "../src/orchestration/Layers/DocumentationStatusResolver.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
   RuntimeReceiptBus,
@@ -314,6 +315,10 @@ export const makeOrchestrationIntegrationHarness = (
     const textGenerationLayer = Layer.succeed(TextGeneration, {
       generateBranchName: () => Effect.succeed({ branch: "update" }),
       generateThreadTitle: () => Effect.succeed({ title: "New thread" }),
+      generateCommitMessage: () => Effect.die("unused"),
+      generatePrContent: () => Effect.die("unused"),
+      generateChangeDocumentation: () => Effect.die("unused"),
+      generateInitialDocumentation: () => Effect.die("unused"),
     } as unknown as TextGenerationShape);
     const providerCommandReactorLayer = ProviderCommandReactorLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),
@@ -363,6 +368,7 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(orchestrationReactorLayer),
       Layer.provide(persistenceLayer),
+      Layer.provideMerge(DocumentationStatusResolverLive),
       Layer.provideMerge(RepositoryIdentityResolverLive),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(workspaceDir, rootDir)),

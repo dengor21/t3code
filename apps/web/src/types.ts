@@ -4,6 +4,7 @@ import type {
   ModelSelection,
   OrchestrationLatestTurn,
   OrchestrationProposedPlanId,
+  ProjectDocumentationState,
   RepositoryIdentity,
   OrchestrationSessionStatus,
   OrchestrationThreadActivity,
@@ -88,6 +89,7 @@ export interface Project {
   cwd: string;
   repositoryIdentity?: RepositoryIdentity | null;
   flakeMetadata?: FlakeMetadata | null;
+  documentationState?: ProjectDocumentationState | null;
   defaultModelSelection: ModelSelection | null;
   createdAt?: string | undefined;
   updatedAt?: string | undefined;
@@ -114,6 +116,7 @@ export interface Thread {
   pendingSourceProposedPlan?: OrchestrationLatestTurn["sourceProposedPlan"];
   branch: string | null;
   worktreePath: string | null;
+  scopedHostName?: string | null;
   turnDiffSummaries: TurnDiffSummary[];
   activities: OrchestrationThreadActivity[];
 }
@@ -133,6 +136,7 @@ export interface ThreadShell {
   updatedAt?: string | undefined;
   branch: string | null;
   worktreePath: string | null;
+  scopedHostName?: string | null;
 }
 
 export interface ThreadTurnState {

@@ -224,6 +224,24 @@ describe("ProviderCommandReactor", () => {
           }),
         ),
     );
+    const generateInitialDocumentation = vi.fn<TextGenerationShape["generateInitialDocumentation"]>(
+      (_) =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateInitialDocumentation",
+            detail: "disabled in test harness",
+          }),
+        ),
+    );
+    const generateHostDocumentation = vi.fn<TextGenerationShape["generateHostDocumentation"]>(
+      (_) =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateHostDocumentation",
+            detail: "disabled in test harness",
+          }),
+        ),
+    );
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const service: ProviderServiceShape = {
@@ -270,6 +288,8 @@ describe("ProviderCommandReactor", () => {
           generateBranchName,
           generateThreadTitle,
           generateChangeDocumentation,
+          generateInitialDocumentation,
+          generateHostDocumentation,
         }),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),

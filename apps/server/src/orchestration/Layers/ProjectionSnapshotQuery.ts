@@ -17,6 +17,7 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationProposedPlan,
   type OrchestrationProject,
+  type ProjectDocumentationState,
   type OrchestrationSession,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
@@ -42,9 +43,11 @@ import { ProjectionThreadMessage } from "../../persistence/Services/ProjectionTh
 import { ProjectionThreadProposedPlan } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadSession } from "../../persistence/Services/ProjectionThreadSessions.ts";
 import { ProjectionThread } from "../../persistence/Services/ProjectionThreads.ts";
+import { DocumentationStatusResolverLive } from "./DocumentationStatusResolver.ts";
 import { FlakeMetadataResolverLive } from "../../project/Layers/FlakeMetadataResolver.ts";
 import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { RepositoryIdentityResolver } from "../../project/Services/RepositoryIdentityResolver.ts";
+import { DocumentationStatusResolver } from "../Services/DocumentationStatusResolver.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import {
   ProjectionSnapshotQuery,
@@ -209,6 +212,7 @@ function mapProjectShellRow(
   row: Schema.Schema.Type<typeof ProjectionProjectDbRowSchema>,
   repositoryIdentity: OrchestrationProject["repositoryIdentity"],
   flakeMetadata: FlakeMetadata | null,
+  documentationState: ProjectDocumentationState | null,
 ): OrchestrationProjectShell {
   return {
     id: row.projectId,
@@ -216,6 +220,7 @@ function mapProjectShellRow(
     workspaceRoot: row.workspaceRoot,
     repositoryIdentity,
     flakeMetadata,
+    documentationState,
     defaultModelSelection: row.defaultModelSelection,
     scripts: row.scripts,
     createdAt: row.createdAt,
@@ -234,6 +239,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const flakeMetadataResolver = yield* FlakeMetadataResolver;
   const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
+  const documentationStatusResolver = yield* DocumentationStatusResolver;
   const repositoryIdentityResolutionConcurrency = 4;
 
   const listProjectRows = SqlSchema.findAll({
@@ -269,6 +275,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          scoped_host_name AS "scopedHostName",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -523,6 +530,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          scoped_host_name AS "scopedHostName",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -899,6 +907,14 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     Effect.all({
                       repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
                       flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
+                      documentationState: flakeMetadataResolver.resolve(row.workspaceRoot).pipe(
+                        Effect.flatMap((flakeMetadata) =>
+                          documentationStatusResolver.resolve({
+                            workspaceRoot: row.workspaceRoot,
+                            flakeMetadata,
+                          }),
+                        ),
+                      ),
                     }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
                   { concurrency: repositoryIdentityResolutionConcurrency },
                 ),
@@ -910,6 +926,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 workspaceRoot: row.workspaceRoot,
                 repositoryIdentity: projectMetadata.get(row.projectId)?.repositoryIdentity ?? null,
                 flakeMetadata: projectMetadata.get(row.projectId)?.flakeMetadata ?? null,
+                documentationState: projectMetadata.get(row.projectId)?.documentationState ?? null,
                 defaultModelSelection: row.defaultModelSelection,
                 scripts: row.scripts,
                 createdAt: row.createdAt,
@@ -926,6 +943,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 interactionMode: row.interactionMode,
                 branch: row.branch,
                 worktreePath: row.worktreePath,
+                scopedHostName: row.scopedHostName,
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
@@ -1035,11 +1053,19 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             const projectMetadata = new Map(
               yield* Effect.forEach(
                 projectRows,
-                (row) =>
-                  Effect.all({
-                    repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
-                    flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
-                  }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
+                  (row) =>
+                    Effect.all({
+                      repositoryIdentity: repositoryIdentityResolver.resolve(row.workspaceRoot),
+                      flakeMetadata: flakeMetadataResolver.resolve(row.workspaceRoot),
+                      documentationState: flakeMetadataResolver.resolve(row.workspaceRoot).pipe(
+                        Effect.flatMap((flakeMetadata) =>
+                          documentationStatusResolver.resolve({
+                            workspaceRoot: row.workspaceRoot,
+                            flakeMetadata,
+                          }),
+                        ),
+                      ),
+                    }).pipe(Effect.map((metadata) => [row.projectId, metadata] as const)),
                 { concurrency: repositoryIdentityResolutionConcurrency },
               ),
             );
@@ -1059,6 +1085,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     row,
                     projectMetadata.get(row.projectId)?.repositoryIdentity ?? null,
                     projectMetadata.get(row.projectId)?.flakeMetadata ?? null,
+                    projectMetadata.get(row.projectId)?.documentationState ?? null,
                   ),
                 ),
               threads: threadRows
@@ -1073,6 +1100,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     interactionMode: row.interactionMode,
                     branch: row.branch,
                     worktreePath: row.worktreePath,
+                    scopedHostName: row.scopedHostName,
                     latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                     createdAt: row.createdAt,
                     updatedAt: row.updatedAt,
@@ -1135,14 +1163,23 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
             : Effect.all({
                 repositoryIdentity: repositoryIdentityResolver.resolve(option.value.workspaceRoot),
                 flakeMetadata: flakeMetadataResolver.resolve(option.value.workspaceRoot),
+                documentationState: flakeMetadataResolver.resolve(option.value.workspaceRoot).pipe(
+                  Effect.flatMap((flakeMetadata) =>
+                    documentationStatusResolver.resolve({
+                      workspaceRoot: option.value.workspaceRoot,
+                      flakeMetadata,
+                    }),
+                  ),
+                ),
               }).pipe(
-                Effect.map(({ repositoryIdentity, flakeMetadata }) =>
+                Effect.map(({ repositoryIdentity, flakeMetadata, documentationState }) =>
                   Option.some({
                     id: option.value.projectId,
                     title: option.value.title,
                     workspaceRoot: option.value.workspaceRoot,
                     repositoryIdentity,
                     flakeMetadata,
+                    documentationState,
                     defaultModelSelection: option.value.defaultModelSelection,
                     scripts: option.value.scripts,
                     createdAt: option.value.createdAt,
@@ -1168,9 +1205,24 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           : Effect.all({
               repositoryIdentity: repositoryIdentityResolver.resolve(option.value.workspaceRoot),
               flakeMetadata: flakeMetadataResolver.resolve(option.value.workspaceRoot),
+              documentationState: flakeMetadataResolver.resolve(option.value.workspaceRoot).pipe(
+                Effect.flatMap((flakeMetadata) =>
+                  documentationStatusResolver.resolve({
+                    workspaceRoot: option.value.workspaceRoot,
+                    flakeMetadata,
+                  }),
+                ),
+              ),
             }).pipe(
-              Effect.map(({ repositoryIdentity, flakeMetadata }) =>
-                Option.some(mapProjectShellRow(option.value, repositoryIdentity, flakeMetadata)),
+              Effect.map(({ repositoryIdentity, flakeMetadata, documentationState }) =>
+                Option.some(
+                  mapProjectShellRow(
+                    option.value,
+                    repositoryIdentity,
+                    flakeMetadata,
+                    documentationState,
+                  ),
+                ),
               ),
             ),
       ),
@@ -1274,6 +1326,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        scopedHostName: threadRow.value.scopedHostName,
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,
         updatedAt: threadRow.value.updatedAt,
@@ -1368,6 +1421,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         interactionMode: threadRow.value.interactionMode,
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
+        scopedHostName: threadRow.value.scopedHostName,
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,
         updatedAt: threadRow.value.updatedAt,
@@ -1449,4 +1503,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
 export const OrchestrationProjectionSnapshotQueryLive = Layer.effect(
   ProjectionSnapshotQuery,
   makeProjectionSnapshotQuery,
-).pipe(Layer.provideMerge(FlakeMetadataResolverLive));
+).pipe(
+  Layer.provideMerge(DocumentationStatusResolverLive),
+  Layer.provideMerge(FlakeMetadataResolverLive),
+);

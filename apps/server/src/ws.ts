@@ -37,6 +37,8 @@ import { Open, resolveAvailableEditors } from "./open.ts";
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { DocumentationStatusResolver } from "./orchestration/Services/DocumentationStatusResolver.ts";
+import { HostDocumentationService } from "./orchestration/Services/HostDocumentationService.ts";
 import {
   observeRpcEffect,
   observeRpcStream,
@@ -152,6 +154,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
+      const documentationStatusResolver = yield* DocumentationStatusResolver;
       const serverEnvironment = yield* ServerEnvironment;
       const serverAuth = yield* ServerAuth;
       const bootstrapCredentials = yield* BootstrapCredentialService;
@@ -216,13 +219,22 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             return Effect.all({
               repositoryIdentity: repositoryIdentityResolver.resolve(event.payload.workspaceRoot),
               flakeMetadata: flakeMetadataResolver.resolve(event.payload.workspaceRoot),
+              documentationState: flakeMetadataResolver.resolve(event.payload.workspaceRoot).pipe(
+                Effect.flatMap((flakeMetadata) =>
+                  documentationStatusResolver.resolve({
+                    workspaceRoot: event.payload.workspaceRoot,
+                    flakeMetadata,
+                  }),
+                ),
+              ),
             }).pipe(
-              Effect.map(({ repositoryIdentity, flakeMetadata }) => ({
+              Effect.map(({ repositoryIdentity, flakeMetadata, documentationState }) => ({
                 ...event,
                 payload: {
                   ...event.payload,
                   repositoryIdentity,
                   flakeMetadata,
+                  documentationState,
                 },
               })),
             );
@@ -238,9 +250,17 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 return event;
               }
 
-              const { repositoryIdentity, flakeMetadata } = yield* Effect.all({
+              const { repositoryIdentity, flakeMetadata, documentationState } = yield* Effect.all({
                 repositoryIdentity: repositoryIdentityResolver.resolve(workspaceRoot),
                 flakeMetadata: flakeMetadataResolver.resolve(workspaceRoot),
+                documentationState: flakeMetadataResolver.resolve(workspaceRoot).pipe(
+                  Effect.flatMap((flakeMetadata) =>
+                    documentationStatusResolver.resolve({
+                      workspaceRoot,
+                      flakeMetadata,
+                    }),
+                  ),
+                ),
               });
               return {
                 ...event,
@@ -248,6 +268,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   ...event.payload,
                   repositoryIdentity,
                   flakeMetadata,
+                  documentationState,
                 },
               } satisfies OrchestrationEvent;
             });
@@ -458,6 +479,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 interactionMode: bootstrap.createThread.interactionMode,
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
+                scopedHostName: bootstrap.createThread.scopedHostName ?? null,
                 createdAt: bootstrap.createThread.createdAt,
               });
               createdThread = true;
@@ -811,6 +833,15 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 });
               }),
             ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGenerateHostDocumentation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGenerateHostDocumentation,
+            Effect.gen(function* () {
+              const hostDocumentationService = yield* HostDocumentationService;
+              return yield* hostDocumentationService.generateHostDocumentation(input);
+            }),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>

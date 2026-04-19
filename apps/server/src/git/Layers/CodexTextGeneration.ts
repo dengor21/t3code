@@ -12,6 +12,7 @@ import { TextGenerationError } from "@t3tools/contracts";
 import {
   type BranchNameGenerationInput,
   type ChangeDocumentationGenerationResult,
+  type HostDocumentationGenerationResult,
   type ThreadTitleGenerationResult,
   type TextGenerationShape,
   TextGeneration,
@@ -19,6 +20,8 @@ import {
 import {
   buildBranchNamePrompt,
   buildChangeDocumentationPrompt,
+  buildHostDocumentationPrompt,
+  buildInitialDocumentationPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -93,7 +96,9 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateChangeDocumentation",
+      | "generateChangeDocumentation"
+      | "generateInitialDocumentation"
+      | "generateHostDocumentation",
     attachments: BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -138,7 +143,9 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "generateChangeDocumentation";
+      | "generateChangeDocumentation"
+      | "generateInitialDocumentation"
+      | "generateHostDocumentation";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -445,12 +452,86 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     } satisfies ChangeDocumentationGenerationResult;
   });
 
+  const generateInitialDocumentation: TextGenerationShape["generateInitialDocumentation"] =
+    Effect.fn("CodexTextGeneration.generateInitialDocumentation")(function* (input) {
+      const { prompt, outputSchema } = buildInitialDocumentationPrompt({
+        projectTitle: input.projectTitle,
+        summaryLabel: input.summaryLabel,
+        currentFilesSummary: input.currentFilesSummary,
+        currentStateSnapshot: input.currentStateSnapshot,
+        hosts: input.hosts,
+      });
+
+      if (input.modelSelection.provider !== "codex") {
+        return yield* new TextGenerationError({
+          operation: "generateInitialDocumentation",
+          detail: "Invalid model selection.",
+        });
+      }
+
+      const generated = yield* runCodexJson({
+        operation: "generateInitialDocumentation",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        headline: generated.headline.trim(),
+        summary: generated.summary.trim(),
+        changes: generated.changes.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+        hostImpact: generated.hostImpact.trim(),
+      } satisfies ChangeDocumentationGenerationResult;
+    });
+
+  const generateHostDocumentation: TextGenerationShape["generateHostDocumentation"] = Effect.fn(
+    "CodexTextGeneration.generateHostDocumentation",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildHostDocumentationPrompt({
+      projectTitle: input.projectTitle,
+      host: input.host,
+      contextFiles: input.contextFiles,
+    });
+
+    if (input.modelSelection.provider !== "codex") {
+      return yield* new TextGenerationError({
+        operation: "generateHostDocumentation",
+        detail: "Invalid model selection.",
+      });
+    }
+
+    const generated = yield* runCodexJson({
+      operation: "generateHostDocumentation",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    const normalizeList = (value: ReadonlyArray<string>) =>
+      value.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+
+    return {
+      overview: generated.overview.trim(),
+      rolesAndPurpose: normalizeList(generated.rolesAndPurpose),
+      appsAndUserEnvironment: normalizeList(generated.appsAndUserEnvironment),
+      servicesAndSystemBehavior: normalizeList(generated.servicesAndSystemBehavior),
+      networkingAndAccess: normalizeList(generated.networkingAndAccess),
+      storageAndHardware: normalizeList(generated.storageAndHardware),
+      deploymentAndOperations: normalizeList(generated.deploymentAndOperations),
+      knownGaps: normalizeList(generated.knownGaps),
+    } satisfies HostDocumentationGenerationResult;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateChangeDocumentation,
+    generateInitialDocumentation,
+    generateHostDocumentation,
   } satisfies TextGenerationShape;
 });
 

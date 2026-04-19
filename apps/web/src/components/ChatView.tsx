@@ -2575,6 +2575,7 @@ export default function ChatView(props: ChatViewProps) {
                       interactionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
+                      scopedHostName: activeThread.scopedHostName ?? null,
                       createdAt: activeThread.createdAt,
                     },
                   }
@@ -3027,6 +3028,7 @@ export default function ChatView(props: ChatViewProps) {
         interactionMode: "default",
         branch: activeThreadBranch,
         worktreePath: activeThread.worktreePath,
+        scopedHostName: activeThread.scopedHostName ?? null,
         createdAt,
       })
       .then(() => {

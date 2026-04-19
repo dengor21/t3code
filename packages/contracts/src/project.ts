@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -48,6 +48,26 @@ export type ProjectWriteFileResult = typeof ProjectWriteFileResult.Type;
 
 export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteFileError>()(
   "ProjectWriteFileError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+export const ProjectGenerateHostDocumentationInput = Schema.Struct({
+  projectId: ProjectId,
+  hostName: TrimmedNonEmptyString,
+});
+export type ProjectGenerateHostDocumentationInput = typeof ProjectGenerateHostDocumentationInput.Type;
+
+export const ProjectGenerateHostDocumentationResult = Schema.Struct({
+  docPath: TrimmedNonEmptyString,
+  generatedAt: TrimmedNonEmptyString,
+});
+export type ProjectGenerateHostDocumentationResult = typeof ProjectGenerateHostDocumentationResult.Type;
+
+export class ProjectGenerateHostDocumentationError extends Schema.TaggedErrorClass<ProjectGenerateHostDocumentationError>()(
+  "ProjectGenerateHostDocumentationError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

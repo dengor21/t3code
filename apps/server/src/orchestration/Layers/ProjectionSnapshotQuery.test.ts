@@ -259,6 +259,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           workspaceRoot: "/tmp/project-1",
           repositoryIdentity: null,
           flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
+          documentationState: {
+            docsRoot: ".t3code/docs/hosts",
+            legacyDocsDetected: false,
+            hosts: [],
+          },
           defaultModelSelection: {
             provider: "codex",
             model: "gpt-5-codex",
@@ -290,6 +295,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
+          scopedHostName: null,
           latestTurn: {
             turnId: asTurnId("turn-1"),
             state: "completed",
@@ -371,6 +377,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           workspaceRoot: "/tmp/project-1",
           repositoryIdentity: null,
           flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
+          documentationState: {
+            docsRoot: ".t3code/docs/hosts",
+            legacyDocsDetected: false,
+            hosts: [],
+          },
           defaultModelSelection: {
             provider: "codex",
             model: "gpt-5-codex",
@@ -401,6 +412,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
+          scopedHostName: null,
           latestTurn: {
             turnId: asTurnId("turn-1"),
             state: "completed",

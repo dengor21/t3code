@@ -96,6 +96,48 @@ export interface ChangeDocumentationGenerationResult {
   hostImpact: string;
 }
 
+export interface InitialDocumentationGenerationInput {
+  cwd: string;
+  projectTitle: string;
+  summaryLabel: string;
+  currentFilesSummary: string;
+  currentStateSnapshot: string;
+  hosts: ReadonlyArray<{
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  }>;
+  modelSelection: ModelSelection;
+}
+
+export interface HostDocumentationGenerationInput {
+  cwd: string;
+  projectTitle: string;
+  host: {
+    name: string;
+    target: string;
+    system?: string | undefined;
+    type?: string | undefined;
+  };
+  contextFiles: ReadonlyArray<{
+    path: string;
+    contents: string;
+  }>;
+  modelSelection: ModelSelection;
+}
+
+export interface HostDocumentationGenerationResult {
+  overview: string;
+  rolesAndPurpose: ReadonlyArray<string>;
+  appsAndUserEnvironment: ReadonlyArray<string>;
+  servicesAndSystemBehavior: ReadonlyArray<string>;
+  networkingAndAccess: ReadonlyArray<string>;
+  storageAndHardware: ReadonlyArray<string>;
+  deploymentAndOperations: ReadonlyArray<string>;
+  knownGaps: ReadonlyArray<string>;
+}
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -106,6 +148,12 @@ export interface TextGenerationService {
   generateChangeDocumentation(
     input: ChangeDocumentationGenerationInput,
   ): Promise<ChangeDocumentationGenerationResult>;
+  generateInitialDocumentation(
+    input: InitialDocumentationGenerationInput,
+  ): Promise<ChangeDocumentationGenerationResult>;
+  generateHostDocumentation(
+    input: HostDocumentationGenerationInput,
+  ): Promise<HostDocumentationGenerationResult>;
 }
 
 /**
@@ -146,6 +194,20 @@ export interface TextGenerationShape {
   readonly generateChangeDocumentation: (
     input: ChangeDocumentationGenerationInput,
   ) => Effect.Effect<ChangeDocumentationGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate a structured bootstrap documentation entry for the current flake state.
+   */
+  readonly generateInitialDocumentation: (
+    input: InitialDocumentationGenerationInput,
+  ) => Effect.Effect<ChangeDocumentationGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate a verbose current-state host document from source files.
+   */
+  readonly generateHostDocumentation: (
+    input: HostDocumentationGenerationInput,
+  ) => Effect.Effect<HostDocumentationGenerationResult, TextGenerationError>;
 }
 
 /**

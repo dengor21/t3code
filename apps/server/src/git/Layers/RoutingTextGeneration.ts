@@ -50,6 +50,10 @@ const makeRoutingTextGeneration = Effect.gen(function* () {
     generateThreadTitle: (input) => route(input.modelSelection.provider).generateThreadTitle(input),
     generateChangeDocumentation: (input) =>
       route(input.modelSelection.provider).generateChangeDocumentation(input),
+    generateInitialDocumentation: (input) =>
+      route(input.modelSelection.provider).generateInitialDocumentation(input),
+    generateHostDocumentation: (input) =>
+      route(input.modelSelection.provider).generateHostDocumentation(input),
   } satisfies TextGenerationShape;
 });
 

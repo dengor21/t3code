@@ -66,6 +66,18 @@ import {
 import { Keybindings, type KeybindingsShape } from "./keybindings.ts";
 import { Open, type OpenShape } from "./open.ts";
 import {
+  DocumentationReactor,
+  type DocumentationReactorShape,
+} from "./orchestration/Services/DocumentationReactor.ts";
+import {
+  DocumentationStatusResolver,
+  type DocumentationStatusResolverShape,
+} from "./orchestration/Services/DocumentationStatusResolver.ts";
+import {
+  HostDocumentationService,
+  type HostDocumentationServiceShape,
+} from "./orchestration/Services/HostDocumentationService.ts";
+import {
   OrchestrationEngineService,
   type OrchestrationEngineShape,
 } from "./orchestration/Services/OrchestrationEngine.ts";
@@ -327,6 +339,9 @@ const buildAppUnderTest = (options?: {
     gitStatusBroadcaster?: Partial<GitStatusBroadcasterShape>;
     projectSetupScriptRunner?: Partial<ProjectSetupScriptRunnerShape>;
     terminalManager?: Partial<TerminalManagerShape>;
+    documentationReactor?: Partial<DocumentationReactorShape>;
+    documentationStatusResolver?: Partial<DocumentationStatusResolverShape>;
+    hostDocumentationService?: Partial<HostDocumentationServiceShape>;
     orchestrationEngine?: Partial<OrchestrationEngineShape>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQueryShape>;
     checkpointDiffQuery?: Partial<CheckpointDiffQueryShape>;
@@ -451,6 +466,34 @@ const buildAppUnderTest = (options?: {
       Layer.provide(
         Layer.mock(TerminalManager)({
           ...options?.layers?.terminalManager,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(DocumentationReactor)({
+          start: () => Effect.void,
+          drain: Effect.void,
+          ...options?.layers?.documentationReactor,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(DocumentationStatusResolver)({
+          resolve: () =>
+            Effect.succeed({
+              docsRoot: ".t3code/docs/hosts",
+              legacyDocsDetected: false,
+              hosts: [],
+            }),
+          ...options?.layers?.documentationStatusResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(HostDocumentationService)({
+          generateHostDocumentation: () =>
+            Effect.succeed({
+              docPath: ".t3code/docs/hosts/default.md",
+              generatedAt: new Date(0).toISOString(),
+            }),
+          ...options?.layers?.hostDocumentationService,
         }),
       ),
       Layer.provide(

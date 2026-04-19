@@ -1,9 +1,10 @@
 import type { FlakeHost } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertCircleIcon, BookOpenIcon, FileTextIcon, PlayIcon, ServerIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { openInPreferredEditor } from "../editorPreferences";
+import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { buildHostThreadPrompt } from "../lib/flakeHosts";
 import { readLocalApi } from "../localApi";
@@ -20,6 +21,34 @@ function slugifyHostName(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug.length > 0 ? slug : "host";
+}
+
+function formatDocumentationStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case "current":
+      return "Current";
+    case "stale":
+      return "Stale";
+    case "needs-review":
+      return "Needs review";
+    case "missing":
+    default:
+      return "Missing";
+  }
+}
+
+function documentationStatusClasses(status: string | null | undefined): string {
+  switch (status) {
+    case "current":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "stale":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "needs-review":
+      return "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+    case "missing":
+    default:
+      return "border-border/70 bg-background/70 text-muted-foreground";
+  }
 }
 
 function formatFlakeSourceLabel(source: string | null | undefined): string {
@@ -51,6 +80,7 @@ function FlakeOverviewRouteView() {
   );
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
   const { handleNewThread } = useNewThreadHandler();
+  const [generatingDocsByHost, setGeneratingDocsByHost] = useState<Record<string, true>>({});
 
   useEffect(() => {
     if (!projectRef || !bootstrapComplete) {
@@ -62,19 +92,10 @@ function FlakeOverviewRouteView() {
     }
   }, [bootstrapComplete, environmentHasProjects, navigate, project, projectRef]);
 
-  const hostDocPath = useMemo(() => {
-    if (!project) {
-      return null;
-    }
-    const hosts = project.flakeMetadata?.hosts ?? [];
-    if (hosts.length === 0) {
-      return null;
-    }
-    if (hosts.length === 1) {
-      return `${project.cwd}/.t3code/hosts/${slugifyHostName(hosts[0]!.name)}.md`;
-    }
-    return `${project.cwd}/.t3code/hosts`;
-  }, [project]);
+  const docsRootPath = useMemo(
+    () => (project ? `${project.cwd}/.t3code/docs/hosts` : null),
+    [project],
+  );
 
   const openPathInEditor = useCallback(async (targetPath: string) => {
     const api = readLocalApi();
@@ -111,9 +132,67 @@ function FlakeOverviewRouteView() {
       }
       void handleNewThread(projectRef, {
         initialPrompt: buildHostThreadPrompt(host),
+        scopedHostName: host.name,
       });
     },
     [handleNewThread, projectRef],
+  );
+
+  const handleGenerateHostDoc = useCallback(
+    async (host: FlakeHost) => {
+      if (!projectRef || !project || generatingDocsByHost[host.name]) {
+        return;
+      }
+
+      const api = readEnvironmentApi(projectRef.environmentId);
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "Flake actions are unavailable",
+        });
+        return;
+      }
+
+      setGeneratingDocsByHost((current) => ({
+        ...current,
+        [host.name]: true,
+      }));
+      try {
+        const result = await api.projects.generateHostDocumentation({
+          projectId: project.id,
+          hostName: host.name,
+        });
+        toastManager.add({
+          type: "success",
+          title: `Documentation generated for ${host.name}`,
+          description: `Updated ${result.docPath}`,
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: `Failed to generate ${host.name} documentation`,
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      } finally {
+        setGeneratingDocsByHost((current) => {
+          const next = { ...current };
+          delete next[host.name];
+          return next;
+        });
+      }
+    },
+    [generatingDocsByHost, project, projectRef],
+  );
+
+  const openHostDoc = useCallback(
+    async (hostName: string) => {
+      if (!project) {
+        return;
+      }
+
+      await openPathInEditor(`${project.cwd}/.t3code/docs/hosts/${slugifyHostName(hostName)}.md`);
+    },
+    [openPathInEditor, project],
   );
 
   if (!projectRef || !bootstrapComplete || !project) {
@@ -122,10 +201,12 @@ function FlakeOverviewRouteView() {
 
   const flakeMetadata = project.flakeMetadata;
   const hosts = flakeMetadata?.hosts ?? (flakeMetadata?.host ? [flakeMetadata.host] : []);
+  const documentationStateByHost = new Map(
+    (project.documentationState?.hosts ?? []).map((entry) => [entry.hostName, entry] as const),
+  );
   const sourceLabel = formatFlakeSourceLabel(flakeMetadata?.source);
   const flakePath = flakeMetadata?.flakePath ?? `${project.cwd}/flake.nix`;
   const diagnostics = flakeMetadata?.diagnostics ?? [];
-  const hostDocLabel = hosts.length > 1 ? "Open host docs" : "Open host doc";
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
@@ -172,11 +253,11 @@ function FlakeOverviewRouteView() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => hostDocPath && void openPathInEditor(hostDocPath)}
-                    disabled={!hostDocPath}
+                    onClick={() => docsRootPath && void openPathInEditor(docsRootPath)}
+                    disabled={!docsRootPath}
                   >
                     <BookOpenIcon className="size-4" />
-                    {hostDocLabel}
+                    Open docs folder
                   </Button>
                 </div>
               </div>
@@ -190,11 +271,9 @@ function FlakeOverviewRouteView() {
                 {hosts.length > 0 ? (
                   <div className="mt-4 grid gap-4 xl:grid-cols-2">
                     {hosts.map((host) => (
-                      <button
+                      <div
                         key={`${host.name}:${host.target}`}
-                        type="button"
-                        onClick={() => handleStartHostThread(host)}
-                        className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition-colors hover:border-border hover:bg-background/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        className="rounded-2xl border border-border/60 bg-background/60 p-4"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -216,6 +295,15 @@ function FlakeOverviewRouteView() {
                                 {host.system}
                               </span>
                             ) : null}
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${documentationStatusClasses(
+                                documentationStateByHost.get(host.name)?.status,
+                              )}`}
+                            >
+                              {formatDocumentationStatusLabel(
+                                documentationStateByHost.get(host.name)?.status,
+                              )}
+                            </span>
                           </div>
                         </div>
                         <div className="mt-4">
@@ -226,10 +314,46 @@ function FlakeOverviewRouteView() {
                             {host.target}
                           </div>
                         </div>
-                        <div className="mt-4 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
-                          Open a new thread with this host context
+                        <div className="mt-4 space-y-2">
+                          <div className="text-xs text-muted-foreground">
+                            {documentationStateByHost.get(host.name)?.generatedAt
+                              ? `Generated ${documentationStateByHost.get(host.name)?.generatedAt}`
+                              : "No current-state host doc has been generated yet."}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleStartHostThread(host)}
+                              className="min-w-[8rem]"
+                            >
+                              <PlayIcon className="size-4" />
+                              Start thread
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleGenerateHostDoc(host)}
+                              disabled={Boolean(generatingDocsByHost[host.name])}
+                            >
+                              <BookOpenIcon className="size-4" />
+                              {generatingDocsByHost[host.name]
+                                ? "Generating..."
+                                : documentationStateByHost.get(host.name)?.status === "missing"
+                                  ? "Generate doc"
+                                  : "Refresh doc"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void openHostDoc(host.name)}
+                              disabled={documentationStateByHost.get(host.name)?.status === "missing"}
+                            >
+                              <FileTextIcon className="size-4" />
+                              Open doc
+                            </Button>
+                          </div>
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 ) : (

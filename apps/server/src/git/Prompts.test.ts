@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildBranchNamePrompt,
+  buildInitialDocumentationPrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
@@ -133,6 +134,34 @@ describe("buildThreadTitlePrompt", () => {
     expect(result.prompt).toContain("thread.png");
     expect(result.prompt).toContain("image/png");
     expect(result.prompt).toContain("67890 bytes");
+  });
+});
+
+describe("buildInitialDocumentationPrompt", () => {
+  it("includes flake scope, host metadata, and current snapshot context", () => {
+    const result = buildInitialDocumentationPrompt({
+      projectTitle: "nix",
+      summaryLabel: "Initial documentation bootstrap",
+      currentFilesSummary: "flake.nix\nhosts/nexus/default.nix",
+      currentStateSnapshot: "--- flake.nix ---\n{ description = \"nix\"; }",
+      hosts: [
+        {
+          name: "nexus",
+          target: "10.0.0.115",
+          system: "aarch64-linux",
+          type: "nixos",
+        },
+      ],
+    });
+
+    expect(result.prompt).toContain("Flake: nix");
+    expect(result.prompt).toContain("Scope: Initial documentation bootstrap");
+    expect(result.prompt).toContain("Hosts:");
+    expect(result.prompt).toContain("nexus, target=10.0.0.115");
+    expect(result.prompt).toContain("Relevant files:");
+    expect(result.prompt).toContain("hosts/nexus/default.nix");
+    expect(result.prompt).toContain("Current state snapshot:");
+    expect(result.prompt).toContain('{ description = "nix"; }');
   });
 });
 
