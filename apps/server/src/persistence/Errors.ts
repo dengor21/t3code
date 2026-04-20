@@ -105,3 +105,5 @@ export type AuthPairingLinkRepositoryError = PersistenceSqlError | PersistenceDe
 export type AuthSessionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 
 export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type HostDeploymentRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type FlakeMaintenanceRepositoryError = PersistenceSqlError | PersistenceDecodeError;

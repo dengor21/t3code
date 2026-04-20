@@ -1803,9 +1803,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           ? { worktreePath: seedContext.worktreePath }
           : {}),
         envMode: seedContext.envMode,
-        ...(options?.scopedHostName !== undefined
-          ? { scopedHostName: options.scopedHostName ?? null }
-          : {}),
+        scopedHostName: options?.scopedHostName ?? null,
       });
     },
     [defaultThreadEnvMode, handleNewThread, router],
@@ -1871,7 +1869,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const createThreadForFolder = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>, hostName: string | null) => {
       handleCreateThreadClick(event, {
-        ...(hostName !== null ? { scopedHostName: hostName } : {}),
+        scopedHostName: hostName,
       });
     },
     [handleCreateThreadClick],

@@ -1,7 +1,9 @@
-import { scopeThreadRef } from "@t3tools/client-runtime";
 import {
   buildDeployRsCommand,
   type FlakeHost,
+  type FlakeMaintenanceStatus,
+  type GitStatusResult,
+  type HostDeploymentStatus,
   type HostDocumentationStatus,
   type ProjectDashboardChangeEntry,
 } from "@t3tools/contracts";
@@ -17,10 +19,14 @@ import {
   PlayIcon,
   RefreshCcwIcon,
   RocketIcon,
+  SquareTerminalIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import ChatMarkdown from "../components/ChatMarkdown";
+import FlakeMaintenanceTerminal from "../components/FlakeMaintenanceTerminal";
+import GitActionsControl from "../components/GitActionsControl";
+import HostDeploymentTerminal from "../components/HostDeploymentTerminal";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -37,22 +43,21 @@ import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { buildHostThreadPrompt } from "../lib/flakeHosts";
-import { useGitStatus } from "../lib/gitStatusState";
-import { projectDashboardContentQueryOptions, projectQueryKeys } from "../lib/projectReactQuery";
+import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
+import {
+  flakeMaintenanceQueryOptions,
+  hostDeploymentQueryOptions,
+  projectDashboardContentQueryOptions,
+  projectQueryKeys,
+} from "../lib/projectReactQuery";
 import { cn } from "../lib/utils";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
-import { useTerminalStateStore } from "../terminalStateStore";
-import {
-  buildFlakeRouteParams,
-  buildThreadRouteParams,
-  resolveFlakeRouteRef,
-} from "../threadRoutes";
+import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
 
 export interface FlakeDashboardSearch {
   host?: string;
-  view?: "changes" | "doc" | "flake";
+  view?: "changes" | "deploy" | "doc" | "flake" | "maintenance";
 }
 
 function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashboardSearch {
@@ -62,26 +67,41 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
   if (host.length > 0) {
     next.host = host;
   }
-  if (view === "changes" || view === "doc" || view === "flake") {
+  if (
+    view === "changes" ||
+    view === "deploy" ||
+    view === "doc" ||
+    view === "flake" ||
+    view === "maintenance"
+  ) {
     next.view = view;
   }
   return next;
 }
 
-type FlakeDashboardView = "changes" | "doc" | "flake";
-
-const DEPLOY_TERMINAL_COLS = 120;
-const DEPLOY_TERMINAL_ROWS = 30;
+type FlakeDashboardView = "changes" | "deploy" | "doc" | "flake" | "maintenance";
 
 function buildDashboardSearch(input: {
   hostName: string | null;
   view: FlakeDashboardView;
 }): FlakeDashboardSearch {
   if (input.hostName) {
-    return input.view === "doc" ? { host: input.hostName, view: "doc" } : { host: input.hostName };
+    if (input.view === "doc") {
+      return { host: input.hostName, view: "doc" };
+    }
+    if (input.view === "deploy") {
+      return { host: input.hostName, view: "deploy" };
+    }
+    return { host: input.hostName };
   }
 
-  return input.view === "flake" ? { view: "flake" } : {};
+  if (input.view === "flake") {
+    return { view: "flake" };
+  }
+  if (input.view === "maintenance") {
+    return { view: "maintenance" };
+  }
+  return {};
 }
 
 function formatDocumentationStatusLabel(
@@ -125,6 +145,71 @@ function deploymentReasonLabel(
     default:
       return null;
   }
+}
+
+function formatDeploymentStatusLabel(
+  status: HostDeploymentStatus | FlakeMaintenanceStatus,
+): string {
+  switch (status) {
+    case "starting":
+      return "Starting";
+    case "running":
+      return "Running";
+    case "succeeded":
+      return "Succeeded";
+    case "failed":
+      return "Failed";
+    case "canceled":
+      return "Canceled";
+    case "error":
+    default:
+      return "Error";
+  }
+}
+
+function deploymentStatusClasses(status: HostDeploymentStatus | FlakeMaintenanceStatus): string {
+  switch (status) {
+    case "starting":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "running":
+      return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+    case "succeeded":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "failed":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+    case "canceled":
+      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+    case "error":
+    default:
+      return "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  }
+}
+
+function formatDeploymentModeLabel(deployOnServer: boolean): string {
+  return deployOnServer ? "Deploy On Server" : "Remote Build";
+}
+
+function formatGitBranchLabel(gitStatus: GitStatusResult | null | undefined): string {
+  if (!gitStatus) {
+    return "Checking git status";
+  }
+  if (!gitStatus.isRepo) {
+    return "Not a git repository";
+  }
+  return gitStatus.branch ?? "Detached HEAD";
+}
+
+function maintenanceDisabledReason(gitStatus: GitStatusResult | null | undefined): string | null {
+  if (!gitStatus) {
+    return "Checking git status for this flake.";
+  }
+  if (!gitStatus.isRepo) {
+    return "Maintenance requires a git repository so updates can be reviewed before commit.";
+  }
+  if (gitStatus.hasWorkingTreeChanges) {
+    return "Commit, stash, or discard local changes before running nix flake update.";
+  }
+  return null;
 }
 
 function kindLabel(kind: ProjectDashboardChangeEntry["kind"]): string {
@@ -253,6 +338,7 @@ function FlakeDashboardRouteView() {
   const [generatingDocsByHost, setGeneratingDocsByHost] = useState<Record<string, true>>({});
   const [deployDialogHostName, setDeployDialogHostName] = useState<string | null>(null);
   const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
+  const [maintenancePending, setMaintenancePending] = useState(false);
   const [deployOnServer, setDeployOnServer] = useState(false);
   const gitStatusQuery = useGitStatus({
     environmentId: projectRef?.environmentId ?? null,
@@ -291,12 +377,61 @@ function FlakeDashboardRouteView() {
     });
   }, [matchedRouteHostName, navigate, projectRef, requestedHostName, routeHostsByName]);
 
+  useEffect(() => {
+    if (!projectRef || search.view !== "deploy" || requestedHostName !== null) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: {},
+      replace: true,
+    });
+  }, [navigate, projectRef, requestedHostName, search.view]);
+
+  useEffect(() => {
+    if (!projectRef || search.view !== "maintenance" || requestedHostName === null) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: { view: "maintenance" },
+      replace: true,
+    });
+  }, [navigate, projectRef, requestedHostName, search.view]);
+
   const dashboardQuery = useQuery(
     projectDashboardContentQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
       enabled: bootstrapComplete && projectRef !== null && project !== null,
+    }),
+  );
+
+  const hostDeploymentQuery = useQuery(
+    hostDeploymentQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      hostName: matchedRouteHostName ?? requestedHostName,
+      enabled:
+        bootstrapComplete &&
+        projectRef !== null &&
+        project !== null &&
+        (matchedRouteHostName ?? requestedHostName) !== null,
+    }),
+  );
+
+  const flakeMaintenanceQuery = useQuery(
+    flakeMaintenanceQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      enabled:
+        bootstrapComplete &&
+        projectRef !== null &&
+        project !== null &&
+        search.view === "maintenance",
     }),
   );
 
@@ -339,7 +474,9 @@ function FlakeDashboardRouteView() {
     if (!projectRef) {
       return;
     }
-    void handleNewThread(projectRef);
+    void handleNewThread(projectRef, {
+      scopedHostName: null,
+    });
   }, [handleNewThread, projectRef]);
 
   const handleStartHostThread = useCallback(
@@ -348,7 +485,6 @@ function FlakeDashboardRouteView() {
         return;
       }
       void handleNewThread(projectRef, {
-        initialPrompt: buildHostThreadPrompt(host),
         scopedHostName: host.name,
       });
     },
@@ -361,6 +497,24 @@ function FlakeDashboardRouteView() {
     }
     return queryClient.invalidateQueries({
       queryKey: projectQueryKeys.dashboardContentPrefix(projectRef.environmentId, project.id),
+    });
+  }, [project, projectRef, queryClient]);
+
+  const invalidateHostDeploymentQueries = useCallback(() => {
+    if (!projectRef || !project) {
+      return Promise.resolve();
+    }
+    return queryClient.invalidateQueries({
+      queryKey: projectQueryKeys.hostDeploymentPrefix(projectRef.environmentId, project.id),
+    });
+  }, [project, projectRef, queryClient]);
+
+  const invalidateFlakeMaintenanceQueries = useCallback(() => {
+    if (!projectRef || !project) {
+      return Promise.resolve();
+    }
+    return queryClient.invalidateQueries({
+      queryKey: projectQueryKeys.flakeMaintenancePrefix(projectRef.environmentId, project.id),
     });
   }, [project, projectRef, queryClient]);
 
@@ -459,51 +613,25 @@ function FlakeDashboardRouteView() {
 
     setDeployingHostName(hostSummary.host.name);
     try {
-      const result = await api.projects.startHostDeployment({
+      await api.hostDeployments.start({
         projectId: project.id,
         hostName: hostSummary.host.name,
         deployOnServer,
       });
-      const threadRef = scopeThreadRef(projectRef.environmentId, result.threadId);
-      const terminalState = useTerminalStateStore.getState();
 
-      terminalState.ensureTerminal(threadRef, result.terminalId, { open: true, active: true });
-      terminalState.setTerminalOpen(threadRef, true);
-      terminalState.setTerminalLaunchContext(threadRef, {
-        cwd: result.cwd,
-        worktreePath: null,
-      });
-
+      await Promise.all([invalidateHostDeploymentQueries(), invalidateDashboardQueries()]);
       setDeployDialogHostName(null);
       setDeployingHostName(null);
       setDeployOnServer(false);
 
       await navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
+        to: "/$environmentId/flake/$projectId",
+        params: buildFlakeRouteParams(projectRef),
+        search: buildDashboardSearch({
+          hostName: hostSummary.host.name,
+          view: "deploy",
+        }),
       });
-
-      try {
-        await api.terminal.open({
-          threadId: result.threadId,
-          terminalId: result.terminalId,
-          cwd: result.cwd,
-          worktreePath: null,
-          cols: DEPLOY_TERMINAL_COLS,
-          rows: DEPLOY_TERMINAL_ROWS,
-        });
-        await api.terminal.write({
-          threadId: result.threadId,
-          terminalId: result.terminalId,
-          data: `${result.command}\r`,
-        });
-      } catch (error) {
-        toastManager.add({
-          type: "error",
-          title: "Deployment thread created, but the terminal failed to start",
-          description: error instanceof Error ? error.message : "An error occurred.",
-        });
-      }
     } catch (error) {
       toastManager.add({
         type: "error",
@@ -516,6 +644,8 @@ function FlakeDashboardRouteView() {
     dashboardQuery.data?.hostSummaries,
     deployDialogHostName,
     deployOnServer,
+    invalidateDashboardQueries,
+    invalidateHostDeploymentQueries,
     navigate,
     project,
     projectRef,
@@ -547,9 +677,21 @@ function FlakeDashboardRouteView() {
   );
   const activeView: FlakeDashboardView = useMemo(() => {
     if (selectedHostSummary) {
-      return search.view === "doc" ? "doc" : "changes";
+      if (search.view === "doc") {
+        return "doc";
+      }
+      if (search.view === "deploy") {
+        return "deploy";
+      }
+      return "changes";
     }
-    return search.view === "flake" ? "flake" : "changes";
+    if (search.view === "flake") {
+      return "flake";
+    }
+    if (search.view === "maintenance") {
+      return "maintenance";
+    }
+    return "changes";
   }, [search.view, selectedHostSummary]);
   const visibleChangeEntries = selectedHostSummary
     ? (dashboardQuery.data?.hostChanges ?? [])
@@ -561,6 +703,144 @@ function FlakeDashboardRouteView() {
   const deployDialogDisabledReason = deploymentReasonLabel(
     deployDialogHostSummary?.deployment.reason ?? null,
   );
+  const selectedHostDeployment = selectedHostSummary
+    ? (hostDeploymentQuery.data ?? selectedHostSummary.latestDeployment ?? null)
+    : null;
+  const isSelectedHostDeploymentActive =
+    selectedHostDeployment?.status === "starting" || selectedHostDeployment?.status === "running";
+  const selectedFlakeMaintenance =
+    flakeMaintenanceQuery.data ?? dashboardQuery.data?.latestMaintenance ?? null;
+  const isSelectedFlakeMaintenanceActive =
+    selectedFlakeMaintenance?.status === "starting" ||
+    selectedFlakeMaintenance?.status === "running";
+  const maintenanceActionDisabledReason = maintenanceDisabledReason(gitStatusQuery.data);
+
+  const handleStopDeployment = useCallback(async () => {
+    if (!projectRef || !project || !selectedHostSummary) {
+      return;
+    }
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+    try {
+      await api.hostDeployments.stop({
+        projectId: project.id,
+        hostName: selectedHostSummary.host.name,
+      });
+      await Promise.all([invalidateHostDeploymentQueries(), invalidateDashboardQueries()]);
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to stop deployment for ${selectedHostSummary.host.name}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    }
+  }, [
+    invalidateDashboardQueries,
+    invalidateHostDeploymentQueries,
+    project,
+    projectRef,
+    selectedHostSummary,
+  ]);
+
+  const refreshFlakeGitStatus = useCallback(() => {
+    if (!projectRef || !project) {
+      return Promise.resolve(null);
+    }
+    return refreshGitStatus({
+      environmentId: projectRef.environmentId,
+      cwd: project.cwd,
+    });
+  }, [project, projectRef]);
+
+  const handleStartMaintenance = useCallback(async () => {
+    if (!projectRef || !project || maintenancePending) {
+      return;
+    }
+
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setMaintenancePending(true);
+    try {
+      await api.flakeMaintenance.start({
+        projectId: project.id,
+      });
+      await Promise.all([
+        invalidateFlakeMaintenanceQueries(),
+        invalidateDashboardQueries(),
+        refreshFlakeGitStatus(),
+      ]);
+      await navigate({
+        to: "/$environmentId/flake/$projectId",
+        params: buildFlakeRouteParams(projectRef),
+        search: { view: "maintenance" },
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to start flake maintenance",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setMaintenancePending(false);
+    }
+  }, [
+    invalidateDashboardQueries,
+    invalidateFlakeMaintenanceQueries,
+    maintenancePending,
+    navigate,
+    project,
+    projectRef,
+    refreshFlakeGitStatus,
+  ]);
+
+  const handleStopMaintenance = useCallback(async () => {
+    if (!projectRef || !project) {
+      return;
+    }
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+    try {
+      await api.flakeMaintenance.stop({
+        projectId: project.id,
+      });
+      await Promise.all([
+        invalidateFlakeMaintenanceQueries(),
+        invalidateDashboardQueries(),
+        refreshFlakeGitStatus(),
+      ]);
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to stop flake maintenance",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    }
+  }, [
+    invalidateDashboardQueries,
+    invalidateFlakeMaintenanceQueries,
+    project,
+    projectRef,
+    refreshFlakeGitStatus,
+  ]);
 
   if (!projectRef || !bootstrapComplete || !project) {
     return null;
@@ -619,6 +899,18 @@ function FlakeDashboardRouteView() {
                       <FileTextIcon className="size-3.5" />
                       flake.nix
                     </Button>
+                    <Button
+                      size="sm"
+                      variant={
+                        selectedHostSummary === null && activeView === "maintenance"
+                          ? "secondary"
+                          : "ghost"
+                      }
+                      onClick={() => selectDashboardView(null, "maintenance")}
+                    >
+                      <RefreshCcwIcon className="size-3.5" />
+                      Maintenance
+                    </Button>
                   </div>
                 </section>
 
@@ -644,6 +936,7 @@ function FlakeDashboardRouteView() {
                         const deploying = deployingHostName === summary.host.name;
                         const hostChangesSelected = isSelected && activeView === "changes";
                         const hostDocSelected = isSelected && activeView === "doc";
+                        const hostDeploySelected = isSelected && activeView === "deploy";
                         const deployDisabledReason = deploymentReasonLabel(
                           summary.deployment.reason,
                         );
@@ -675,14 +968,26 @@ function FlakeDashboardRouteView() {
                                   {summary.host.target}
                                 </span>
                               </div>
-                              <span
-                                className={cn(
-                                  "shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
-                                  documentationStatusClasses(summary.documentation.status),
-                                )}
-                              >
-                                {formatDocumentationStatusLabel(summary.documentation.status)}
-                              </span>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                {summary.latestDeployment ? (
+                                  <span
+                                    className={cn(
+                                      "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
+                                      deploymentStatusClasses(summary.latestDeployment.status),
+                                    )}
+                                  >
+                                    {formatDeploymentStatusLabel(summary.latestDeployment.status)}
+                                  </span>
+                                ) : null}
+                                <span
+                                  className={cn(
+                                    "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
+                                    documentationStatusClasses(summary.documentation.status),
+                                  )}
+                                >
+                                  {formatDocumentationStatusLabel(summary.documentation.status)}
+                                </span>
+                              </div>
                             </div>
 
                             <div className="mt-2 flex items-center gap-1.5">
@@ -722,7 +1027,7 @@ function FlakeDashboardRouteView() {
                               </Button>
                               <Button
                                 size="xs"
-                                variant="ghost"
+                                variant={hostDeploySelected ? "secondary" : "ghost"}
                                 disabled={summary.deployment.status !== "deployable" || deploying}
                                 title={deployDisabledReason ?? undefined}
                                 onClick={(event) => {
@@ -818,39 +1123,113 @@ function FlakeDashboardRouteView() {
                   </section>
                 ) : (
                   <section className="rounded-2xl border border-border/60 bg-card/50 p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <h2 className="text-lg font-semibold text-foreground">
                           {activeView === "doc"
                             ? `Documentation for ${selectedHostSummary?.host.name ?? "host"}`
-                            : activeView === "flake"
-                              ? "flake.nix"
-                              : selectedHostSummary
-                                ? `Recent changes for ${selectedHostSummary.host.name}`
-                                : "Recent changes"}
+                            : activeView === "deploy"
+                              ? `Deployment for ${selectedHostSummary?.host.name ?? "host"}`
+                              : activeView === "maintenance"
+                                ? "Flake maintenance"
+                                : activeView === "flake"
+                                  ? "flake.nix"
+                                  : selectedHostSummary
+                                    ? `Recent changes for ${selectedHostSummary.host.name}`
+                                    : "Recent changes"}
                         </h2>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                           {activeView === "doc"
                             ? selectedHostSummary?.documentation.generatedAt
                               ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
                               : "Manual host documentation is missing or needs to be generated."
-                            : activeView === "flake"
-                              ? "Read-only source preview for the selected flake."
-                              : selectedHostSummary
-                                ? "Shows the latest host-specific and ambiguous changes that may affect this host."
-                                : "Shows the latest flake-wide changes recorded by T3code."}
+                            : activeView === "deploy"
+                              ? selectedHostDeployment
+                                ? `${formatDeploymentStatusLabel(selectedHostDeployment.status)} deployment output for ${selectedHostDeployment.hostName}.`
+                                : "Start or foreground a deployment for this host to inspect the latest terminal output here."
+                              : activeView === "maintenance"
+                                ? selectedFlakeMaintenance
+                                  ? `${formatDeploymentStatusLabel(selectedFlakeMaintenance.status)} nix flake update run with git review for this flake.`
+                                  : "Run nix flake update and review the resulting dependency changes from this page."
+                                : activeView === "flake"
+                                  ? "Read-only source preview for the selected flake."
+                                  : selectedHostSummary
+                                    ? "Shows the latest host-specific and ambiguous changes that may affect this host."
+                                    : "Shows the latest flake-wide changes recorded by T3code."}
                         </p>
+                        {selectedHostSummary ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant={activeView === "changes" ? "secondary" : "ghost"}
+                              onClick={() =>
+                                selectDashboardView(selectedHostSummary.host.name, "changes")
+                              }
+                            >
+                              Changes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={activeView === "doc" ? "secondary" : "ghost"}
+                              onClick={() =>
+                                selectDashboardView(selectedHostSummary.host.name, "doc")
+                              }
+                            >
+                              <BookOpenIcon className="size-3.5" />
+                              Doc
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={activeView === "deploy" ? "secondary" : "ghost"}
+                              onClick={() =>
+                                selectDashboardView(selectedHostSummary.host.name, "deploy")
+                              }
+                            >
+                              <SquareTerminalIcon className="size-3.5" />
+                              Deploy
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
-                      {activeView === "doc" && selectedHostSummary ? (
-                        <span
-                          className={cn(
-                            "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
-                            documentationStatusClasses(selectedHostSummary.documentation.status),
-                          )}
-                        >
-                          {formatDocumentationStatusLabel(selectedHostSummary.documentation.status)}
-                        </span>
-                      ) : null}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {activeView === "doc" && selectedHostSummary ? (
+                          <span
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                              documentationStatusClasses(selectedHostSummary.documentation.status),
+                            )}
+                          >
+                            {formatDocumentationStatusLabel(
+                              selectedHostSummary.documentation.status,
+                            )}
+                          </span>
+                        ) : null}
+                        {activeView === "deploy" && selectedHostDeployment ? (
+                          <>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                deploymentStatusClasses(selectedHostDeployment.status),
+                              )}
+                            >
+                              {formatDeploymentStatusLabel(selectedHostDeployment.status)}
+                            </span>
+                            <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                              {formatDeploymentModeLabel(selectedHostDeployment.deployOnServer)}
+                            </span>
+                          </>
+                        ) : null}
+                        {activeView === "maintenance" && selectedFlakeMaintenance ? (
+                          <span
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                              deploymentStatusClasses(selectedFlakeMaintenance.status),
+                            )}
+                          >
+                            {formatDeploymentStatusLabel(selectedFlakeMaintenance.status)}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="mt-4 overflow-hidden rounded-xl border border-border/50 bg-background/40">
@@ -880,6 +1259,434 @@ function FlakeDashboardRouteView() {
                             />
                           </div>
                         )
+                      ) : activeView === "deploy" && selectedHostSummary ? (
+                        <div className="space-y-4 p-4 sm:p-5">
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                  Host
+                                </div>
+                                <div className="mt-0.5 text-base font-semibold text-foreground">
+                                  {selectedHostSummary.host.name}
+                                </div>
+                                <div className="mt-1 text-sm text-muted-foreground">
+                                  {selectedHostSummary.host.target}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    handleOpenDeployDialog(selectedHostSummary.host.name)
+                                  }
+                                  disabled={
+                                    selectedHostSummary.deployment.status !== "deployable" ||
+                                    deployingHostName === selectedHostSummary.host.name
+                                  }
+                                >
+                                  {deployingHostName === selectedHostSummary.host.name ? (
+                                    <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <RocketIcon className="size-3.5" />
+                                  )}
+                                  Redeploy
+                                </Button>
+                                {isSelectedHostDeploymentActive ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void handleStopDeployment()}
+                                  >
+                                    Cancel
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectDashboardView(selectedHostSummary.host.name, "changes")
+                                  }
+                                >
+                                  Changes
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectDashboardView(selectedHostSummary.host.name, "doc")
+                                  }
+                                >
+                                  Doc
+                                </Button>
+                              </div>
+                            </div>
+
+                            {selectedHostDeployment ? (
+                              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Started
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatTimestamp(selectedHostDeployment.startedAt)}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Finished
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {selectedHostDeployment.finishedAt
+                                      ? formatTimestamp(selectedHostDeployment.finishedAt)
+                                      : "Still running"}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3 lg:col-span-2">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Command
+                                  </div>
+                                  <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
+                                    {selectedHostDeployment.command}
+                                  </code>
+                                </div>
+                              </div>
+                            ) : hostDeploymentQuery.isPending ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Loading deployment"
+                                  description="Checking whether this host has a recent deployment."
+                                  icon={<LoaderIcon className="size-5 animate-spin" />}
+                                />
+                              </div>
+                            ) : selectedHostSummary.deployment.status === "deployable" ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="No deployment yet"
+                                  description={`Run deploy-rs for ${selectedHostSummary.host.name} to create a dedicated host deployment page with terminal output.`}
+                                  icon={<SquareTerminalIcon className="size-5" />}
+                                  actionLabel="Deploy"
+                                  onAction={() =>
+                                    handleOpenDeployDialog(selectedHostSummary.host.name)
+                                  }
+                                  pending={deployingHostName === selectedHostSummary.host.name}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Deployment unavailable"
+                                  description={
+                                    deploymentReasonLabel(selectedHostSummary.deployment.reason) ??
+                                    "This host does not have a deploy-rs target."
+                                  }
+                                  icon={<AlertCircleIcon className="size-5" />}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="overflow-hidden rounded-xl border border-border/60 bg-background/60">
+                            <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                              <div>
+                                <h3 className="text-sm font-semibold text-foreground">Terminal</h3>
+                                <p className="text-xs text-muted-foreground">
+                                  Read-only deploy output for the latest run on this host.
+                                </p>
+                              </div>
+                              {selectedHostDeployment ? (
+                                <span
+                                  className={cn(
+                                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                    deploymentStatusClasses(selectedHostDeployment.status),
+                                  )}
+                                >
+                                  {formatDeploymentStatusLabel(selectedHostDeployment.status)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="h-[56vh] min-h-[320px] p-2">
+                              {selectedHostDeployment ? (
+                                <HostDeploymentTerminal
+                                  environmentId={projectRef.environmentId}
+                                  projectId={project.id}
+                                  hostName={selectedHostSummary.host.name}
+                                  cwd={selectedHostDeployment.cwd}
+                                  autoFocus
+                                  onSessionExited={() => {
+                                    void Promise.all([
+                                      invalidateHostDeploymentQueries(),
+                                      invalidateDashboardQueries(),
+                                    ]);
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-full p-2">
+                                  <EmptyPanel
+                                    title="No terminal output yet"
+                                    description="The deploy page will stream the latest run here once a deployment has started."
+                                    icon={<SquareTerminalIcon className="size-5" />}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : activeView === "maintenance" ? (
+                        <div className="space-y-4 p-4 sm:p-5">
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                  Command
+                                </div>
+                                <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
+                                  nix flake update
+                                </code>
+                                <div className="mt-3 text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                  Workspace
+                                </div>
+                                <div className="mt-1 break-all text-sm text-muted-foreground">
+                                  {project.cwd}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleStartMaintenance()}
+                                  disabled={
+                                    maintenancePending ||
+                                    isSelectedFlakeMaintenanceActive ||
+                                    maintenanceActionDisabledReason !== null
+                                  }
+                                  title={maintenanceActionDisabledReason ?? undefined}
+                                >
+                                  {maintenancePending ? (
+                                    <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <RefreshCcwIcon className="size-3.5" />
+                                  )}
+                                  {selectedFlakeMaintenance ? "Run again" : "Run update"}
+                                </Button>
+                                {isSelectedFlakeMaintenanceActive ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void handleStopMaintenance()}
+                                  >
+                                    Cancel
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => selectDashboardView(null, "flake")}
+                                >
+                                  flake.nix
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => selectDashboardView(null, "changes")}
+                                >
+                                  Changes
+                                </Button>
+                              </div>
+                            </div>
+
+                            {selectedFlakeMaintenance ? (
+                              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Started
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatTimestamp(selectedFlakeMaintenance.startedAt)}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Finished
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {selectedFlakeMaintenance.finishedAt
+                                      ? formatTimestamp(selectedFlakeMaintenance.finishedAt)
+                                      : "Still running"}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-sm font-semibold text-foreground">
+                                  Git review
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                  Maintenance only runs from a clean git worktree so you can review,
+                                  commit, and push updates from here.
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                {formatGitBranchLabel(gitStatusQuery.data)}
+                              </span>
+                            </div>
+
+                            {gitStatusQuery.isPending && !gitStatusQuery.data ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Loading git status"
+                                  description="Checking the flake worktree before maintenance."
+                                  icon={<LoaderIcon className="size-5 animate-spin" />}
+                                />
+                              </div>
+                            ) : !gitStatusQuery.data?.isRepo ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Git repository required"
+                                  description="This maintenance page only supports git-backed flakes in v1."
+                                  icon={<AlertCircleIcon className="size-5" />}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-4 space-y-4">
+                                <div className="grid gap-3 md:grid-cols-3">
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                      Branch
+                                    </div>
+                                    <div className="mt-1 text-sm text-foreground">
+                                      {formatGitBranchLabel(gitStatusQuery.data)}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                      Ahead / Behind
+                                    </div>
+                                    <div className="mt-1 text-sm text-foreground">
+                                      {gitStatusQuery.data.aheadCount} /{" "}
+                                      {gitStatusQuery.data.behindCount}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                      Working tree
+                                    </div>
+                                    <div className="mt-1 text-sm text-foreground">
+                                      {gitStatusQuery.data.hasWorkingTreeChanges
+                                        ? "Has local changes"
+                                        : "Clean"}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {selectedFlakeMaintenance?.status === "succeeded" &&
+                                gitStatusQuery.data.workingTree.files.length === 0 ? (
+                                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
+                                    No dependency updates were applied.
+                                  </div>
+                                ) : null}
+
+                                {gitStatusQuery.data.workingTree.files.length > 0 ? (
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                    <div className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                      Changed files
+                                    </div>
+                                    <div className="grid gap-2">
+                                      {gitStatusQuery.data.workingTree.files.map((file) => (
+                                        <div
+                                          key={file.path}
+                                          className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-3 py-2"
+                                        >
+                                          <code className="min-w-0 truncate text-[12px] text-foreground">
+                                            {file.path}
+                                          </code>
+                                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                                            +{file.insertions} / -{file.deletions}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">
+                                    {maintenanceActionDisabledReason ??
+                                      "The worktree is clean. Run flake maintenance to update inputs."}
+                                  </div>
+                                )}
+
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="mb-3 text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Commit and push
+                                  </div>
+                                  <GitActionsControl
+                                    gitCwd={project.cwd}
+                                    activeThreadRef={null}
+                                    environmentId={projectRef.environmentId}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="overflow-hidden rounded-xl border border-border/60 bg-background/60">
+                            <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                              <div>
+                                <h3 className="text-sm font-semibold text-foreground">Terminal</h3>
+                                <p className="text-xs text-muted-foreground">
+                                  Read-only output for the current or last nix flake update run.
+                                </p>
+                              </div>
+                              {selectedFlakeMaintenance ? (
+                                <span
+                                  className={cn(
+                                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                    deploymentStatusClasses(selectedFlakeMaintenance.status),
+                                  )}
+                                >
+                                  {formatDeploymentStatusLabel(selectedFlakeMaintenance.status)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="h-[56vh] min-h-[320px] p-2">
+                              {selectedFlakeMaintenance ? (
+                                <FlakeMaintenanceTerminal
+                                  environmentId={projectRef.environmentId}
+                                  projectId={project.id}
+                                  cwd={selectedFlakeMaintenance.cwd}
+                                  autoFocus
+                                  onSessionExited={() => {
+                                    void Promise.all([
+                                      invalidateFlakeMaintenanceQueries(),
+                                      invalidateDashboardQueries(),
+                                      refreshFlakeGitStatus(),
+                                    ]);
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-full p-2">
+                                  <EmptyPanel
+                                    title="No maintenance run yet"
+                                    description={
+                                      maintenanceActionDisabledReason ??
+                                      "Run nix flake update to stream terminal output and review changed files here."
+                                    }
+                                    icon={<SquareTerminalIcon className="size-5" />}
+                                    pending={maintenancePending}
+                                    {...(maintenanceActionDisabledReason === null
+                                      ? {
+                                          actionLabel: "Run flake update",
+                                          onAction: () => void handleStartMaintenance(),
+                                        }
+                                      : {})}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       ) : activeView === "flake" ? (
                         dashboardQuery.data ? (
                           <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
@@ -948,7 +1755,7 @@ function FlakeDashboardRouteView() {
                 : "Deploy host?"}
             </DialogTitle>
             <DialogDescription>
-              Confirm the deploy-rs command before starting a dedicated deployment thread.
+              Confirm the deploy-rs command before opening the dedicated host deployment page.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-4">

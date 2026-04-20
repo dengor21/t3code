@@ -22,6 +22,7 @@ interface ChatHeaderProps {
   activeThreadId: ThreadId;
   draftId?: DraftId;
   activeThreadTitle: string;
+  scopedHostName?: string | null;
   activeThreadChangeState: "ongoing" | "committed";
   activeProjectName: string | undefined;
   isGitRepo: boolean;
@@ -49,6 +50,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   draftId,
   activeThreadTitle,
+  scopedHostName,
   activeThreadChangeState,
   activeProjectName,
   isGitRepo,
@@ -86,6 +88,11 @@ export const ChatHeader = memo(function ChatHeader({
         >
           {activeThreadChangeState === "committed" ? "Committed" : "Ongoing change"}
         </Badge>
+        {scopedHostName?.trim() && (
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            Host: {scopedHostName.trim()}
+          </Badge>
+        )}
         {activeProjectName && (
           <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
             <span className="min-w-0 truncate">{activeProjectName}</span>

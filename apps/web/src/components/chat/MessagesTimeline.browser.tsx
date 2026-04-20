@@ -69,6 +69,7 @@ function buildProps() {
     resolvedTheme: "dark" as const,
     timestampFormat: "24-hour" as const,
     workspaceRoot: undefined,
+    scopedHostName: null,
     onIsAtEndChange: vi.fn(),
   };
 }
@@ -153,6 +154,24 @@ describe("MessagesTimeline", () => {
       expect(props.onIsAtEndChange).toHaveBeenCalledWith(true);
       expect(scrollToEndSpy).toHaveBeenCalledWith({ animated: false });
       expect(requestAnimationFrameSpy).toHaveBeenCalled();
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("shows a scoped-host hint for empty scoped threads", async () => {
+    const screen = await render(
+      <MessagesTimeline {...buildProps()} scopedHostName="teletype" timelineEntries={[]} />,
+    );
+
+    try {
+      await expect
+        .element(page.getByText("Send a message to start the conversation."))
+        .toBeVisible();
+      await expect.element(page.getByText("Host: teletype")).toBeVisible();
+      await expect
+        .element(page.getByText("Changes default to this host unless you broaden scope."))
+        .toBeVisible();
     } finally {
       await screen.unmount();
     }

@@ -46,6 +46,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Badge } from "../ui/badge";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -113,6 +114,7 @@ interface MessagesTimelineProps {
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
+  scopedHostName?: string | null;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -141,6 +143,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
+  scopedHostName,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -239,10 +242,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   if (rows.length === 0 && !isWorking) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-muted-foreground/30">
-          Send a message to start the conversation.
-        </p>
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="flex max-w-md flex-col items-center gap-3 text-center">
+          <p className="text-sm text-muted-foreground/30">
+            Send a message to start the conversation.
+          </p>
+          {scopedHostName?.trim() && (
+            <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-3">
+              <div className="mb-2 flex justify-center">
+                <Badge variant="outline" className="text-[10px]">
+                  Host: {scopedHostName.trim()}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This thread is scoped to{" "}
+                <span className="font-medium text-foreground">{scopedHostName.trim()}</span>.
+                Changes default to this host unless you broaden scope.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

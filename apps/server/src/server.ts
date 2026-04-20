@@ -14,6 +14,8 @@ import { fixPath } from "./os-jank.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 import { OpenLive } from "./open.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
+import { HostDeploymentRepositoryLive } from "./persistence/Layers/HostDeployments.ts";
+import { FlakeMaintenanceRepositoryLive } from "./persistence/Layers/FlakeMaintenance.ts";
 import { ServerLifecycleEventsLive } from "./serverLifecycleEvents.ts";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService.ts";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger.ts";
@@ -48,7 +50,8 @@ import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
-import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
+import { HostDeploymentServiceLive } from "./project/Layers/HostDeploymentService.ts";
+import { FlakeMaintenanceServiceLive } from "./project/Layers/FlakeMaintenanceService.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
@@ -220,6 +223,14 @@ const AuthLayerLive = ServerAuthLive.pipe(
   Layer.provide(ServerSecretStoreLive),
 );
 
+const RuntimeMiscLayerLive = Layer.mergeAll(
+  ServerEnvironmentLive,
+  AuthLayerLive,
+  AnalyticsServiceLayerLive,
+  OpenLive,
+  ServerLifecycleEventsLive,
+);
+
 const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
@@ -239,18 +250,18 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(ProjectFaviconResolverLive),
   Layer.provideMerge(DeployRsResolverLive),
   Layer.provideMerge(FlakeMetadataResolverLive),
-  Layer.provideMerge(ProjectDashboardContentResolverLive),
   Layer.provideMerge(RepositoryIdentityResolverLive),
-  Layer.provideMerge(ServerEnvironmentLive),
-  Layer.provideMerge(AuthLayerLive),
-
-  // Misc.
-  Layer.provideMerge(AnalyticsServiceLayerLive),
-  Layer.provideMerge(OpenLive),
-  Layer.provideMerge(ServerLifecycleEventsLive),
+  Layer.provideMerge(HostDeploymentRepositoryLive),
+  Layer.provideMerge(FlakeMaintenanceRepositoryLive),
+  Layer.provideMerge(RuntimeMiscLayerLive),
 );
 
-const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(Layer.provide(RuntimeDependenciesLive));
+const RuntimeServicesLive = Layer.empty.pipe(
+  Layer.provideMerge(ServerRuntimeStartupLive),
+  Layer.provideMerge(HostDeploymentServiceLive),
+  Layer.provideMerge(FlakeMaintenanceServiceLive),
+  Layer.provide(RuntimeDependenciesLive),
+);
 
 export const makeRoutesLayer = Layer.mergeAll(
   authBearerBootstrapRouteLayer,

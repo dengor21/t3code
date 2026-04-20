@@ -20,12 +20,32 @@ import type {
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  FlakeMaintenanceGetInput,
+  FlakeMaintenanceStartInput,
+  FlakeMaintenanceStartResult,
+  FlakeMaintenanceStopInput,
+  FlakeMaintenanceTerminalEvent,
+  FlakeMaintenanceTerminalOpenInput,
+  FlakeMaintenanceTerminalResizeInput,
+  FlakeMaintenanceTerminalSnapshot,
+  NullOrFlakeMaintenanceSummary,
+} from "./flakeMaintenance.ts";
+import type {
+  HostDeploymentGetInput,
+  HostDeploymentStartInput,
+  HostDeploymentStartResult,
+  HostDeploymentStopInput,
+  HostDeploymentTerminalEvent,
+  HostDeploymentTerminalOpenInput,
+  HostDeploymentTerminalResizeInput,
+  HostDeploymentTerminalSnapshot,
+  NullOrHostDeploymentSummary,
+} from "./hostDeployment.ts";
+import type {
   ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentInput,
-  ProjectStartHostDeploymentInput,
-  ProjectStartHostDeploymentResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -256,9 +276,32 @@ export interface EnvironmentApi {
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,
     ) => Promise<ProjectGenerateHostDocumentationResult>;
-    startHostDeployment: (
-      input: ProjectStartHostDeploymentInput,
-    ) => Promise<ProjectStartHostDeploymentResult>;
+  };
+  hostDeployments: {
+    start: (input: HostDeploymentStartInput) => Promise<HostDeploymentStartResult>;
+    get: (input: HostDeploymentGetInput) => Promise<NullOrHostDeploymentSummary>;
+    stop: (input: HostDeploymentStopInput) => Promise<NullOrHostDeploymentSummary>;
+    openTerminal: (
+      input: HostDeploymentTerminalOpenInput,
+    ) => Promise<HostDeploymentTerminalSnapshot>;
+    resizeTerminal: (input: HostDeploymentTerminalResizeInput) => Promise<void>;
+    onTerminalEvent: (
+      input: HostDeploymentGetInput,
+      callback: (event: HostDeploymentTerminalEvent) => void,
+    ) => () => void;
+  };
+  flakeMaintenance: {
+    start: (input: FlakeMaintenanceStartInput) => Promise<FlakeMaintenanceStartResult>;
+    get: (input: FlakeMaintenanceGetInput) => Promise<NullOrFlakeMaintenanceSummary>;
+    stop: (input: FlakeMaintenanceStopInput) => Promise<NullOrFlakeMaintenanceSummary>;
+    openTerminal: (
+      input: FlakeMaintenanceTerminalOpenInput,
+    ) => Promise<FlakeMaintenanceTerminalSnapshot>;
+    resizeTerminal: (input: FlakeMaintenanceTerminalResizeInput) => Promise<void>;
+    onTerminalEvent: (
+      input: FlakeMaintenanceGetInput,
+      callback: (event: FlakeMaintenanceTerminalEvent) => void,
+    ) => () => void;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

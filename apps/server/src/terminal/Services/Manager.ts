@@ -64,6 +64,10 @@ export interface TerminalStartInput extends TerminalOpenInput {
   rows: number;
 }
 
+export interface TerminalOpenCommandInput extends TerminalOpenInput {
+  command: string;
+}
+
 /**
  * TerminalManagerShape - Service API for terminal session lifecycle operations.
  */
@@ -76,6 +80,16 @@ export interface TerminalManagerShape {
    */
   readonly open: (
     input: TerminalOpenInput,
+  ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
+
+  /**
+   * Open or restart a terminal session that executes a fixed command.
+   *
+   * The terminal manager owns the PTY lifecycle and history persistence, but
+   * callers do not interactively write into this session.
+   */
+  readonly openCommand: (
+    input: TerminalOpenCommandInput,
   ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
 
   /**
@@ -108,6 +122,18 @@ export interface TerminalManagerShape {
    * When `terminalId` is omitted, closes all sessions for the thread.
    */
   readonly close: (input: TerminalCloseInput) => Effect.Effect<void, TerminalError>;
+
+  /**
+   * Read a current in-memory snapshot without starting or restarting a session.
+   */
+  readonly getSnapshot: (
+    input: TerminalClearInput,
+  ) => Effect.Effect<TerminalSessionSnapshot | null, TerminalError>;
+
+  /**
+   * Read persisted terminal history without starting or restarting a session.
+   */
+  readonly readHistory: (input: TerminalClearInput) => Effect.Effect<string, TerminalError>;
 
   /**
    * Subscribe to terminal runtime events with a direct callback.

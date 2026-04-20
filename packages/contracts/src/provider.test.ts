@@ -113,4 +113,35 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.modelSelection.options?.effort).toBe("ultrathink");
     expect(parsed.modelSelection.options?.fastMode).toBe(true);
   });
+
+  it("accepts provider turn context for flake-backed host threads", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      providerContext: {
+        projectKind: "nix-flake",
+        workspaceRoot: "/workspace/flake",
+        scopedHostName: "nexus",
+        flake: {
+          flakePath: "flake.nix",
+          hostNames: ["nexus", "router"],
+          documentationPaths: {
+            generalChanges: ".t3code/changes.md",
+            hostDoc: ".t3code/docs/hosts/nexus.md",
+          },
+        },
+      },
+    });
+
+    expect(parsed.providerContext?.projectKind).toBe("nix-flake");
+    expect(parsed.providerContext?.workspaceRoot).toBe("/workspace/flake");
+    expect(parsed.providerContext?.scopedHostName).toBe("nexus");
+    expect(parsed.providerContext?.flake?.flakePath).toBe("flake.nix");
+    expect(parsed.providerContext?.flake?.hostNames).toEqual(["nexus", "router"]);
+    expect(parsed.providerContext?.flake?.documentationPaths?.generalChanges).toBe(
+      ".t3code/changes.md",
+    );
+    expect(parsed.providerContext?.flake?.documentationPaths?.hostDoc).toBe(
+      ".t3code/docs/hosts/nexus.md",
+    );
+  });
 });

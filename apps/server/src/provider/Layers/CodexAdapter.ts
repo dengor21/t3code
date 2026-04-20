@@ -1484,6 +1484,9 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(input.interactionMode !== undefined
             ? { interactionMode: input.interactionMode }
             : {}),
+          ...(input.providerContext !== undefined
+            ? { providerContext: input.providerContext }
+            : {}),
           ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
         };
         return manager.sendTurn(managerInput);

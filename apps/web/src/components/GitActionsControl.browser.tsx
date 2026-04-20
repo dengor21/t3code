@@ -25,6 +25,9 @@ function createDeferredPromise<T>() {
 const {
   activeRunStackedActionDeferredRef,
   activeDraftThreadRef,
+  gitInitMutationOptionsSpy,
+  gitPullMutationOptionsSpy,
+  gitRunStackedActionMutationOptionsSpy,
   hasServerThreadRef,
   invalidateGitQueriesSpy,
   refreshGitStatusSpy,
@@ -35,9 +38,13 @@ const {
   toastCloseSpy,
   toastPromiseSpy,
   toastUpdateSpy,
+  useGitStatusSpy,
 } = vi.hoisted(() => ({
   activeRunStackedActionDeferredRef: { current: createDeferredPromise<never>() },
   activeDraftThreadRef: { current: null as unknown },
+  gitInitMutationOptionsSpy: vi.fn(() => ({ __kind: "init" })),
+  gitPullMutationOptionsSpy: vi.fn(() => ({ __kind: "pull" })),
+  gitRunStackedActionMutationOptionsSpy: vi.fn(() => ({ __kind: "run-stacked-action" })),
   hasServerThreadRef: { current: true },
   invalidateGitQueriesSpy: vi.fn(() => Promise.resolve()),
   refreshGitStatusSpy: vi.fn(() => Promise.resolve(null)),
@@ -48,6 +55,19 @@ const {
   toastCloseSpy: vi.fn(),
   toastPromiseSpy: vi.fn(),
   toastUpdateSpy: vi.fn(),
+  useGitStatusSpy: vi.fn(() => ({
+    data: {
+      branch: BRANCH_NAME,
+      hasWorkingTreeChanges: false,
+      workingTree: { files: [], insertions: 0, deletions: 0 },
+      hasUpstream: true,
+      aheadCount: 1,
+      behindCount: 0,
+      pr: null,
+    },
+    error: null,
+    isPending: false,
+  })),
 }));
 
 vi.mock("@tanstack/react-query", async () => {
@@ -97,32 +117,20 @@ vi.mock("~/editorPreferences", () => ({
 }));
 
 vi.mock("~/lib/gitReactQuery", () => ({
-  gitInitMutationOptions: vi.fn(() => ({ __kind: "init" })),
+  gitInitMutationOptions: gitInitMutationOptionsSpy,
   gitMutationKeys: {
     pull: vi.fn(() => ["pull"]),
     runStackedAction: vi.fn(() => ["run-stacked-action"]),
   },
-  gitPullMutationOptions: vi.fn(() => ({ __kind: "pull" })),
-  gitRunStackedActionMutationOptions: vi.fn(() => ({ __kind: "run-stacked-action" })),
+  gitPullMutationOptions: gitPullMutationOptionsSpy,
+  gitRunStackedActionMutationOptions: gitRunStackedActionMutationOptionsSpy,
   invalidateGitQueries: invalidateGitQueriesSpy,
 }));
 
 vi.mock("~/lib/gitStatusState", () => ({
   refreshGitStatus: refreshGitStatusSpy,
   resetGitStatusStateForTests: () => undefined,
-  useGitStatus: vi.fn(() => ({
-    data: {
-      branch: BRANCH_NAME,
-      hasWorkingTreeChanges: false,
-      workingTree: { files: [], insertions: 0, deletions: 0 },
-      hasUpstream: true,
-      aheadCount: 1,
-      behindCount: 0,
-      pr: null,
-    },
-    error: null,
-    isPending: false,
-  })),
+  useGitStatus: useGitStatusSpy,
 }));
 
 vi.mock("~/localApi", () => ({
@@ -277,6 +285,42 @@ describe("GitActionsControl thread-scoped progress toast", () => {
     activeDraftThreadRef.current = null;
     hasServerThreadRef.current = true;
     document.body.innerHTML = "";
+  });
+
+  it("uses an explicit environment id when rendered without an active thread", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const screen = await render(
+      <GitActionsControl gitCwd={GIT_CWD} activeThreadRef={null} environmentId={ENVIRONMENT_A} />,
+      {
+        container: host,
+      },
+    );
+
+    try {
+      expect(useGitStatusSpy).toHaveBeenCalledWith({
+        environmentId: ENVIRONMENT_A,
+        cwd: GIT_CWD,
+      });
+      expect(gitRunStackedActionMutationOptionsSpy).toHaveBeenCalledWith({
+        environmentId: ENVIRONMENT_A,
+        cwd: GIT_CWD,
+        queryClient: {},
+      });
+      expect(gitPullMutationOptionsSpy).toHaveBeenCalledWith({
+        environmentId: ENVIRONMENT_A,
+        cwd: GIT_CWD,
+        queryClient: {},
+      });
+      expect(gitInitMutationOptionsSpy).toHaveBeenCalledWith({
+        environmentId: ENVIRONMENT_A,
+        cwd: GIT_CWD,
+        queryClient: {},
+      });
+    } finally {
+      await screen.unmount();
+      host.remove();
+    }
   });
 
   it("keeps an in-flight git action toast pinned to the thread ref that started it", async () => {

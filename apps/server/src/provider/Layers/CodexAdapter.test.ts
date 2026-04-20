@@ -276,6 +276,46 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
       });
     }),
   );
+
+  it.effect("passes provider context through to the codex manager", () =>
+    Effect.gen(function* () {
+      sessionErrorManager.sendTurnImpl.mockClear();
+      const adapter = yield* CodexAdapter;
+
+      yield* Effect.ignore(
+        adapter.sendTurn({
+          threadId: asThreadId("sess-missing"),
+          input: "hello",
+          attachments: [],
+          providerContext: {
+            projectKind: "nix-flake",
+            workspaceRoot: "/workspace/flake",
+            scopedHostName: "nexus",
+            flake: {
+              documentationPaths: {
+                generalChanges: ".t3code/changes.md",
+              },
+            },
+          },
+        }),
+      );
+
+      assert.deepStrictEqual(sessionErrorManager.sendTurnImpl.mock.calls[0]?.[0], {
+        threadId: asThreadId("sess-missing"),
+        input: "hello",
+        providerContext: {
+          projectKind: "nix-flake",
+          workspaceRoot: "/workspace/flake",
+          scopedHostName: "nexus",
+          flake: {
+            documentationPaths: {
+              generalChanges: ".t3code/changes.md",
+            },
+          },
+        },
+      });
+    }),
+  );
 });
 
 const lifecycleManager = new FakeCodexManager();

@@ -9,7 +9,7 @@ import {
   type OrchestrationProjectShell,
   ProjectId,
 } from "@t3tools/contracts";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DocumentationStatusResolverLive } from "../../orchestration/Layers/DocumentationStatusResolver.ts";
@@ -19,6 +19,8 @@ import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
 import { ProjectDashboardContentResolver } from "../Services/ProjectDashboardContentResolver.ts";
 import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
+import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
+import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import { ProjectDashboardContentResolverLive } from "./ProjectDashboardContentResolver.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -217,6 +219,27 @@ Current-state documentation for bc250.
           makeProjectionSnapshotQuery(makeProjectShell(workspaceRoot)),
         ),
       ),
+      Layer.provideMerge(
+        Layer.succeed(HostDeploymentService, {
+          start: () => Effect.die("unused"),
+          get: () => Effect.die("unused"),
+          listByProjectId: () => Effect.succeed(new Map()),
+          stop: () => Effect.die("unused"),
+          openTerminal: () => Effect.die("unused"),
+          resizeTerminal: () => Effect.die("unused"),
+          subscribeTerminalEvents: () => Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(FlakeMaintenanceService, {
+          start: () => Effect.die("unused"),
+          get: () => Effect.succeed(null),
+          stop: () => Effect.die("unused"),
+          openTerminal: () => Effect.die("unused"),
+          resizeTerminal: () => Effect.die("unused"),
+          subscribeTerminalEvents: () => Stream.empty,
+        }),
+      ),
       Layer.provide(NodeServices.layer),
     );
   }
@@ -248,6 +271,7 @@ Current-state documentation for bc250.
     expect(result.hostChanges).toEqual([]);
     expect(result.hostDoc).toBeNull();
     expect(result.hostSummaries).toHaveLength(2);
+    expect(result.latestMaintenance).toBeNull();
     expect(
       result.hostSummaries.find((entry) => entry.host.name === "bc250")?.documentation.status,
     ).toBe("current");

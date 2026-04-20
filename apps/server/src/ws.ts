@@ -2,9 +2,7 @@ import { Cause, Duration, Effect, Layer, Option, Queue, Ref, Schema, Stream } fr
 import {
   type AuthAccessStreamEvent,
   AuthSessionId,
-  buildDeployRsCommand,
   CommandId,
-  DEFAULT_TERMINAL_ID,
   EventId,
   type OrchestrationCommand,
   type GitActionProgressEvent,
@@ -18,7 +16,6 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectSearchEntriesError,
-  ProjectStartHostDeploymentError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
   FilesystemBrowseError,
@@ -50,20 +47,19 @@ import {
 } from "./observability/RpcInstrumentation.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents.ts";
-import {
-  getAutoBootstrapDefaultModelSelection,
-  ServerRuntimeStartup,
-} from "./serverRuntimeStartup.ts";
+import { ServerRuntimeStartup } from "./serverRuntimeStartup.ts";
 import { ServerSettingsService } from "./serverSettings.ts";
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
+import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
-import { DeployRsResolver } from "./project/Services/DeployRsResolver.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
+import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
+import { FlakeMaintenanceService } from "./project/Services/FlakeMaintenanceService.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
@@ -157,6 +153,8 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const git = yield* GitCore;
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
+      const hostDeploymentService = yield* HostDeploymentService;
+      const flakeMaintenanceService = yield* FlakeMaintenanceService;
       const providerRegistry = yield* ProviderRegistry;
       const config = yield* ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -166,7 +164,6 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const projectDashboardContentResolver = yield* ProjectDashboardContentResolver;
-      const deployRsResolver = yield* DeployRsResolver;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const documentationStatusResolver = yield* DocumentationStatusResolver;
@@ -214,12 +211,6 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               message: cause instanceof Error ? cause.message : fallbackMessage,
               cause,
             });
-
-      const toProjectStartHostDeploymentError = (message: string, cause?: unknown) =>
-        new ProjectStartHostDeploymentError({
-          message,
-          ...(cause !== undefined ? { cause } : {}),
-        });
 
       const toBootstrapDispatchCommandCauseError = (cause: Cause.Cause<unknown>) => {
         const error = Cause.squash(cause);
@@ -874,170 +865,65 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             }),
             { "rpc.aggregate": "workspace" },
           ),
-        [WS_METHODS.projectsStartHostDeployment]: (input) =>
+        [WS_METHODS.hostDeploymentsStart]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDeploymentsStart, hostDeploymentService.start(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDeploymentsGet]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDeploymentsGet, hostDeploymentService.get(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDeploymentsStop]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDeploymentsStop, hostDeploymentService.stop(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDeploymentsTerminalOpen]: (input) =>
           observeRpcEffect(
-            WS_METHODS.projectsStartHostDeployment,
-            Effect.gen(function* () {
-              const project = yield* projectionSnapshotQuery
-                .getProjectShellById(input.projectId)
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toProjectStartHostDeploymentError("Failed to load the selected flake.", cause),
-                  ),
-                  Effect.flatMap((result) =>
-                    Option.match(result, {
-                      onNone: () =>
-                        Effect.fail(
-                          toProjectStartHostDeploymentError(
-                            `Flake ${input.projectId} was not found.`,
-                          ),
-                        ),
-                      onSome: (value) => Effect.succeed(value),
-                    }),
-                  ),
-                );
-
-              const flakeMetadata =
-                project.flakeMetadata ??
-                (yield* flakeMetadataResolver
-                  .resolve(project.workspaceRoot)
-                  .pipe(
-                    Effect.mapError((cause) =>
-                      toProjectStartHostDeploymentError(
-                        "Failed to resolve flake host metadata.",
-                        cause,
-                      ),
-                    ),
-                  ));
-              const hosts =
-                flakeMetadata.hosts.length > 0
-                  ? flakeMetadata.hosts
-                  : flakeMetadata.host
-                    ? [flakeMetadata.host]
-                    : [];
-              const selectedHost =
-                hosts.find(
-                  (host) => host.name.trim().toLowerCase() === input.hostName.trim().toLowerCase(),
-                ) ?? null;
-
-              if (selectedHost === null) {
-                return yield* toProjectStartHostDeploymentError(
-                  `Host ${input.hostName} was not found in the selected flake.`,
-                );
-              }
-
-              const hostDeployments = yield* deployRsResolver
-                .resolveHostDeployments({
-                  workspaceRoot: project.workspaceRoot,
-                  hosts,
-                })
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toProjectStartHostDeploymentError(
-                      "Failed to resolve deploy-rs host targets.",
-                      cause,
-                    ),
-                  ),
-                );
-
-              const deployment =
-                hostDeployments.get(selectedHost.name.trim().toLowerCase()) ?? null;
-              if (deployment === null || deployment.status !== "deployable") {
-                const message =
-                  deployment?.reason === "evaluation-failed"
-                    ? "Could not evaluate deploy-rs targets for the selected flake."
-                    : `Host ${selectedHost.name} does not have a deploy-rs target configured.`;
-                return yield* toProjectStartHostDeploymentError(message);
-              }
-              const deployOnServer = input.deployOnServer === true;
-              const deployCommand = buildDeployRsCommand(selectedHost.name, { deployOnServer });
-
-              const gitStatus = yield* gitStatusBroadcaster
-                .refreshStatus(project.workspaceRoot)
-                .pipe(
-                  Effect.match({
-                    onFailure: () => null,
-                    onSuccess: (result) => result,
-                  }),
-                );
-
-              const now = new Date().toISOString();
-              const threadId = ThreadId.make(crypto.randomUUID());
-              const title = `Deploy ${selectedHost.name}`;
-              const modelSelection =
-                project.defaultModelSelection ?? getAutoBootstrapDefaultModelSelection();
-
-              yield* orchestrationEngine
-                .dispatch({
-                  type: "thread.create",
-                  commandId: serverCommandId("deploy-thread-create"),
-                  threadId,
-                  projectId: project.id,
-                  title,
-                  modelSelection,
-                  runtimeMode: "full-access",
-                  interactionMode: "default",
-                  branch: gitStatus?.branch ?? null,
-                  worktreePath: null,
-                  scopedHostName: selectedHost.name,
-                  createdAt: now,
-                })
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toProjectStartHostDeploymentError(
-                      "Failed to create the deployment thread.",
-                      cause,
-                    ),
-                  ),
-                );
-
-              yield* orchestrationEngine
-                .dispatch({
-                  type: "thread.activity.append",
-                  commandId: serverCommandId("deploy-thread-activity"),
-                  threadId,
-                  activity: {
-                    id: EventId.make(crypto.randomUUID()),
-                    tone: "info",
-                    kind: "deploy.requested",
-                    summary: `Deployment requested for ${selectedHost.name}`,
-                    payload: {
-                      hostName: selectedHost.name,
-                      command: deployCommand,
-                      deployOnServer,
-                      requestedAt: now,
-                    },
-                    turnId: null,
-                    createdAt: now,
-                  },
-                  createdAt: now,
-                })
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toProjectStartHostDeploymentError(
-                      "Failed to record the deployment request.",
-                      cause,
-                    ),
-                  ),
-                );
-
-              return {
-                threadId,
-                title,
-                cwd: project.workspaceRoot,
-                worktreePath: null,
-                terminalId: DEFAULT_TERMINAL_ID,
-                command: deployCommand,
-                scopedHostName: selectedHost.name,
-              } as const;
-            }).pipe(
-              Effect.mapError((cause) =>
-                Schema.is(ProjectStartHostDeploymentError)(cause)
-                  ? cause
-                  : toProjectStartHostDeploymentError("Failed to start host deployment.", cause),
-              ),
-            ),
-            { "rpc.aggregate": "workspace" },
+            WS_METHODS.hostDeploymentsTerminalOpen,
+            hostDeploymentService.openTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostDeploymentsTerminalResize]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostDeploymentsTerminalResize,
+            hostDeploymentService.resizeTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostDeploymentsSubscribeTerminalEvents]: (input) =>
+          observeRpcStream(
+            WS_METHODS.hostDeploymentsSubscribeTerminalEvents,
+            hostDeploymentService.subscribeTerminalEvents(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.flakeMaintenanceStart]: (input) =>
+          observeRpcEffect(WS_METHODS.flakeMaintenanceStart, flakeMaintenanceService.start(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.flakeMaintenanceGet]: (input) =>
+          observeRpcEffect(WS_METHODS.flakeMaintenanceGet, flakeMaintenanceService.get(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.flakeMaintenanceStop]: (input) =>
+          observeRpcEffect(WS_METHODS.flakeMaintenanceStop, flakeMaintenanceService.stop(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.flakeMaintenanceTerminalOpen]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.flakeMaintenanceTerminalOpen,
+            flakeMaintenanceService.openTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.flakeMaintenanceTerminalResize]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.flakeMaintenanceTerminalResize,
+            flakeMaintenanceService.resizeTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.flakeMaintenanceSubscribeTerminalEvents]: (input) =>
+          observeRpcStream(
+            WS_METHODS.flakeMaintenanceSubscribeTerminalEvents,
+            flakeMaintenanceService.subscribeTerminalEvents(input),
+            { "rpc.aggregate": "terminal" },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, open.openInEditor(input), {
@@ -1340,6 +1226,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
             makeWsRpcLayer(session.sessionId).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               Layer.provideMerge(FlakeMetadataResolverLive),
+              Layer.provideMerge(ProjectDashboardContentResolverLive),
             ),
           ),
         );

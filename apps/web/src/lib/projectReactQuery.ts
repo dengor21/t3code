@@ -18,6 +18,24 @@ export const projectQueryKeys = {
       projectId ?? null,
       hostName ?? null,
     ] as const,
+  hostDeploymentPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "host-deployment", environmentId ?? null, projectId ?? null] as const,
+  hostDeployment: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    hostName: string | null,
+  ) =>
+    [
+      "projects",
+      "host-deployment",
+      environmentId ?? null,
+      projectId ?? null,
+      hostName ?? null,
+    ] as const,
+  flakeMaintenancePrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "flake-maintenance", environmentId ?? null, projectId ?? null] as const,
+  flakeMaintenance: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "flake-maintenance", environmentId ?? null, projectId ?? null] as const,
   searchEntries: (
     environmentId: EnvironmentId | null,
     cwd: string | null,
@@ -29,6 +47,8 @@ export const projectQueryKeys = {
 const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
 const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
+const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
+const DEFAULT_FLAKE_MAINTENANCE_STALE_TIME = 2_000;
 const EMPTY_SEARCH_ENTRIES_RESULT: ProjectSearchEntriesResult = {
   entries: [],
   truncated: false,
@@ -93,5 +113,62 @@ export function projectDashboardContentQueryOptions(input: {
     enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
     staleTime: input.staleTime ?? DEFAULT_DASHBOARD_CONTENT_STALE_TIME,
     placeholderData: (previous) => previous,
+  });
+}
+
+export function hostDeploymentQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  hostName?: string | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  const normalizedHostName = input.hostName?.trim() ? input.hostName.trim() : null;
+  return queryOptions({
+    queryKey: projectQueryKeys.hostDeployment(
+      input.environmentId,
+      input.projectId,
+      normalizedHostName,
+    ),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId || !normalizedHostName) {
+        throw new Error("Host deployment is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.hostDeployments.get({
+        projectId: input.projectId,
+        hostName: normalizedHostName,
+      });
+    },
+    enabled:
+      (input.enabled ?? true) &&
+      input.environmentId !== null &&
+      input.projectId !== null &&
+      normalizedHostName !== null,
+    staleTime: input.staleTime ?? DEFAULT_HOST_DEPLOYMENT_STALE_TIME,
+    placeholderData: (previous) => previous ?? null,
+  });
+}
+
+export function flakeMaintenanceQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  return queryOptions({
+    queryKey: projectQueryKeys.flakeMaintenance(input.environmentId, input.projectId),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId) {
+        throw new Error("Flake maintenance is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.flakeMaintenance.get({
+        projectId: input.projectId,
+      });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
+    staleTime: input.staleTime ?? DEFAULT_FLAKE_MAINTENANCE_STALE_TIME,
+    placeholderData: (previous) => previous ?? null,
   });
 }

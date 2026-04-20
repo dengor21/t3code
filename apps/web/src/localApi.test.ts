@@ -52,7 +52,22 @@ const rpcClientMock = {
     writeFile: vi.fn(),
     getDashboardContent: vi.fn(),
     generateHostDocumentation: vi.fn(),
-    startHostDeployment: vi.fn(),
+  },
+  hostDeployments: {
+    start: vi.fn(),
+    get: vi.fn(),
+    stop: vi.fn(),
+    openTerminal: vi.fn(),
+    resizeTerminal: vi.fn(),
+    onTerminalEvent: vi.fn(() => () => undefined),
+  },
+  flakeMaintenance: {
+    start: vi.fn(),
+    get: vi.fn(),
+    stop: vi.fn(),
+    openTerminal: vi.fn(),
+    resizeTerminal: vi.fn(),
+    onTerminalEvent: vi.fn(() => () => undefined),
   },
   filesystem: {
     browse: vi.fn(),

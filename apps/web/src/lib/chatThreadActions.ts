@@ -59,12 +59,14 @@ function buildContextualThreadOptions(context: ChatThreadActionContext): NewThre
     envMode:
       context.activeDraftThread?.envMode ??
       (context.activeThread?.worktreePath ? "worktree" : "local"),
+    scopedHostName: null,
   };
 }
 
 function buildDefaultThreadOptions(context: ChatThreadActionContext): NewThreadOptions {
   return {
     envMode: context.defaultThreadEnvMode,
+    scopedHostName: null,
   };
 }
 

@@ -1,12 +1,8 @@
 import { Schema } from "effect";
-import {
-  IsoDateTime,
-  PositiveInt,
-  ProjectId,
-  ThreadId,
-  TrimmedNonEmptyString,
-} from "./baseSchemas.ts";
+import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./environment.ts";
+import { FlakeMaintenanceSummary } from "./flakeMaintenance.ts";
+import { HostDeploymentSummary } from "./hostDeployment.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -125,6 +121,7 @@ export const ProjectDashboardHostSummary = Schema.Struct({
   host: FlakeHost,
   documentation: HostDocumentationState,
   deployment: ProjectDashboardHostDeployment,
+  latestDeployment: Schema.NullOr(HostDeploymentSummary),
 });
 export type ProjectDashboardHostSummary = typeof ProjectDashboardHostSummary.Type;
 
@@ -157,37 +154,12 @@ export const ProjectDashboardContentResult = Schema.Struct({
   hostChanges: Schema.Array(ProjectDashboardChangeEntry),
   hostDoc: Schema.NullOr(ProjectDashboardHostDoc),
   hostSummaries: Schema.Array(ProjectDashboardHostSummary),
+  latestMaintenance: Schema.NullOr(FlakeMaintenanceSummary),
 });
 export type ProjectDashboardContentResult = typeof ProjectDashboardContentResult.Type;
 
 export class ProjectGetDashboardContentError extends Schema.TaggedErrorClass<ProjectGetDashboardContentError>()(
   "ProjectGetDashboardContentError",
-  {
-    message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
-  },
-) {}
-
-export const ProjectStartHostDeploymentInput = Schema.Struct({
-  projectId: ProjectId,
-  hostName: TrimmedNonEmptyString,
-  deployOnServer: Schema.optional(Schema.Boolean),
-});
-export type ProjectStartHostDeploymentInput = typeof ProjectStartHostDeploymentInput.Type;
-
-export const ProjectStartHostDeploymentResult = Schema.Struct({
-  threadId: ThreadId,
-  title: TrimmedNonEmptyString,
-  cwd: TrimmedNonEmptyString,
-  worktreePath: Schema.Null,
-  terminalId: Schema.Literal("default"),
-  command: TrimmedNonEmptyString,
-  scopedHostName: TrimmedNonEmptyString,
-});
-export type ProjectStartHostDeploymentResult = typeof ProjectStartHostDeploymentResult.Type;
-
-export class ProjectStartHostDeploymentError extends Schema.TaggedErrorClass<ProjectStartHostDeploymentError>()(
-  "ProjectStartHostDeploymentError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

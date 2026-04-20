@@ -87,7 +87,22 @@ function createRegisteredGitStatusClient(environmentId: EnvironmentId) {
       writeFile: vi.fn(async () => undefined),
       getDashboardContent: vi.fn(async () => undefined),
       generateHostDocumentation: vi.fn(async () => undefined),
-      startHostDeployment: vi.fn(async () => undefined),
+    },
+    hostDeployments: {
+      start: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      stop: vi.fn(async () => null),
+      openTerminal: vi.fn(async () => undefined),
+      resizeTerminal: vi.fn(async () => undefined),
+      onTerminalEvent: vi.fn(() => () => undefined),
+    },
+    flakeMaintenance: {
+      start: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      stop: vi.fn(async () => null),
+      openTerminal: vi.fn(async () => undefined),
+      resizeTerminal: vi.fn(async () => undefined),
+      onTerminalEvent: vi.fn(() => () => undefined),
     },
     shell: {
       openInEditor: vi.fn(async () => undefined),

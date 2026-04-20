@@ -10,6 +10,18 @@ import {
   FilesystemBrowseError,
 } from "./filesystem.ts";
 import {
+  FlakeMaintenanceError,
+  FlakeMaintenanceGetInput,
+  FlakeMaintenanceStartInput,
+  FlakeMaintenanceStartResult,
+  FlakeMaintenanceStopInput,
+  FlakeMaintenanceTerminalEvent,
+  FlakeMaintenanceTerminalOpenInput,
+  FlakeMaintenanceTerminalResizeInput,
+  FlakeMaintenanceTerminalSnapshot,
+  NullOrFlakeMaintenanceSummary,
+} from "./flakeMaintenance.ts";
+import {
   GitActionProgressEvent,
   GitCheckoutInput,
   GitCheckoutResult,
@@ -49,15 +61,24 @@ import {
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
 import {
+  HostDeploymentError,
+  HostDeploymentGetInput,
+  HostDeploymentStartInput,
+  HostDeploymentStartResult,
+  HostDeploymentStopInput,
+  HostDeploymentTerminalEvent,
+  HostDeploymentTerminalOpenInput,
+  HostDeploymentTerminalResizeInput,
+  HostDeploymentTerminalSnapshot,
+  NullOrHostDeploymentSummary,
+} from "./hostDeployment.ts";
+import {
   ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationError,
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentError,
   ProjectGetDashboardContentInput,
-  ProjectStartHostDeploymentError,
-  ProjectStartHostDeploymentInput,
-  ProjectStartHostDeploymentResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -95,7 +116,18 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
-  projectsStartHostDeployment: "projects.startHostDeployment",
+  hostDeploymentsStart: "hostDeployments.start",
+  hostDeploymentsGet: "hostDeployments.get",
+  hostDeploymentsStop: "hostDeployments.stop",
+  hostDeploymentsTerminalOpen: "hostDeployments.terminalOpen",
+  hostDeploymentsTerminalResize: "hostDeployments.terminalResize",
+  hostDeploymentsSubscribeTerminalEvents: "hostDeployments.subscribeTerminalEvents",
+  flakeMaintenanceStart: "flakeMaintenance.start",
+  flakeMaintenanceGet: "flakeMaintenance.get",
+  flakeMaintenanceStop: "flakeMaintenance.stop",
+  flakeMaintenanceTerminalOpen: "flakeMaintenance.terminalOpen",
+  flakeMaintenanceTerminalResize: "flakeMaintenance.terminalResize",
+  flakeMaintenanceSubscribeTerminalEvents: "flakeMaintenance.subscribeTerminalEvents",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -195,11 +227,89 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   error: ProjectGetDashboardContentError,
 });
 
-export const WsProjectsStartHostDeploymentRpc = Rpc.make(WS_METHODS.projectsStartHostDeployment, {
-  payload: ProjectStartHostDeploymentInput,
-  success: ProjectStartHostDeploymentResult,
-  error: ProjectStartHostDeploymentError,
+export const WsHostDeploymentsStartRpc = Rpc.make(WS_METHODS.hostDeploymentsStart, {
+  payload: HostDeploymentStartInput,
+  success: HostDeploymentStartResult,
+  error: HostDeploymentError,
 });
+
+export const WsHostDeploymentsGetRpc = Rpc.make(WS_METHODS.hostDeploymentsGet, {
+  payload: HostDeploymentGetInput,
+  success: NullOrHostDeploymentSummary,
+  error: HostDeploymentError,
+});
+
+export const WsHostDeploymentsStopRpc = Rpc.make(WS_METHODS.hostDeploymentsStop, {
+  payload: HostDeploymentStopInput,
+  success: NullOrHostDeploymentSummary,
+  error: HostDeploymentError,
+});
+
+export const WsHostDeploymentsTerminalOpenRpc = Rpc.make(WS_METHODS.hostDeploymentsTerminalOpen, {
+  payload: HostDeploymentTerminalOpenInput,
+  success: HostDeploymentTerminalSnapshot,
+  error: HostDeploymentError,
+});
+
+export const WsHostDeploymentsTerminalResizeRpc = Rpc.make(
+  WS_METHODS.hostDeploymentsTerminalResize,
+  {
+    payload: HostDeploymentTerminalResizeInput,
+    error: HostDeploymentError,
+  },
+);
+
+export const WsHostDeploymentsSubscribeTerminalEventsRpc = Rpc.make(
+  WS_METHODS.hostDeploymentsSubscribeTerminalEvents,
+  {
+    payload: HostDeploymentGetInput,
+    success: HostDeploymentTerminalEvent,
+    error: HostDeploymentError,
+    stream: true,
+  },
+);
+
+export const WsFlakeMaintenanceStartRpc = Rpc.make(WS_METHODS.flakeMaintenanceStart, {
+  payload: FlakeMaintenanceStartInput,
+  success: FlakeMaintenanceStartResult,
+  error: FlakeMaintenanceError,
+});
+
+export const WsFlakeMaintenanceGetRpc = Rpc.make(WS_METHODS.flakeMaintenanceGet, {
+  payload: FlakeMaintenanceGetInput,
+  success: NullOrFlakeMaintenanceSummary,
+  error: FlakeMaintenanceError,
+});
+
+export const WsFlakeMaintenanceStopRpc = Rpc.make(WS_METHODS.flakeMaintenanceStop, {
+  payload: FlakeMaintenanceStopInput,
+  success: NullOrFlakeMaintenanceSummary,
+  error: FlakeMaintenanceError,
+});
+
+export const WsFlakeMaintenanceTerminalOpenRpc = Rpc.make(WS_METHODS.flakeMaintenanceTerminalOpen, {
+  payload: FlakeMaintenanceTerminalOpenInput,
+  success: FlakeMaintenanceTerminalSnapshot,
+  error: FlakeMaintenanceError,
+});
+
+export const WsFlakeMaintenanceTerminalResizeRpc = Rpc.make(
+  WS_METHODS.flakeMaintenanceTerminalResize,
+  {
+    payload: FlakeMaintenanceTerminalResizeInput,
+    error: FlakeMaintenanceError,
+  },
+);
+
+export const WsFlakeMaintenanceSubscribeTerminalEventsRpc = Rpc.make(
+  WS_METHODS.flakeMaintenanceSubscribeTerminalEvents,
+  {
+    payload: FlakeMaintenanceGetInput,
+    success: FlakeMaintenanceTerminalEvent,
+    error: FlakeMaintenanceError,
+    stream: true,
+  },
+);
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: OpenInEditorInput,
@@ -398,7 +508,18 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
-  WsProjectsStartHostDeploymentRpc,
+  WsHostDeploymentsStartRpc,
+  WsHostDeploymentsGetRpc,
+  WsHostDeploymentsStopRpc,
+  WsHostDeploymentsTerminalOpenRpc,
+  WsHostDeploymentsTerminalResizeRpc,
+  WsHostDeploymentsSubscribeTerminalEventsRpc,
+  WsFlakeMaintenanceStartRpc,
+  WsFlakeMaintenanceGetRpc,
+  WsFlakeMaintenanceStopRpc,
+  WsFlakeMaintenanceTerminalOpenRpc,
+  WsFlakeMaintenanceTerminalResizeRpc,
+  WsFlakeMaintenanceSubscribeTerminalEventsRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeGitStatusRpc,

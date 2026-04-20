@@ -3223,6 +3223,7 @@ export default function ChatView(props: ChatViewProps) {
           activeThreadId={activeThread.id}
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
+          scopedHostName={activeThread.scopedHostName ?? null}
           activeThreadChangeState={activeThread.changeTracking?.state ?? "ongoing"}
           activeProjectName={activeProject?.name}
           isGitRepo={isGitRepo}
@@ -3283,6 +3284,7 @@ export default function ChatView(props: ChatViewProps) {
               resolvedTheme={resolvedTheme}
               timestampFormat={timestampFormat}
               workspaceRoot={activeWorkspaceRoot}
+              scopedHostName={activeThread.scopedHostName ?? null}
               onIsAtEndChange={onIsAtEndChange}
             />
 

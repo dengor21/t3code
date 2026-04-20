@@ -31,6 +31,30 @@ const ProviderSessionStatus = Schema.Literals([
   "closed",
 ]);
 
+export const ProviderProjectKind = Schema.Literals(["generic", "nix-flake"]);
+export type ProviderProjectKind = typeof ProviderProjectKind.Type;
+
+export const ProviderFlakeDocumentationPaths = Schema.Struct({
+  generalChanges: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  hostDoc: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+});
+export type ProviderFlakeDocumentationPaths = typeof ProviderFlakeDocumentationPaths.Type;
+
+export const ProviderFlakeContext = Schema.Struct({
+  flakePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  hostNames: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  documentationPaths: Schema.optional(ProviderFlakeDocumentationPaths),
+});
+export type ProviderFlakeContext = typeof ProviderFlakeContext.Type;
+
+export const ProviderTurnContext = Schema.Struct({
+  projectKind: Schema.optional(ProviderProjectKind),
+  workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  flake: Schema.optional(ProviderFlakeContext),
+});
+export type ProviderTurnContext = typeof ProviderTurnContext.Type;
+
 export const ProviderSession = Schema.Struct({
   provider: ProviderKind,
   status: ProviderSessionStatus,
@@ -68,6 +92,7 @@ export const ProviderSendTurnInput = Schema.Struct({
   ),
   modelSelection: Schema.optional(ModelSelection),
   interactionMode: Schema.optional(ProviderInteractionMode),
+  providerContext: Schema.optional(ProviderTurnContext),
 });
 export type ProviderSendTurnInput = typeof ProviderSendTurnInput.Type;
 

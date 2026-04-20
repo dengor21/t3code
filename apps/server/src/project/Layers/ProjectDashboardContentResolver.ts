@@ -19,6 +19,8 @@ import {
 } from "../../orchestration/DocumentationUtils.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
+import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
+import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import {
   ProjectDashboardContentResolver,
   type ProjectDashboardContentResolverShape,
@@ -64,6 +66,8 @@ const make = Effect.gen(function* () {
   const deployRsResolver = yield* DeployRsResolver;
   const documentationStatusResolver = yield* DocumentationStatusResolver;
   const workspacePaths = yield* WorkspacePaths;
+  const hostDeploymentService = yield* HostDeploymentService;
+  const flakeMaintenanceService = yield* FlakeMaintenanceService;
 
   const resolveWithinWorkspace = (workspaceRoot: string, relativePath: string) =>
     workspacePaths
@@ -161,6 +165,22 @@ const make = Effect.gen(function* () {
       const documentationByHost = new Map(
         documentationState.hosts.map((entry) => [entry.hostName.toLowerCase(), entry] as const),
       );
+      const latestDeploymentByHost = yield* hostDeploymentService
+        .listByProjectId(input.projectId)
+        .pipe(
+          Effect.mapError((cause) =>
+            toDashboardError("Failed to load host deployment state.", cause),
+          ),
+        );
+      const latestMaintenance = yield* flakeMaintenanceService
+        .get({
+          projectId: input.projectId,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            toDashboardError("Failed to load flake maintenance state.", cause),
+          ),
+        );
       const requestedHostName = normalizeHostName(input.hostName);
       const selectedHost =
         requestedHostName === null
@@ -241,6 +261,7 @@ const make = Effect.gen(function* () {
           reason: "missing-deploy-target" as const,
           command: null,
         },
+        latestDeployment: latestDeploymentByHost.get(host.name.toLowerCase()) ?? null,
       }));
 
       return {
@@ -263,6 +284,7 @@ const make = Effect.gen(function* () {
                 status: hostDocState.status,
               },
         hostSummaries,
+        latestMaintenance,
       } satisfies ProjectDashboardContentResult;
     }).pipe(
       Effect.mapError((cause) =>

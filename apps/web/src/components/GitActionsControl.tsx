@@ -1,4 +1,4 @@
-import { type ScopedThreadRef } from "@t3tools/contracts";
+import { type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
 import type {
   GitActionProgressEvent,
   GitRunStackedActionResult,
@@ -60,6 +60,7 @@ import { createThreadSelectorByRef } from "~/storeSelectors";
 interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
+  environmentId?: EnvironmentId | null;
   draftId?: DraftId;
 }
 
@@ -271,9 +272,10 @@ function resolveCommittedFollowUpActions(input: {
 export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
+  environmentId = null,
   draftId,
 }: GitActionsControlProps) {
-  const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
+  const activeEnvironmentId = activeThreadRef?.environmentId ?? environmentId;
   const threadToastData = useMemo(
     () => (activeThreadRef ? { threadRef: activeThreadRef } : undefined),
     [activeThreadRef],

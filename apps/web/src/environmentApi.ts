@@ -21,7 +21,24 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       writeFile: rpcClient.projects.writeFile,
       getDashboardContent: rpcClient.projects.getDashboardContent,
       generateHostDocumentation: rpcClient.projects.generateHostDocumentation,
-      startHostDeployment: rpcClient.projects.startHostDeployment,
+    },
+    hostDeployments: {
+      start: rpcClient.hostDeployments.start,
+      get: rpcClient.hostDeployments.get,
+      stop: rpcClient.hostDeployments.stop,
+      openTerminal: rpcClient.hostDeployments.openTerminal,
+      resizeTerminal: rpcClient.hostDeployments.resizeTerminal,
+      onTerminalEvent: (input, callback) =>
+        rpcClient.hostDeployments.onTerminalEvent(input, callback),
+    },
+    flakeMaintenance: {
+      start: rpcClient.flakeMaintenance.start,
+      get: rpcClient.flakeMaintenance.get,
+      stop: rpcClient.flakeMaintenance.stop,
+      openTerminal: rpcClient.flakeMaintenance.openTerminal,
+      resizeTerminal: rpcClient.flakeMaintenance.resizeTerminal,
+      onTerminalEvent: (input, callback) =>
+        rpcClient.flakeMaintenance.onTerminalEvent(input, callback),
     },
     filesystem: {
       browse: rpcClient.filesystem.browse,

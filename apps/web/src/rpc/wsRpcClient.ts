@@ -71,7 +71,26 @@ export interface WsRpcClient {
     readonly generateHostDocumentation: RpcUnaryMethod<
       typeof WS_METHODS.projectsGenerateHostDocumentation
     >;
-    readonly startHostDeployment: RpcUnaryMethod<typeof WS_METHODS.projectsStartHostDeployment>;
+  };
+  readonly hostDeployments: {
+    readonly start: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsStart>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsGet>;
+    readonly stop: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsStop>;
+    readonly openTerminal: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsTerminalOpen>;
+    readonly resizeTerminal: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsTerminalResize>;
+    readonly onTerminalEvent: RpcInputStreamMethod<
+      typeof WS_METHODS.hostDeploymentsSubscribeTerminalEvents
+    >;
+  };
+  readonly flakeMaintenance: {
+    readonly start: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceStart>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceGet>;
+    readonly stop: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceStop>;
+    readonly openTerminal: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceTerminalOpen>;
+    readonly resizeTerminal: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceTerminalResize>;
+    readonly onTerminalEvent: RpcInputStreamMethod<
+      typeof WS_METHODS.flakeMaintenanceSubscribeTerminalEvents
+    >;
   };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
@@ -156,8 +175,39 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsGetDashboardContent](input)),
       generateHostDocumentation: (input) =>
         transport.request((client) => client[WS_METHODS.projectsGenerateHostDocumentation](input)),
-      startHostDeployment: (input) =>
-        transport.request((client) => client[WS_METHODS.projectsStartHostDeployment](input)),
+    },
+    hostDeployments: {
+      start: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDeploymentsStart](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.hostDeploymentsGet](input)),
+      stop: (input) => transport.request((client) => client[WS_METHODS.hostDeploymentsStop](input)),
+      openTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDeploymentsTerminalOpen](input)),
+      resizeTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDeploymentsTerminalResize](input)),
+      onTerminalEvent: (input, listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.hostDeploymentsSubscribeTerminalEvents](input),
+          listener,
+          options,
+        ),
+    },
+    flakeMaintenance: {
+      start: (input) =>
+        transport.request((client) => client[WS_METHODS.flakeMaintenanceStart](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.flakeMaintenanceGet](input)),
+      stop: (input) =>
+        transport.request((client) => client[WS_METHODS.flakeMaintenanceStop](input)),
+      openTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.flakeMaintenanceTerminalOpen](input)),
+      resizeTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.flakeMaintenanceTerminalResize](input)),
+      onTerminalEvent: (input, listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.flakeMaintenanceSubscribeTerminalEvents](input),
+          listener,
+          options,
+        ),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),

@@ -6,6 +6,7 @@ import path from "node:path";
 import { ApprovalRequestId, ThreadId } from "@t3tools/contracts";
 
 import {
+  buildCodexDeveloperInstructions,
   buildCodexInitializeParams,
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
   CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
@@ -718,7 +719,9 @@ describe("sendTurn", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "plan",
+          }),
         },
       },
     });
@@ -748,7 +751,9 @@ describe("sendTurn", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "default",
+          }),
         },
       },
     });
@@ -779,7 +784,67 @@ describe("sendTurn", () => {
         settings: {
           model: "gpt-5.2-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "plan",
+          }),
+        },
+      },
+    });
+  });
+
+  it("appends flake and host overlays when provider context is present", async () => {
+    const { manager, context, sendRequest } = createSendTurnHarness();
+
+    await manager.sendTurn({
+      threadId: asThreadId("thread_1"),
+      input: "Inspect this host",
+      interactionMode: "default",
+      providerContext: {
+        projectKind: "nix-flake",
+        workspaceRoot: "/workspace/flake",
+        scopedHostName: "nexus",
+        flake: {
+          flakePath: "flake.nix",
+          hostNames: ["nexus"],
+          documentationPaths: {
+            generalChanges: ".t3code/changes.md",
+            hostDoc: ".t3code/docs/hosts/nexus.md",
+          },
+        },
+      },
+    });
+
+    expect(sendRequest).toHaveBeenCalledWith(context, "turn/start", {
+      threadId: "thread_1",
+      input: [
+        {
+          type: "text",
+          text: "Inspect this host",
+          text_elements: [],
+        },
+      ],
+      model: "gpt-5.3-codex",
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.3-codex",
+          reasoning_effort: "medium",
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "default",
+            providerContext: {
+              projectKind: "nix-flake",
+              workspaceRoot: "/workspace/flake",
+              scopedHostName: "nexus",
+              flake: {
+                flakePath: "flake.nix",
+                hostNames: ["nexus"],
+                documentationPaths: {
+                  generalChanges: ".t3code/changes.md",
+                  hostDoc: ".t3code/docs/hosts/nexus.md",
+                },
+              },
+            },
+          }),
         },
       },
     });
@@ -793,6 +858,65 @@ describe("sendTurn", () => {
         threadId: asThreadId("thread_1"),
       }),
     ).rejects.toThrow("Turn input must include text or attachments.");
+  });
+});
+
+describe("buildCodexDeveloperInstructions", () => {
+  it("returns the compact default instructions without domain overlays", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "default",
+      }),
+    ).toBe(CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS);
+  });
+
+  it("adds flake, host, and relevant path guidance in deterministic order", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          projectKind: "nix-flake",
+          workspaceRoot: "/workspace/flake",
+          scopedHostName: "bc250",
+          flake: {
+            documentationPaths: {
+              generalChanges: ".t3code/changes.md",
+              hostDoc: ".t3code/docs/hosts/bc250.md",
+            },
+          },
+        },
+      }),
+    ).toBe(
+      [
+        CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+        [
+          "You are operating inside a Nix flake management workspace.",
+          "",
+          "Priorities:",
+          "- Prefer minimal, predictable changes.",
+          "- Treat host scope, deployment behavior, and flake correctness as first-class.",
+          "- Prefer editing the narrowest host- or module-specific files that satisfy the request.",
+          "- Do not broaden changes across multiple hosts unless the user asks.",
+          "- Prefer source truth in flake files over generated documentation when they disagree.",
+          "- If present, use .t3code/changes.md and .t3code/docs/hosts/*.md as supporting context, not as sole truth.",
+          "- Call out likely host impact when a change appears to affect deployment, networking, shared modules, or multiple hosts.",
+        ].join("\n"),
+        [
+          "This thread is scoped to host: bc250.",
+          "",
+          "Default behavior:",
+          "- Treat other hosts as out of scope.",
+          "- Prefer host-local files, modules, and deploy targets for bc250.",
+          "- Do not modify other hosts unless the user explicitly broadens scope.",
+          "- If shared modules must be changed, minimize blast radius and explain the cross-host impact.",
+        ].join("\n"),
+        [
+          "Relevant project context may exist in:",
+          "- .t3code/changes.md",
+          "- .t3code/docs/hosts/bc250.md",
+        ].join("\n"),
+      ].join("\n\n"),
+    );
   });
 });
 

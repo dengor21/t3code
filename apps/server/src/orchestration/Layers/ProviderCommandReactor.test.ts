@@ -99,11 +99,14 @@ describe("ProviderCommandReactor", () => {
 
   async function createHarness(input?: {
     readonly baseDir?: string;
+    readonly workspaceRoot?: string;
+    readonly scopedHostName?: string | null;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
   }) {
     const now = new Date().toISOString();
     const baseDir = input?.baseDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "t3code-reactor-"));
+    const workspaceRoot = input?.workspaceRoot ?? "/tmp/provider-project";
     createdBaseDirs.add(baseDir);
     const { stateDir } = deriveServerPathsSync(baseDir, undefined);
     createdStateDirs.add(stateDir);
@@ -310,7 +313,7 @@ describe("ProviderCommandReactor", () => {
         commandId: CommandId.make("cmd-project-create"),
         projectId: asProjectId("project-1"),
         title: "Provider Project",
-        workspaceRoot: "/tmp/provider-project",
+        workspaceRoot,
         defaultModelSelection: modelSelection,
         createdAt: now,
       }),
@@ -327,6 +330,7 @@ describe("ProviderCommandReactor", () => {
         runtimeMode: "approval-required",
         branch: null,
         worktreePath: null,
+        scopedHostName: input?.scopedHostName ?? null,
         createdAt: now,
       }),
     );
@@ -385,6 +389,55 @@ describe("ProviderCommandReactor", () => {
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
     expect(thread?.session?.threadId).toBe("thread-1");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
+  });
+
+  it("derives provider context for flake-backed scoped host threads", async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "t3code-flake-context-"));
+    createdBaseDirs.add(workspaceRoot);
+    fs.writeFileSync(
+      path.join(workspaceRoot, "flake.nix"),
+      "{ outputs = { self }: { nixosConfigurations.nexus = {}; }; }\n",
+      "utf8",
+    );
+    const harness = await createHarness({
+      baseDir: workspaceRoot,
+      workspaceRoot,
+      scopedHostName: "nexus",
+    });
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-context"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-context"),
+          role: "user",
+          text: "Inspect the nexus deployment.",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      providerContext: {
+        projectKind: "nix-flake",
+        workspaceRoot,
+        scopedHostName: "nexus",
+        flake: {
+          documentationPaths: {
+            generalChanges: ".t3code/changes.md",
+            hostDoc: ".t3code/docs/hosts/nexus.md",
+          },
+        },
+      },
+    });
   });
 
   it("generates a thread title on the first turn", async () => {

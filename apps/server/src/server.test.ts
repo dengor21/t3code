@@ -8,7 +8,13 @@ import {
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   EventId,
+  type FlakeMaintenanceStartInput,
+  type FlakeMaintenanceSummary,
+  type FlakeMaintenanceTerminalSnapshot,
   GitCommandError,
+  type HostDeploymentStartInput,
+  type HostDeploymentSummary,
+  type HostDeploymentTerminalSnapshot,
   KeybindingRule,
   MessageId,
   OpenError,
@@ -110,9 +116,21 @@ import {
   type DeployRsResolverShape,
 } from "./project/Services/DeployRsResolver.ts";
 import {
+  FlakeMetadataResolver,
+  type FlakeMetadataResolverShape,
+} from "./project/Services/FlakeMetadataResolver.ts";
+import {
   ProjectSetupScriptRunner,
   type ProjectSetupScriptRunnerShape,
 } from "./project/Services/ProjectSetupScriptRunner.ts";
+import {
+  HostDeploymentService,
+  type HostDeploymentServiceShape,
+} from "./project/Services/HostDeploymentService.ts";
+import {
+  FlakeMaintenanceService,
+  type FlakeMaintenanceServiceShape,
+} from "./project/Services/FlakeMaintenanceService.ts";
 import {
   RepositoryIdentityResolver,
   type RepositoryIdentityResolverShape,
@@ -134,6 +152,80 @@ const defaultModelSelection = {
   provider: "codex",
   model: "gpt-5-codex",
 } as const;
+
+const makeHostDeploymentSummary = (overrides: Partial<HostDeploymentSummary> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    projectId: defaultProjectId,
+    hostName: "bc250",
+    terminalOwnerId: "host-deploy:project-default:bc250",
+    cwd: "/workspace",
+    command: buildDeployRsCommand("bc250"),
+    deployOnServer: false,
+    status: "running" as const,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
+    exitCode: null,
+    exitSignal: null,
+    ...overrides,
+  };
+};
+
+const makeHostDeploymentTerminalSnapshot = (
+  overrides: Partial<HostDeploymentTerminalSnapshot> = {},
+) => {
+  const now = new Date(0).toISOString();
+  return {
+    terminalOwnerId: "host-deploy:project-default:bc250",
+    terminalId: "default",
+    cwd: "/workspace",
+    worktreePath: null,
+    status: "running" as const,
+    pid: 123,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: now,
+    ...overrides,
+  };
+};
+
+const makeFlakeMaintenanceSummary = (overrides: Partial<FlakeMaintenanceSummary> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    projectId: defaultProjectId,
+    terminalOwnerId: "flake-maintenance:project-default",
+    cwd: "/workspace",
+    command: "nix flake update",
+    status: "running" as const,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
+    exitCode: null,
+    exitSignal: null,
+    ...overrides,
+  };
+};
+
+const makeFlakeMaintenanceTerminalSnapshot = (
+  overrides: Partial<FlakeMaintenanceTerminalSnapshot> = {},
+) => {
+  const now = new Date(0).toISOString();
+  return {
+    terminalOwnerId: "flake-maintenance:project-default",
+    terminalId: "default",
+    cwd: "/workspace",
+    worktreePath: null,
+    status: "running" as const,
+    pid: 123,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: now,
+    ...overrides,
+  };
+};
 const testEnvironmentDescriptor = {
   environmentId: EnvironmentId.make("environment-test"),
   label: "Test environment",
@@ -213,16 +305,6 @@ const makeDefaultOrchestrationThreadShell = (
     ...overrides,
   };
 };
-
-const workspaceAndProjectServicesLayer = Layer.mergeAll(
-  WorkspacePathsLive,
-  WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive)),
-  WorkspaceFileSystemLive.pipe(
-    Layer.provide(WorkspacePathsLive),
-    Layer.provide(WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive))),
-  ),
-  ProjectFaviconResolverLive,
-);
 
 const browserOtlpTracingLayer = Layer.mergeAll(
   FetchHttpClient.layer,
@@ -359,7 +441,10 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
+    hostDeploymentService?: Partial<HostDeploymentServiceShape>;
+    flakeMaintenanceService?: Partial<FlakeMaintenanceServiceShape>;
     deployRsResolver?: Partial<DeployRsResolverShape>;
+    flakeMetadataResolver?: Partial<FlakeMetadataResolverShape>;
     repositoryIdentityResolver?: Partial<RepositoryIdentityResolverShape>;
   };
 }) =>
@@ -602,14 +687,59 @@ const buildAppUnderTest = (options?: {
               hostChanges: [],
               hostDoc: null,
               hostSummaries: [],
+              latestMaintenance: null,
             }),
           ...options?.layers?.projectDashboardContentResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(HostDeploymentService)({
+          start: () =>
+            Effect.succeed({
+              disposition: "started" as const,
+              deployment: makeHostDeploymentSummary(),
+            }),
+          get: () => Effect.succeed(null),
+          listByProjectId: () => Effect.succeed(new Map()),
+          stop: () => Effect.succeed(null),
+          openTerminal: () => Effect.succeed(makeHostDeploymentTerminalSnapshot()),
+          resizeTerminal: () => Effect.void,
+          subscribeTerminalEvents: () => Stream.empty,
+          ...options?.layers?.hostDeploymentService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(FlakeMaintenanceService)({
+          start: () =>
+            Effect.succeed({
+              disposition: "started" as const,
+              maintenance: makeFlakeMaintenanceSummary(),
+            }),
+          get: () => Effect.succeed(null),
+          stop: () => Effect.succeed(null),
+          openTerminal: () => Effect.succeed(makeFlakeMaintenanceTerminalSnapshot()),
+          resizeTerminal: () => Effect.void,
+          subscribeTerminalEvents: () => Stream.empty,
+          ...options?.layers?.flakeMaintenanceService,
         }),
       ),
       Layer.provide(
         Layer.mock(DeployRsResolver)({
           resolveHostDeployments: () => Effect.succeed(new Map()),
           ...options?.layers?.deployRsResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(FlakeMetadataResolver)({
+          resolve: () =>
+            Effect.succeed({
+              host: null,
+              hosts: [],
+              source: "missing",
+              flakePath: "flake.nix",
+              diagnostics: [],
+            }),
+          ...options?.layers?.flakeMetadataResolver,
         }),
       ),
       Layer.provide(
@@ -2277,95 +2407,23 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("routes websocket rpc projects.startHostDeployment", () =>
+  it.effect("routes websocket rpc hostDeployments.start", () =>
     Effect.gen(function* () {
-      const dispatchedCommands: Array<OrchestrationCommand> = [];
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-project-deploy-",
-      });
-      let createdThreadId: ThreadId | null = null;
-
-      yield* fs.writeFileString(
-        path.join(workspaceRoot, "flake.nix"),
-        `{
-  outputs = { self }: {
-    t3hosts = {
-      bc250 = {
-        name = "bc250";
-        target = "bc250";
-        system = "x86_64-linux";
-        type = "nixos";
-      };
-    };
-  };
-}
-`,
-      );
+      let receivedInput: HostDeploymentStartInput | null = null;
 
       yield* buildAppUnderTest({
         layers: {
-          projectionSnapshotQuery: {
-            getProjectShellById: () =>
-              Effect.succeed(
-                Option.some({
-                  id: defaultProjectId,
-                  title: "nix",
-                  workspaceRoot,
-                  repositoryIdentity: null,
-                  flakeMetadata: null,
-                  documentationState: null,
-                  defaultModelSelection,
-                  scripts: [],
-                  createdAt: new Date(0).toISOString(),
-                  updatedAt: new Date(0).toISOString(),
-                }),
-              ),
-          },
-          deployRsResolver: {
-            resolveHostDeployments: () =>
-              Effect.succeed(
-                new Map([
-                  [
-                    "bc250",
-                    {
-                      status: "deployable" as const,
-                      reason: null,
-                      command: buildDeployRsCommand("bc250"),
-                    },
-                  ],
-                ]),
-              ),
-          },
-          gitStatusBroadcaster: {
-            refreshStatus: () =>
-              Effect.succeed({
-                isRepo: true,
-                hasOriginRemote: true,
-                isDefaultBranch: false,
-                branch: "main",
-                head: null,
-                hasWorkingTreeChanges: false,
-                workingTree: {
-                  files: [],
-                  insertions: 0,
-                  deletions: 0,
-                },
-                hasUpstream: true,
-                aheadCount: 0,
-                behindCount: 0,
-                pr: null,
-              }),
-          },
-          orchestrationEngine: {
-            dispatch: (command) =>
+          hostDeploymentService: {
+            start: (input) =>
               Effect.sync(() => {
-                dispatchedCommands.push(command);
-                if (command.type === "thread.create") {
-                  createdThreadId = command.threadId;
-                }
-                return { sequence: dispatchedCommands.length };
+                receivedInput = input;
+                return {
+                  disposition: "started" as const,
+                  deployment: makeHostDeploymentSummary({
+                    hostName: input.hostName,
+                    command: buildDeployRsCommand(input.hostName),
+                  }),
+                };
               }),
           },
         },
@@ -2374,121 +2432,43 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const wsUrl = yield* getWsServerUrl("/ws");
       const response = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.projectsStartHostDeployment]({
+          client[WS_METHODS.hostDeploymentsStart]({
             projectId: defaultProjectId,
             hostName: "bc250",
           }),
         ),
       );
 
-      assert.equal(response.title, "Deploy bc250");
-      assert.equal(response.cwd, workspaceRoot);
-      assert.equal(response.worktreePath, null);
-      assert.equal(response.terminalId, "default");
-      assert.equal(response.command, buildDeployRsCommand("bc250"));
-      assert.equal(response.scopedHostName, "bc250");
-      assert.equal(response.threadId, createdThreadId);
-      assert.equal(dispatchedCommands[0]?.type, "thread.create");
-      assert.equal(dispatchedCommands[1]?.type, "thread.activity.append");
-      const activityCommand = dispatchedCommands[1];
-      if (activityCommand?.type === "thread.activity.append") {
-        assert.equal(activityCommand.activity.kind, "deploy.requested");
-        assert.equal(activityCommand.activity.summary, "Deployment requested for bc250");
-        assert.deepEqual(activityCommand.activity.payload, {
-          hostName: "bc250",
-          command: buildDeployRsCommand("bc250"),
-          deployOnServer: false,
-          requestedAt: activityCommand.createdAt,
-        });
-      }
+      assert.deepEqual(receivedInput, {
+        projectId: defaultProjectId,
+        hostName: "bc250",
+      });
+      assert.equal(response.disposition, "started");
+      assert.equal(response.deployment.hostName, "bc250");
+      assert.equal(response.deployment.command, buildDeployRsCommand("bc250"));
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("routes websocket rpc projects.startHostDeployment with deployOnServer override", () =>
+  it.effect("routes websocket rpc hostDeployments.start with deployOnServer override", () =>
     Effect.gen(function* () {
-      const dispatchedCommands: Array<OrchestrationCommand> = [];
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
-        prefix: "t3-ws-project-deploy-server-build-",
-      });
-
-      yield* fs.writeFileString(
-        path.join(workspaceRoot, "flake.nix"),
-        `{
-  outputs = { self }: {
-    t3hosts = {
-      thinkpad = {
-        name = "thinkpad";
-        target = "thinkpad";
-        system = "x86_64-linux";
-        type = "nixos";
-      };
-    };
-  };
-}
-`,
-      );
+      let receivedInput: HostDeploymentStartInput | null = null;
 
       yield* buildAppUnderTest({
         layers: {
-          projectionSnapshotQuery: {
-            getProjectShellById: () =>
-              Effect.succeed(
-                Option.some({
-                  id: defaultProjectId,
-                  title: "nix",
-                  workspaceRoot,
-                  repositoryIdentity: null,
-                  flakeMetadata: null,
-                  documentationState: null,
-                  defaultModelSelection,
-                  scripts: [],
-                  createdAt: new Date(0).toISOString(),
-                  updatedAt: new Date(0).toISOString(),
-                }),
-              ),
-          },
-          deployRsResolver: {
-            resolveHostDeployments: () =>
-              Effect.succeed(
-                new Map([
-                  [
-                    "thinkpad",
-                    {
-                      status: "deployable" as const,
-                      reason: null,
-                      command: buildDeployRsCommand("thinkpad"),
-                    },
-                  ],
-                ]),
-              ),
-          },
-          gitStatusBroadcaster: {
-            refreshStatus: () =>
-              Effect.succeed({
-                isRepo: true,
-                hasOriginRemote: true,
-                isDefaultBranch: false,
-                branch: "main",
-                head: null,
-                hasWorkingTreeChanges: false,
-                workingTree: {
-                  files: [],
-                  insertions: 0,
-                  deletions: 0,
-                },
-                hasUpstream: true,
-                aheadCount: 0,
-                behindCount: 0,
-                pr: null,
-              }),
-          },
-          orchestrationEngine: {
-            dispatch: (command) =>
+          hostDeploymentService: {
+            start: (input) =>
               Effect.sync(() => {
-                dispatchedCommands.push(command);
-                return { sequence: dispatchedCommands.length };
+                receivedInput = input;
+                return {
+                  disposition: "started" as const,
+                  deployment: makeHostDeploymentSummary({
+                    hostName: input.hostName,
+                    command: buildDeployRsCommand(input.hostName, {
+                      deployOnServer: input.deployOnServer,
+                    }),
+                    deployOnServer: input.deployOnServer === true,
+                  }),
+                };
               }),
           },
         },
@@ -2497,7 +2477,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const wsUrl = yield* getWsServerUrl("/ws");
       const response = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.projectsStartHostDeployment]({
+          client[WS_METHODS.hostDeploymentsStart]({
             projectId: defaultProjectId,
             hostName: "thinkpad",
             deployOnServer: true,
@@ -2505,16 +2485,146 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
 
-      assert.equal(response.command, buildDeployRsCommand("thinkpad", { deployOnServer: true }));
-      const activityCommand = dispatchedCommands[1];
-      if (activityCommand?.type === "thread.activity.append") {
-        assert.deepEqual(activityCommand.activity.payload, {
-          hostName: "thinkpad",
-          command: buildDeployRsCommand("thinkpad", { deployOnServer: true }),
-          deployOnServer: true,
-          requestedAt: activityCommand.createdAt,
-        });
-      }
+      assert.deepEqual(receivedInput, {
+        projectId: defaultProjectId,
+        hostName: "thinkpad",
+        deployOnServer: true,
+      });
+      assert.equal(
+        response.deployment.command,
+        buildDeployRsCommand("thinkpad", { deployOnServer: true }),
+      );
+      assert.equal(response.deployment.deployOnServer, true);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc flakeMaintenance.start", () =>
+    Effect.gen(function* () {
+      let receivedInput: FlakeMaintenanceStartInput | null = null;
+
+      yield* buildAppUnderTest({
+        layers: {
+          flakeMaintenanceService: {
+            start: (input) =>
+              Effect.sync(() => {
+                receivedInput = input;
+                return {
+                  disposition: "started" as const,
+                  maintenance: makeFlakeMaintenanceSummary({
+                    projectId: input.projectId,
+                  }),
+                };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.flakeMaintenanceStart]({
+            projectId: defaultProjectId,
+          }),
+        ),
+      );
+
+      assert.deepEqual(receivedInput, {
+        projectId: defaultProjectId,
+      });
+      assert.equal(response.disposition, "started");
+      assert.equal(response.maintenance.projectId, defaultProjectId);
+      assert.equal(response.maintenance.command, "nix flake update");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc flakeMaintenance.get", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          flakeMaintenanceService: {
+            get: () =>
+              Effect.succeed(
+                makeFlakeMaintenanceSummary({
+                  status: "succeeded",
+                  finishedAt: new Date(1_000).toISOString(),
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.flakeMaintenanceGet]({
+            projectId: defaultProjectId,
+          }),
+        ),
+      );
+
+      assert.equal(response?.command, "nix flake update");
+      assert.equal(response?.status, "succeeded");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc flakeMaintenance.stop", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          flakeMaintenanceService: {
+            stop: () =>
+              Effect.succeed(
+                makeFlakeMaintenanceSummary({
+                  status: "canceled",
+                  finishedAt: new Date(1_000).toISOString(),
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.flakeMaintenanceStop]({
+            projectId: defaultProjectId,
+          }),
+        ),
+      );
+
+      assert.equal(response?.status, "canceled");
+      assertTrue(response?.finishedAt !== null);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc flakeMaintenance.terminalOpen", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          flakeMaintenanceService: {
+            openTerminal: () =>
+              Effect.succeed(
+                makeFlakeMaintenanceTerminalSnapshot({
+                  history: "flake update output\n",
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.flakeMaintenanceTerminalOpen]({
+            projectId: defaultProjectId,
+            cols: 120,
+            rows: 30,
+          }),
+        ),
+      );
+
+      assert.equal(response.cwd, "/workspace");
+      assert.equal(response.history, "flake update output\n");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

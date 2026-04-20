@@ -79,7 +79,9 @@ export function useThreadActions() {
         currentRouteThreadRef?.threadId === threadRef.threadId &&
         currentRouteThreadRef.environmentId === threadRef.environmentId
       ) {
-        await handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId));
+        await handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId), {
+          scopedHostName: null,
+        });
       }
     },
     [getCurrentRouteThreadRef, resolveThreadTarget],

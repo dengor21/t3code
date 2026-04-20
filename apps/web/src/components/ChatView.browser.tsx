@@ -199,6 +199,8 @@ function createMockEnvironmentApi(input: {
   return {
     terminal: {} as EnvironmentApi["terminal"],
     projects: {} as EnvironmentApi["projects"],
+    hostDeployments: {} as EnvironmentApi["hostDeployments"],
+    flakeMaintenance: {} as EnvironmentApi["flakeMaintenance"],
     filesystem: {
       browse: input.browse,
     },

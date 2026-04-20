@@ -71,6 +71,7 @@ describe("chatThreadActions", () => {
       branch: "feature/refactor",
       worktreePath: "/tmp/worktree",
       envMode: "worktree",
+      scopedHostName: null,
     });
   });
 
@@ -88,6 +89,7 @@ describe("chatThreadActions", () => {
     expect(didStart).toBe(true);
     expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
       envMode: "worktree",
+      scopedHostName: null,
     });
   });
 
