@@ -19,7 +19,6 @@ import {
   ThreadStatusLabel,
 } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
-import { Badge } from "./ui/badge";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -605,9 +604,21 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             </Tooltip>
           )}
           {threadStatus && <ThreadStatusLabel status={threadStatus} />}
-          <Badge variant="outline" className="h-4 px-1 text-[9px]">
-            {isCommittedChange ? "Committed" : "Ongoing"}
-          </Badge>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  aria-label={isCommittedChange ? "Committed" : "Ongoing"}
+                  className={`inline-flex size-1.5 shrink-0 rounded-full ${
+                    isCommittedChange ? "bg-emerald-500/60" : "bg-amber-500/50"
+                  }`}
+                />
+              }
+            />
+            <TooltipPopup side="top">
+              {isCommittedChange ? "Committed" : "Ongoing change"}
+            </TooltipPopup>
+          </Tooltip>
           {renamingThreadKey === threadKey ? (
             <input
               ref={handleRenameInputRef}
@@ -898,7 +909,9 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 data-thread-selection-safe
                 size="sm"
                 isActive={isFolderActive}
-                className="h-6 w-full translate-x-0 gap-2 px-2 text-left"
+                className={`h-6 w-full translate-x-0 gap-2 px-2 text-left ${
+                  folder.threads.length === 0 && !isFolderActive ? "opacity-50" : ""
+                }`}
                 onClick={handleFolderClick}
                 onKeyDown={handleFolderKeyDown}
               >
@@ -906,7 +919,13 @@ const SidebarProjectThreadList = memo(function SidebarProjectThreadList(
                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/85">
                   {folder.label}
                 </span>
-                <span className="mr-6 shrink-0 text-[10px] text-muted-foreground/60">
+                <span
+                  className={`mr-6 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-medium ${
+                    folder.threads.length > 0
+                      ? "bg-primary/10 text-primary/80"
+                      : "text-muted-foreground/40"
+                  }`}
+                >
                   {folder.threads.length}
                 </span>
                 <div className="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/sidebar-folder:pointer-events-auto group-hover/sidebar-folder:opacity-100 group-focus-within/sidebar-folder:pointer-events-auto group-focus-within/sidebar-folder:opacity-100">
@@ -2357,19 +2376,11 @@ const SidebarProjectListRow = memo(function SidebarProjectListRow(props: Sidebar
   );
 });
 
-function T3Wordmark() {
+function HalWordmark() {
   return (
-    <svg
-      aria-label="T3"
-      className="h-2.5 w-auto shrink-0 text-foreground"
-      viewBox="15.5309 37 94.3941 56.96"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M33.4509 93V47.56H15.5309V37H64.3309V47.56H46.4109V93H33.4509ZM86.7253 93.96C82.832 93.96 78.9653 93.4533 75.1253 92.44C71.2853 91.3733 68.032 89.88 65.3653 87.96L70.4053 78.04C72.5386 79.5867 75.0186 80.8133 77.8453 81.72C80.672 82.6267 83.5253 83.08 86.4053 83.08C89.6586 83.08 92.2186 82.44 94.0853 81.16C95.952 79.88 96.8853 78.12 96.8853 75.88C96.8853 73.7467 96.0586 72.0667 94.4053 70.84C92.752 69.6133 90.0853 69 86.4053 69H80.4853V60.44L96.0853 42.76L97.5253 47.4H68.1653V37H107.365V45.4L91.8453 63.08L85.2853 59.32H89.0453C95.9253 59.32 101.125 60.8667 104.645 63.96C108.165 67.0533 109.925 71.0267 109.925 75.88C109.925 79.0267 109.099 81.9867 107.445 84.76C105.792 87.48 103.259 89.6933 99.8453 91.4C96.432 93.1067 92.0586 93.96 86.7253 93.96Z"
-        fill="currentColor"
-      />
-    </svg>
+    <span aria-label="HAL" className="shrink-0 text-sm font-bold tracking-widest text-foreground">
+      HAL
+    </span>
   );
 }
 
@@ -2526,11 +2537,8 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
               className="ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
               to="/"
             >
-              <T3Wordmark />
-              <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
-                Code
-              </span>
-              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+              <HalWordmark />
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-primary/60">
                 {APP_STAGE_LABEL}
               </span>
             </Link>
@@ -2679,14 +2687,14 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
 
   return (
     <SidebarContent className="gap-0">
-      <SidebarGroup className="px-2 pt-2 pb-1">
+      <SidebarGroup className="px-3 pt-2 pb-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <CommandDialogTrigger
               render={
                 <SidebarMenuButton
                   size="sm"
-                  className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground focus-visible:ring-0"
+                  className="gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/30 px-2.5 py-1.5 text-muted-foreground/50 transition-colors hover:border-sidebar-border hover:bg-sidebar-accent/60 hover:text-muted-foreground/80 focus-visible:ring-0"
                   data-testid="command-palette-trigger"
                 />
               }
@@ -2694,7 +2702,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
               <SearchIcon className="size-3.5" />
               <span className="flex-1 truncate text-left text-xs">Search</span>
               {commandPaletteShortcutLabel ? (
-                <Kbd className="h-4 min-w-0 rounded-sm px-1.5 text-[10px]">
+                <Kbd className="h-4 min-w-0 rounded-sm bg-sidebar-accent/50 px-1.5 text-[10px]">
                   {commandPaletteShortcutLabel}
                 </Kbd>
               ) : null}
@@ -2726,8 +2734,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
         </SidebarGroup>
       ) : null}
       <SidebarGroup className="px-2 py-2">
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <div className="mb-2 flex items-center justify-between border-b border-sidebar-border/40 pb-2 pl-2 pr-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
             Flakes
           </span>
           <div className="flex items-center gap-1">

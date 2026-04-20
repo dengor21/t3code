@@ -32,7 +32,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../components/ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
