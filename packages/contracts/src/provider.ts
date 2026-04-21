@@ -10,6 +10,8 @@ import {
 } from "./baseSchemas.ts";
 import {
   ChatAttachment,
+  HostCreationWorkflowOsFamily,
+  HostWorkflowStatus,
   ModelSelection,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
@@ -47,11 +49,27 @@ export const ProviderFlakeContext = Schema.Struct({
 });
 export type ProviderFlakeContext = typeof ProviderFlakeContext.Type;
 
+export const ProviderWorkflowContext = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("host-creation"),
+    hostName: TrimmedNonEmptyString,
+    osFamily: Schema.optional(HostCreationWorkflowOsFamily),
+    status: Schema.optional(HostWorkflowStatus),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("host-removal"),
+    hostName: TrimmedNonEmptyString,
+    status: Schema.optional(HostWorkflowStatus),
+  }),
+]);
+export type ProviderWorkflowContext = typeof ProviderWorkflowContext.Type;
+
 export const ProviderTurnContext = Schema.Struct({
   projectKind: Schema.optional(ProviderProjectKind),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   flake: Schema.optional(ProviderFlakeContext),
+  workflow: Schema.optional(ProviderWorkflowContext),
 });
 export type ProviderTurnContext = typeof ProviderTurnContext.Type;
 

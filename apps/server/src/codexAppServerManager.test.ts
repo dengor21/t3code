@@ -918,6 +918,111 @@ describe("buildCodexDeveloperInstructions", () => {
       ].join("\n\n"),
     );
   });
+
+  it("adds host-creation workflow guidance for plan threads", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          projectKind: "nix-flake",
+          workspaceRoot: "/workspace/flake",
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      }),
+    ).toContain("This thread is running the host-creation workflow for nexus.");
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          projectKind: "nix-flake",
+          workspaceRoot: "/workspace/flake",
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      }),
+    ).toContain("- identity: Identity");
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+          },
+        },
+      }),
+    ).toContain("Treat t3hosts.nexus and hosts/nexus/default.nix as mandatory anchors");
+  });
+
+  it("adds execution guidance for host-creation implementation threads", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "default",
+        providerContext: {
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            status: "ready-to-implement",
+          },
+        },
+      }),
+    ).toContain("This thread is implementing an approved host-creation plan for nexus.");
+  });
+
+  it("adds host-removal workflow guidance for plan threads", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-removal",
+            hostName: "nexus",
+            status: "planning",
+          },
+        },
+      }),
+    ).toContain("This thread is running the host-removal workflow for nexus.");
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "plan",
+        providerContext: {
+          workflow: {
+            kind: "host-removal",
+            hostName: "nexus",
+          },
+        },
+      }),
+    ).toContain("Treat t3hosts.nexus and hosts/nexus/default.nix as mandatory removal anchors");
+  });
+
+  it("adds execution guidance for host-removal implementation threads", () => {
+    expect(
+      buildCodexDeveloperInstructions({
+        interactionMode: "default",
+        providerContext: {
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-removal",
+            hostName: "nexus",
+            status: "ready-to-implement",
+          },
+        },
+      }),
+    ).toContain("This thread is implementing an approved host-removal plan for nexus.");
+  });
 });
 
 describe("thread checkpoint control", () => {

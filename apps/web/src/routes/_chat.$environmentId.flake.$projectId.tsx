@@ -7,6 +7,11 @@ import {
   type HostDocumentationStatus,
   type ProjectDashboardChangeEntry,
 } from "@t3tools/contracts";
+import {
+  isValidHostCreationHostName,
+  normalizeHostCreationHostName,
+  resolveHostCreationTarget,
+} from "@t3tools/shared/hostWorkflow";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -20,6 +25,7 @@ import {
   RefreshCcwIcon,
   RocketIcon,
   SquareTerminalIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -38,7 +44,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../components/ui/menu";
+import { Input } from "../components/ui/input";
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../components/ui/menu";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
@@ -336,6 +343,11 @@ function FlakeDashboardRouteView() {
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
   const { handleNewThread } = useNewThreadHandler();
   const [generatingDocsByHost, setGeneratingDocsByHost] = useState<Record<string, true>>({});
+  const [createHostDialogOpen, setCreateHostDialogOpen] = useState(false);
+  const [createHostName, setCreateHostName] = useState("");
+  const [createHostTarget, setCreateHostTarget] = useState("");
+  const [createHostOsFamily, setCreateHostOsFamily] = useState<"nixos" | "darwin">("nixos");
+  const [createHostType, setCreateHostType] = useState("");
   const [deployDialogHostName, setDeployDialogHostName] = useState<string | null>(null);
   const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
   const [maintenancePending, setMaintenancePending] = useState(false);
@@ -476,6 +488,7 @@ function FlakeDashboardRouteView() {
     }
     void handleNewThread(projectRef, {
       scopedHostName: null,
+      workflow: null,
     });
   }, [handleNewThread, projectRef]);
 
@@ -486,10 +499,108 @@ function FlakeDashboardRouteView() {
       }
       void handleNewThread(projectRef, {
         scopedHostName: host.name,
+        workflow: null,
       });
     },
     [handleNewThread, projectRef],
   );
+
+  const handleRemoveHostThread = useCallback(
+    (host: FlakeHost) => {
+      if (!projectRef) {
+        return;
+      }
+      void handleNewThread(projectRef, {
+        scopedHostName: host.name,
+        interactionMode: "plan",
+        workflow: {
+          kind: "host-removal",
+          hostName: host.name,
+          target: host.target,
+          hostType: host.type ?? null,
+          status: "planning",
+        },
+      });
+    },
+    [handleNewThread, projectRef],
+  );
+
+  const existingHostNameSet = useMemo(() => {
+    const hostNames = new Set<string>();
+    for (const summary of dashboardQuery.data?.hostSummaries ?? []) {
+      hostNames.add(normalizeHostCreationHostName(summary.host.name));
+    }
+    for (const host of project?.flakeMetadata?.hosts ?? []) {
+      hostNames.add(normalizeHostCreationHostName(host.name));
+    }
+    if (project?.flakeMetadata?.host) {
+      hostNames.add(normalizeHostCreationHostName(project.flakeMetadata.host.name));
+    }
+    return hostNames;
+  }, [dashboardQuery.data?.hostSummaries, project?.flakeMetadata]);
+  const normalizedCreateHostName = normalizeHostCreationHostName(createHostName);
+  const createHostNameIsDuplicate =
+    normalizedCreateHostName.length > 0 && existingHostNameSet.has(normalizedCreateHostName);
+  const createHostNameError =
+    normalizedCreateHostName.length === 0
+      ? "Host name is required."
+      : !isValidHostCreationHostName(normalizedCreateHostName)
+        ? "Use lowercase letters, numbers, dots, underscores, or hyphens."
+        : createHostNameIsDuplicate
+          ? "That host already exists in this flake."
+          : null;
+  const canCreateHost =
+    project !== undefined && (project.flakeMetadata?.source ?? "missing") !== "missing";
+
+  const resetCreateHostForm = useCallback(() => {
+    setCreateHostName("");
+    setCreateHostTarget("");
+    setCreateHostOsFamily("nixos");
+    setCreateHostType("");
+  }, []);
+
+  const handleCreateHostDialogChange = useCallback(
+    (open: boolean) => {
+      setCreateHostDialogOpen(open);
+      if (!open) {
+        resetCreateHostForm();
+      }
+    },
+    [resetCreateHostForm],
+  );
+
+  const handleCreateHostThread = useCallback(async () => {
+    if (!projectRef || !canCreateHost || createHostNameError) {
+      return;
+    }
+
+    const hostName = normalizedCreateHostName;
+    const target = resolveHostCreationTarget(createHostTarget, hostName);
+    await handleNewThread(projectRef, {
+      scopedHostName: hostName,
+      interactionMode: "plan",
+      workflow: {
+        kind: "host-creation",
+        hostName,
+        target,
+        osFamily: createHostOsFamily,
+        hostType: createHostType.trim() || null,
+        status: "planning",
+      },
+    });
+    setCreateHostDialogOpen(false);
+    resetCreateHostForm();
+  }, [
+    canCreateHost,
+    createHostNameError,
+    createHostOsFamily,
+    createHostTarget,
+    createHostType,
+    handleNewThread,
+    normalizedCreateHostName,
+    projectRef,
+    resetCreateHostForm,
+  ]);
 
   const invalidateDashboardQueries = useCallback(() => {
     if (!projectRef || !project) {
@@ -919,6 +1030,19 @@ function FlakeDashboardRouteView() {
                     <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground/70">
                       Hosts
                     </h2>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleCreateHostDialogChange(true)}
+                      disabled={!canCreateHost}
+                      title={
+                        canCreateHost
+                          ? undefined
+                          : "Create host is unavailable until this repo exposes a flake."
+                      }
+                    >
+                      Create host
+                    </Button>
                   </div>
 
                   <div className="grid gap-2">
@@ -1082,6 +1206,16 @@ function FlakeDashboardRouteView() {
                                         ? "Generate doc"
                                         : "Refresh doc"}
                                     </MenuItem>
+                                    <MenuSeparator />
+                                    <MenuItem
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleRemoveHostThread(summary.host);
+                                      }}
+                                    >
+                                      <Trash2Icon />
+                                      Remove host
+                                    </MenuItem>
                                   </MenuPopup>
                                 </Menu>
                               </div>
@@ -1098,6 +1232,12 @@ function FlakeDashboardRouteView() {
                       <EmptyPanel
                         title="No hosts resolved"
                         description="No hosts were resolved for this flake yet."
+                        {...(canCreateHost
+                          ? {
+                              actionLabel: "Create host",
+                              onAction: () => handleCreateHostDialogChange(true),
+                            }
+                          : {})}
                       />
                     )}
                   </div>
@@ -1739,6 +1879,93 @@ function FlakeDashboardRouteView() {
           </div>
         </div>
       </div>
+      <Dialog open={createHostDialogOpen} onOpenChange={handleCreateHostDialogChange}>
+        <DialogPopup className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Host</DialogTitle>
+            <DialogDescription>
+              Start a guided, plan-first workflow for a new host. The new thread stays scoped to
+              this host and starts in plan mode.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Host name</span>
+              <Input
+                autoFocus
+                value={createHostName}
+                placeholder="example-host"
+                onChange={(event) => {
+                  setCreateHostName(normalizeHostCreationHostName(event.target.value));
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && createHostNameError === null) {
+                    event.preventDefault();
+                    void handleCreateHostThread();
+                  }
+                }}
+              />
+              <span
+                className={cn(
+                  "text-xs",
+                  createHostNameError ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {createHostNameError ?? "Used for the thread scope, t3hosts key, and host path."}
+              </span>
+            </label>
+
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Target</span>
+              <Input
+                value={createHostTarget}
+                placeholder={normalizedCreateHostName || "host target"}
+                onChange={(event) => setCreateHostTarget(event.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">
+                Optional. Defaults to the host name until you provide the final install target.
+              </span>
+            </label>
+
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">OS family</span>
+              <select
+                value={createHostOsFamily}
+                onChange={(event) =>
+                  setCreateHostOsFamily(event.target.value === "darwin" ? "darwin" : "nixos")
+                }
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="nixos">NixOS</option>
+                <option value="darwin">Darwin</option>
+              </select>
+            </label>
+
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Host type</span>
+              <Input
+                value={createHostType}
+                placeholder="server, laptop, vm..."
+                onChange={(event) => setCreateHostType(event.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">
+                Optional. This seeds the plan but the agent should still discover the repo layout.
+              </span>
+            </label>
+          </DialogPanel>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => handleCreateHostDialogChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleCreateHostThread()}
+              disabled={createHostNameError !== null || !canCreateHost}
+            >
+              Create thread
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
       <Dialog
         open={deployDialogHostSummary !== null}
         onOpenChange={(open) => {

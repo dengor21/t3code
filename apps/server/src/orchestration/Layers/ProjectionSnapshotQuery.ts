@@ -24,6 +24,7 @@ import {
   type OrchestrationThreadShell,
   ModelSelection,
   ProjectId,
+  ThreadWorkflow,
   ThreadId,
 } from "@t3tools/contracts";
 import { Effect, Layer, Option, Schema, Struct } from "effect";
@@ -76,6 +77,7 @@ const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    workflow: Schema.NullOr(Schema.fromJsonString(ThreadWorkflow)),
   }),
 );
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -297,6 +299,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           branch,
           worktree_path AS "worktreePath",
           scoped_host_name AS "scopedHostName",
+          workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -558,6 +561,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           branch,
           worktree_path AS "worktreePath",
           scoped_host_name AS "scopedHostName",
+          workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -977,6 +981,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 branch: row.branch,
                 worktreePath: row.worktreePath,
                 scopedHostName: row.scopedHostName,
+                workflow: row.workflow,
                 changeTracking: mapThreadChangeTrackingRow(row),
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
@@ -1135,6 +1140,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                     branch: row.branch,
                     worktreePath: row.worktreePath,
                     scopedHostName: row.scopedHostName,
+                    workflow: row.workflow,
                     changeTracking: mapThreadChangeTrackingRow(row),
                     latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                     createdAt: row.createdAt,
@@ -1362,6 +1368,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
         scopedHostName: threadRow.value.scopedHostName,
+        workflow: threadRow.value.workflow,
         changeTracking: mapThreadChangeTrackingRow(threadRow.value),
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,
@@ -1458,6 +1465,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         branch: threadRow.value.branch,
         worktreePath: threadRow.value.worktreePath,
         scopedHostName: threadRow.value.scopedHostName,
+        workflow: threadRow.value.workflow,
         changeTracking: mapThreadChangeTrackingRow(threadRow.value),
         latestTurn: Option.isSome(latestTurnRow) ? mapLatestTurn(latestTurnRow.value) : null,
         createdAt: threadRow.value.createdAt,

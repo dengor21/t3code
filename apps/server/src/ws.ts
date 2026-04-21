@@ -492,6 +492,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
                 scopedHostName: bootstrap.createThread.scopedHostName ?? null,
+                workflow: bootstrap.createThread.workflow ?? null,
                 createdAt: bootstrap.createThread.createdAt,
               });
               createdThread = true;

@@ -7,17 +7,21 @@ describe("shouldReuseDraftForThreadStart", () => {
     expect(
       shouldReuseDraftForThreadStart({
         requestedScopedHostName: null,
+        requestedWorkflow: null,
         existingScopedHostName: "bc250",
+        existingWorkflow: null,
         existingPrompt: "Host context:\n- name: bc250",
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("reuses the draft when the requested host matches the existing host", () => {
     expect(
       shouldReuseDraftForThreadStart({
         requestedScopedHostName: "thinkpad",
+        requestedWorkflow: null,
         existingScopedHostName: "thinkpad",
+        existingWorkflow: null,
         existingPrompt: "Host context:\n- name: thinkpad",
       }),
     ).toBe(true);
@@ -27,7 +31,9 @@ describe("shouldReuseDraftForThreadStart", () => {
     expect(
       shouldReuseDraftForThreadStart({
         requestedScopedHostName: "thinkpad",
+        requestedWorkflow: null,
         existingScopedHostName: "bc250",
+        existingWorkflow: null,
         existingPrompt: "Host context:\n- name: bc250",
       }),
     ).toBe(false);
@@ -37,7 +43,75 @@ describe("shouldReuseDraftForThreadStart", () => {
     expect(
       shouldReuseDraftForThreadStart({
         requestedScopedHostName: "thinkpad",
+        requestedWorkflow: null,
         existingScopedHostName: "bc250",
+        existingWorkflow: null,
+        existingPrompt: "   ",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not reuse a generic draft for a host-creation workflow", () => {
+    expect(
+      shouldReuseDraftForThreadStart({
+        requestedScopedHostName: "nexus",
+        requestedWorkflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          status: "planning",
+        },
+        existingScopedHostName: "nexus",
+        existingWorkflow: null,
+        existingPrompt: "   ",
+      }),
+    ).toBe(false);
+  });
+
+  it("reuses a matching host-creation draft", () => {
+    expect(
+      shouldReuseDraftForThreadStart({
+        requestedScopedHostName: "nexus",
+        requestedWorkflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          status: "planning",
+        },
+        existingScopedHostName: "nexus",
+        existingWorkflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          status: "planning",
+        },
+        existingPrompt: "   ",
+      }),
+    ).toBe(true);
+  });
+
+  it("reuses a matching host-removal draft", () => {
+    expect(
+      shouldReuseDraftForThreadStart({
+        requestedScopedHostName: "nexus",
+        requestedWorkflow: {
+          kind: "host-removal",
+          hostName: "nexus",
+          target: "root@nexus",
+          hostType: "server",
+          status: "planning",
+        },
+        existingScopedHostName: "nexus",
+        existingWorkflow: {
+          kind: "host-removal",
+          hostName: "nexus",
+          target: "root@nexus",
+          hostType: "server",
+          status: "planning",
+        },
         existingPrompt: "   ",
       }),
     ).toBe(true);

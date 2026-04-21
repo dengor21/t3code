@@ -129,6 +129,12 @@ describe("ProviderSendTurnInput", () => {
             hostDoc: ".t3code/docs/hosts/nexus.md",
           },
         },
+        workflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          osFamily: "nixos",
+          status: "planning",
+        },
       },
     });
 
@@ -143,5 +149,46 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.providerContext?.flake?.documentationPaths?.hostDoc).toBe(
       ".t3code/docs/hosts/nexus.md",
     );
+    expect(parsed.providerContext?.workflow).toEqual({
+      kind: "host-creation",
+      hostName: "nexus",
+      osFamily: "nixos",
+      status: "planning",
+    });
+  });
+
+  it("accepts host-removal workflow context payloads", () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: "thread-1",
+      providerContext: {
+        scopedHostName: "nexus",
+        workflow: {
+          kind: "host-removal",
+          hostName: "nexus",
+          status: "planning",
+        },
+      },
+    });
+
+    expect(parsed.providerContext?.workflow).toEqual({
+      kind: "host-removal",
+      hostName: "nexus",
+      status: "planning",
+    });
+  });
+
+  it("rejects malformed workflow context payloads", () => {
+    expect(() =>
+      decodeProviderSendTurnInput({
+        threadId: "thread-1",
+        providerContext: {
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "linux",
+          },
+        },
+      }),
+    ).toThrow();
   });
 });

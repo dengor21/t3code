@@ -12,6 +12,7 @@ import {
   type ServerProvider,
   type ScopedProjectRef,
   type ScopedThreadRef,
+  ThreadWorkflow,
   ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -43,7 +44,7 @@ import { getDefaultServerModel } from "./providerModels";
 import { UnifiedSettings } from "@t3tools/contracts/settings";
 
 export const COMPOSER_DRAFT_STORAGE_KEY = "t3code:composer-drafts:v1";
-const COMPOSER_DRAFT_STORAGE_VERSION = 6;
+const COMPOSER_DRAFT_STORAGE_VERSION = 7;
 const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
 const isRuntimeMode = Schema.is(RuntimeMode);
 export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
@@ -163,6 +164,7 @@ const PersistedDraftThreadState = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   envMode: DraftThreadEnvModeSchema,
   scopedHostName: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  workflow: Schema.optionalKey(Schema.NullOr(ThreadWorkflow)),
   promotedTo: Schema.optionalKey(
     Schema.NullOr(
       Schema.Struct({
@@ -224,6 +226,7 @@ export interface DraftSessionState {
   worktreePath: string | null;
   envMode: DraftThreadEnvMode;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
   promotedTo?: ScopedThreadRef | null;
 }
 
@@ -284,6 +287,7 @@ interface ComposerDraftStoreState {
       branch?: string | null;
       worktreePath?: string | null;
       scopedHostName?: string | null;
+      workflow?: ThreadWorkflow | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       runtimeMode?: RuntimeMode;
@@ -299,6 +303,7 @@ interface ComposerDraftStoreState {
       branch?: string | null;
       worktreePath?: string | null;
       scopedHostName?: string | null;
+      workflow?: ThreadWorkflow | null;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
       runtimeMode?: RuntimeMode;
@@ -312,6 +317,7 @@ interface ComposerDraftStoreState {
       branch?: string | null;
       worktreePath?: string | null;
       scopedHostName?: string | null;
+      workflow?: ThreadWorkflow | null;
       projectRef?: ScopedProjectRef;
       createdAt?: string;
       envMode?: DraftThreadEnvMode;
@@ -990,6 +996,51 @@ function toProjectDraftSession(
   };
 }
 
+function draftThreadWorkflowsEqual(
+  left: ThreadWorkflow | null | undefined,
+  right: ThreadWorkflow | null | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left == null || right == null) {
+    return false;
+  }
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  switch (left.kind) {
+    case "host-creation":
+      return (
+        right.kind === "host-creation" &&
+        left.hostName === right.hostName &&
+        (left.target ?? null) === (right.target ?? null) &&
+        (left.osFamily ?? null) === (right.osFamily ?? null) &&
+        (left.hostType ?? null) === (right.hostType ?? null) &&
+        (left.status ?? null) === (right.status ?? null)
+      );
+    case "host-removal":
+      return (
+        right.kind === "host-removal" &&
+        left.hostName === right.hostName &&
+        (left.target ?? null) === (right.target ?? null) &&
+        (left.hostType ?? null) === (right.hostType ?? null) &&
+        (left.status ?? null) === (right.status ?? null)
+      );
+  }
+}
+
+function normalizeDraftThreadWorkflow(value: unknown): ThreadWorkflow | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  try {
+    return Schema.decodeUnknownSync(ThreadWorkflow)(value);
+  } catch {
+    return null;
+  }
+}
+
 function createDraftThreadState(
   projectRef: ScopedProjectRef,
   threadId: ThreadId,
@@ -1000,6 +1051,7 @@ function createDraftThreadState(
     branch?: string | null;
     worktreePath?: string | null;
     scopedHostName?: string | null;
+    workflow?: ThreadWorkflow | null;
     createdAt?: string;
     envMode?: DraftThreadEnvMode;
     runtimeMode?: RuntimeMode;
@@ -1039,6 +1091,12 @@ function createDraftThreadState(
           ? null
           : (existingThread?.scopedHostName ?? null)
         : (options.scopedHostName ?? null),
+    workflow:
+      options?.workflow === undefined
+        ? projectChanged
+          ? null
+          : (existingThread?.workflow ?? null)
+        : (options.workflow ?? null),
     envMode:
       options?.envMode ??
       (nextWorktreePath
@@ -1077,6 +1135,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
     left.scopedHostName === right.scopedHostName &&
+    draftThreadWorkflowsEqual(left.workflow, right.workflow) &&
     left.envMode === right.envMode &&
     scopedThreadRefsEqual(left.promotedTo, right.promotedTo)
   );
@@ -1222,6 +1281,7 @@ function normalizePersistedDraftThreads(
           candidateDraftThread.scopedHostName.length > 0
             ? candidateDraftThread.scopedHostName
             : null,
+        workflow: normalizeDraftThreadWorkflow(candidateDraftThread.workflow),
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         promotedTo,
       };
@@ -1267,6 +1327,7 @@ function normalizePersistedDraftThreads(
           interactionMode: DEFAULT_INTERACTION_MODE,
           branch: null,
           worktreePath: null,
+          workflow: null,
           envMode: "local",
           promotedTo: null,
         };
@@ -1772,6 +1833,7 @@ function toHydratedDraftThreadState(
     branch: persistedDraftThread.branch,
     worktreePath: persistedDraftThread.worktreePath,
     scopedHostName: persistedDraftThread.scopedHostName ?? null,
+    workflow: persistedDraftThread.workflow ?? null,
     envMode: persistedDraftThread.envMode,
     promotedTo: persistedDraftThread.promotedTo
       ? scopeThreadRef(
@@ -1977,6 +2039,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                     ? null
                     : (existing.scopedHostName ?? null)
                   : (options.scopedHostName ?? null),
+              workflow:
+                options.workflow === undefined
+                  ? projectChanged
+                    ? null
+                    : (existing.workflow ?? null)
+                  : (options.workflow ?? null),
               envMode:
                 options.envMode ??
                 (nextWorktreePath
@@ -1996,6 +2064,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.branch === existing.branch &&
               nextDraftThread.worktreePath === existing.worktreePath &&
               nextDraftThread.scopedHostName === existing.scopedHostName &&
+              draftThreadWorkflowsEqual(nextDraftThread.workflow, existing.workflow) &&
               nextDraftThread.envMode === existing.envMode &&
               scopedThreadRefsEqual(nextDraftThread.promotedTo, existing.promotedTo);
             if (isUnchanged) {

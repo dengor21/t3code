@@ -11,11 +11,12 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection } from "@t3tools/contracts";
+import { ModelSelection, ThreadWorkflow } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    workflow: Schema.NullOr(Schema.fromJsonString(ThreadWorkflow)),
   }),
 );
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
@@ -37,6 +38,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           branch,
           worktree_path,
           scoped_host_name,
+          workflow_json,
           latest_turn_id,
           created_at,
           updated_at,
@@ -63,6 +65,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.branch},
           ${row.worktreePath},
           ${row.scopedHostName},
+          ${row.workflow === null ? null : JSON.stringify(row.workflow)},
           ${row.latestTurnId},
           ${row.createdAt},
           ${row.updatedAt},
@@ -89,6 +92,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           branch = excluded.branch,
           worktree_path = excluded.worktree_path,
           scoped_host_name = excluded.scoped_host_name,
+          workflow_json = excluded.workflow_json,
           latest_turn_id = excluded.latest_turn_id,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
@@ -122,6 +126,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           branch,
           worktree_path AS "worktreePath",
           scoped_host_name AS "scopedHostName",
+          workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -157,6 +162,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           branch,
           worktree_path AS "worktreePath",
           scoped_host_name AS "scopedHostName",
+          workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

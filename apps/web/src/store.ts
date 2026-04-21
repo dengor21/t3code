@@ -249,6 +249,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map((activity) => ({ ...activity })),
@@ -280,6 +281,7 @@ function mapThreadShell(
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
   };
   const session = thread.session ? mapSession(thread.session) : null;
@@ -301,6 +303,7 @@ function mapThreadShell(
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
     latestUserMessageAt: thread.latestUserMessageAt,
     hasPendingApprovals: thread.hasPendingApprovals,
@@ -332,6 +335,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     scopedHostName: thread.scopedHostName ?? null,
+    workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
   };
 }
@@ -415,6 +419,34 @@ function threadChangeTrackingEqual(
   );
 }
 
+function threadWorkflowsEqual(
+  left: Thread["workflow"] | ThreadShell["workflow"] | SidebarThreadSummary["workflow"],
+  right: Thread["workflow"] | ThreadShell["workflow"] | SidebarThreadSummary["workflow"],
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return false;
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case "host-creation":
+      return (
+        right.kind === "host-creation" &&
+        left.hostName === right.hostName &&
+        (left.target ?? null) === (right.target ?? null) &&
+        (left.osFamily ?? null) === (right.osFamily ?? null) &&
+        (left.hostType ?? null) === (right.hostType ?? null) &&
+        (left.status ?? null) === (right.status ?? null)
+      );
+    case "host-removal":
+      return (
+        right.kind === "host-removal" &&
+        left.hostName === right.hostName &&
+        (left.target ?? null) === (right.target ?? null) &&
+        (left.hostType ?? null) === (right.hostType ?? null) &&
+        (left.status ?? null) === (right.status ?? null)
+      );
+  }
+}
+
 function latestUserMessageTimestamp(messages: ReadonlyArray<ChatMessage>): string | null {
   return (
     messages
@@ -456,6 +488,7 @@ function sidebarThreadSummariesEqual(
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
     left.scopedHostName === right.scopedHostName &&
+    threadWorkflowsEqual(left.workflow, right.workflow) &&
     threadChangeTrackingEqual(left.changeTracking, right.changeTracking) &&
     left.latestUserMessageAt === right.latestUserMessageAt &&
     left.hasPendingApprovals === right.hasPendingApprovals &&
@@ -481,6 +514,8 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.updatedAt === right.updatedAt &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
+    left.scopedHostName === right.scopedHostName &&
+    threadWorkflowsEqual(left.workflow, right.workflow) &&
     threadChangeTrackingEqual(left.changeTracking, right.changeTracking)
   );
 }
@@ -1326,6 +1361,7 @@ function applyEnvironmentOrchestrationEvent(
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
           scopedHostName: event.payload.scopedHostName ?? null,
+          workflow: event.payload.workflow ?? null,
           changeTracking: null,
           latestTurn: null,
           createdAt: event.payload.createdAt,
@@ -1371,6 +1407,7 @@ function applyEnvironmentOrchestrationEvent(
         ...(event.payload.worktreePath !== undefined
           ? { worktreePath: event.payload.worktreePath }
           : {}),
+        ...(event.payload.workflow !== undefined ? { workflow: event.payload.workflow } : {}),
         updatedAt: event.payload.updatedAt,
       }));
 

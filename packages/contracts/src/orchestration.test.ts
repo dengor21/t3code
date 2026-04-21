@@ -236,6 +236,13 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
           interactionMode: "default",
           branch: null,
           worktreePath: null,
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            target: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
           createdAt: "2026-01-01T00:00:00.000Z",
         },
         prepareWorktree: {
@@ -248,6 +255,7 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.bootstrap?.createThread?.projectId, "project-1");
+    assert.strictEqual(parsed.bootstrap?.createThread?.workflow?.kind, "host-creation");
     assert.strictEqual(parsed.bootstrap?.prepareWorktree?.baseBranch, "main");
     assert.strictEqual(parsed.bootstrap?.runSetupScript, true);
   }),
@@ -266,12 +274,20 @@ it.effect("decodes thread.created runtime mode for historical events", () =>
       interactionMode: "default",
       branch: null,
       worktreePath: null,
+      workflow: {
+        kind: "host-creation",
+        hostName: "thread-1",
+        target: "thread-1",
+        osFamily: "nixos",
+        status: "planning",
+      },
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
 
     assert.strictEqual(parsed.runtimeMode, DEFAULT_RUNTIME_MODE);
     assert.strictEqual(parsed.modelSelection.provider, "codex");
+    assert.strictEqual(parsed.workflow?.kind, "host-creation");
   }),
 );
 
@@ -286,6 +302,45 @@ it.effect("decodes thread.meta-updated payloads with explicit provider", () =>
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.modelSelection?.provider, "claudeAgent");
+  }),
+);
+
+it.effect("decodes thread workflow metadata on thread.meta.update payloads", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadMetaUpdatedPayload({
+      threadId: "thread-1",
+      workflow: {
+        kind: "host-creation",
+        hostName: "teletype",
+        target: "teletype",
+        osFamily: "nixos",
+        hostType: "server",
+        status: "ready-to-implement",
+      },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.workflow?.kind, "host-creation");
+    assert.strictEqual(parsed.workflow?.hostName, "teletype");
+    assert.strictEqual(parsed.workflow?.status, "ready-to-implement");
+  }),
+);
+
+it.effect("decodes host-removal workflow metadata on thread.meta.update payloads", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadMetaUpdatedPayload({
+      threadId: "thread-1",
+      workflow: {
+        kind: "host-removal",
+        hostName: "nexus",
+        target: "root@nexus",
+        hostType: "server",
+        status: "planning",
+      },
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.workflow?.kind, "host-removal");
+    assert.strictEqual(parsed.workflow?.hostName, "nexus");
+    assert.strictEqual(parsed.workflow?.status, "planning");
   }),
 );
 

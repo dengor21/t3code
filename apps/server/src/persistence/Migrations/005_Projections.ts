@@ -26,6 +26,7 @@ export default Effect.gen(function* () {
       branch TEXT,
       worktree_path TEXT,
       scoped_host_name TEXT,
+      workflow_json TEXT,
       latest_turn_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,

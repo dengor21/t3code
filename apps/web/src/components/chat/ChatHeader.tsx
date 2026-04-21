@@ -3,10 +3,12 @@ import {
   type EditorId,
   type ProjectScript,
   type ResolvedKeybindingsConfig,
+  type ThreadWorkflow,
   type ThreadId,
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { memo } from "react";
+import { buildHostWorkflowBadgeLabel } from "@t3tools/shared/hostWorkflow";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
 import { DiffIcon, TerminalSquareIcon } from "lucide-react";
@@ -23,6 +25,7 @@ interface ChatHeaderProps {
   draftId?: DraftId;
   activeThreadTitle: string;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
   activeThreadChangeState: "ongoing" | "committed";
   activeProjectName: string | undefined;
   isGitRepo: boolean;
@@ -51,6 +54,7 @@ export const ChatHeader = memo(function ChatHeader({
   draftId,
   activeThreadTitle,
   scopedHostName,
+  workflow,
   activeThreadChangeState,
   activeProjectName,
   isGitRepo,
@@ -88,6 +92,11 @@ export const ChatHeader = memo(function ChatHeader({
         >
           {activeThreadChangeState === "committed" ? "Committed" : "Ongoing change"}
         </Badge>
+        {workflow && (
+          <Badge variant="secondary" className="shrink-0 text-[10px]">
+            {buildHostWorkflowBadgeLabel(workflow)}
+          </Badge>
+        )}
         {scopedHostName?.trim() && (
           <Badge variant="outline" className="shrink-0 text-[10px]">
             Host: {scopedHostName.trim()}

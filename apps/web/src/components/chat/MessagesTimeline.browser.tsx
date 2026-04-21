@@ -70,6 +70,8 @@ function buildProps() {
     timestampFormat: "24-hour" as const,
     workspaceRoot: undefined,
     scopedHostName: null,
+    workflow: null,
+    onStartWorkflow: undefined,
     onIsAtEndChange: vi.fn(),
   };
 }
@@ -172,6 +174,62 @@ describe("MessagesTimeline", () => {
       await expect
         .element(page.getByText("Changes default to this host unless you broaden scope."))
         .toBeVisible();
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("shows the guided host-creation CTA for empty workflow threads", async () => {
+    const onStartWorkflow = vi.fn();
+    const screen = await render(
+      <MessagesTimeline
+        {...buildProps()}
+        workflow={{
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          status: "planning",
+        }}
+        scopedHostName="nexus"
+        onStartWorkflow={onStartWorkflow}
+        timelineEntries={[]}
+      />,
+    );
+
+    try {
+      await expect.element(page.getByText("Create host")).toBeVisible();
+      await expect.element(page.getByText("Begin guided setup")).toBeVisible();
+      await page.getByRole("button", { name: "Begin guided setup" }).click();
+      expect(onStartWorkflow).toHaveBeenCalledTimes(1);
+    } finally {
+      await screen.unmount();
+    }
+  });
+
+  it("shows the guided host-removal CTA for empty workflow threads", async () => {
+    const onStartWorkflow = vi.fn();
+    const screen = await render(
+      <MessagesTimeline
+        {...buildProps()}
+        workflow={{
+          kind: "host-removal",
+          hostName: "nexus",
+          target: "root@nexus",
+          hostType: "server",
+          status: "planning",
+        }}
+        scopedHostName="nexus"
+        onStartWorkflow={onStartWorkflow}
+        timelineEntries={[]}
+      />,
+    );
+
+    try {
+      await expect.element(page.getByText("Remove host")).toBeVisible();
+      await expect.element(page.getByText("Begin removal plan")).toBeVisible();
+      await page.getByRole("button", { name: "Begin removal plan" }).click();
+      expect(onStartWorkflow).toHaveBeenCalledTimes(1);
     } finally {
       await screen.unmount();
     }

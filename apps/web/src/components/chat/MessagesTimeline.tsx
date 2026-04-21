@@ -1,4 +1,14 @@
-import { type EnvironmentId, type MessageId, type TurnId } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  type MessageId,
+  type ThreadWorkflow,
+  type TurnId,
+} from "@t3tools/contracts";
+import {
+  HOST_CREATION_WORKFLOW_KIND,
+  buildHostWorkflowBadgeLabel,
+  buildHostWorkflowStartLabel,
+} from "@t3tools/shared/hostWorkflow";
 import {
   createContext,
   memo,
@@ -115,6 +125,8 @@ interface MessagesTimelineProps {
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
+  onStartWorkflow?: (() => void) | undefined;
   onIsAtEndChange: (isAtEnd: boolean) => void;
 }
 
@@ -144,6 +156,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   timestampFormat,
   workspaceRoot,
   scopedHostName,
+  workflow,
+  onStartWorkflow,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
   const rawRows = useMemo(
@@ -247,7 +261,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           <p className="text-sm text-muted-foreground/30">
             Send a message to start the conversation.
           </p>
-          {scopedHostName?.trim() && (
+          {workflow && (
+            <div className="w-full rounded-xl border border-border/60 bg-card/40 px-4 py-3 text-left">
+              <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+                <Badge variant="secondary" className="text-[10px]">
+                  {buildHostWorkflowBadgeLabel(workflow)}
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  Host: {workflow.hostName}
+                </Badge>
+              </div>
+              <p className="text-center text-sm text-muted-foreground">
+                {workflow.kind === HOST_CREATION_WORKFLOW_KIND ? (
+                  <>
+                    Start the guided host-creation workflow for{" "}
+                    <span className="font-medium text-foreground">{workflow.hostName}</span>. The
+                    agent will ask hardware questions first, research current guidance, and build an
+                    implementation-ready scaffold plan.
+                  </>
+                ) : (
+                  <>
+                    Plan the removal of{" "}
+                    <span className="font-medium text-foreground">{workflow.hostName}</span>. The
+                    agent will audit repo references, identify required cleanup, and build an
+                    implementation-ready removal plan.
+                  </>
+                )}
+              </p>
+              {onStartWorkflow && (
+                <div className="mt-3 flex justify-center">
+                  <Button size="sm" onClick={onStartWorkflow}>
+                    {buildHostWorkflowStartLabel(workflow)}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          {!workflow && scopedHostName?.trim() && (
             <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-3">
               <div className="mb-2 flex justify-center">
                 <Badge variant="outline" className="text-[10px]">

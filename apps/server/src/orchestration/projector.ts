@@ -290,6 +290,7 @@ export function projectEvent(
             branch: payload.branch,
             worktreePath: payload.worktreePath,
             scopedHostName: payload.scopedHostName,
+            workflow: payload.workflow ?? null,
             changeTracking: {
               baselineHeadSha: null,
               lastCommit: null,
@@ -361,6 +362,7 @@ export function projectEvent(
               : {}),
             ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
             ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
+            ...(payload.workflow !== undefined ? { workflow: payload.workflow } : {}),
             updatedAt: payload.updatedAt,
           }),
         })),

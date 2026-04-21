@@ -72,6 +72,7 @@ describe("chatThreadActions", () => {
       worktreePath: "/tmp/worktree",
       envMode: "worktree",
       scopedHostName: null,
+      workflow: null,
     });
   });
 
@@ -90,6 +91,7 @@ describe("chatThreadActions", () => {
     expect(handleNewThread).toHaveBeenCalledWith(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), {
       envMode: "worktree",
       scopedHostName: null,
+      workflow: null,
     });
   });
 

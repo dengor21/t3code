@@ -25,6 +25,11 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
+import {
+  buildHostWorkflowStarterPrompt,
+  buildHostWorkflowThreadTitle,
+  markHostWorkflowReadyToImplement,
+} from "@t3tools/shared/hostWorkflow";
 import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
@@ -2529,7 +2534,9 @@ export default function ChatView(props: ChatViewProps) {
           titleSeed = "New thread";
         }
       }
-      const title = truncate(titleSeed);
+      const title = activeThread.workflow
+        ? buildHostWorkflowThreadTitle(activeThread.workflow)
+        : truncate(titleSeed);
       const threadCreateModelSelection: ModelSelection = {
         provider: ctxSelectedProvider,
         model:
@@ -2542,7 +2549,7 @@ export default function ChatView(props: ChatViewProps) {
       };
 
       // Auto-title from first message
-      if (isFirstMessage && isServerThread) {
+      if (isFirstMessage && isServerThread && !activeThread.workflow) {
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
           commandId: newCommandId(),
@@ -2576,6 +2583,7 @@ export default function ChatView(props: ChatViewProps) {
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       scopedHostName: activeThread.scopedHostName ?? null,
+                      workflow: activeThread.workflow ?? null,
                       createdAt: activeThread.createdAt,
                     },
                   }
@@ -2649,6 +2657,188 @@ export default function ChatView(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  const onStartWorkflow = useCallback(async () => {
+    const api = readEnvironmentApi(environmentId);
+    if (
+      !api ||
+      !activeThread ||
+      !activeProject ||
+      !activeThread.workflow ||
+      isSendBusy ||
+      isConnecting ||
+      sendInFlightRef.current
+    ) {
+      return;
+    }
+
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx) {
+      return;
+    }
+
+    const {
+      selectedProvider: ctxSelectedProvider,
+      selectedModel: ctxSelectedModel,
+      selectedProviderModels: ctxSelectedProviderModels,
+      selectedPromptEffort: ctxSelectedPromptEffort,
+      selectedModelSelection: ctxSelectedModelSelection,
+    } = sendCtx;
+
+    const threadIdForSend = activeThread.id;
+    const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
+    const baseBranchForWorktree =
+      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
+        ? activeThreadBranch
+        : null;
+
+    if (
+      isFirstMessage &&
+      sendEnvMode === "worktree" &&
+      !activeThread.worktreePath &&
+      !activeThreadBranch
+    ) {
+      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
+      return;
+    }
+
+    sendInFlightRef.current = true;
+    beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
+
+    const workflowPrompt = buildHostWorkflowStarterPrompt(activeThread.workflow);
+    const createdAt = new Date().toISOString();
+    const messageId = newMessageId();
+    const outgoingMessageText = formatOutgoingPrompt({
+      provider: ctxSelectedProvider,
+      model: ctxSelectedModel,
+      models: ctxSelectedProviderModels,
+      effort: ctxSelectedPromptEffort,
+      text: workflowPrompt,
+    });
+
+    isAtEndRef.current = true;
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
+    await legendListRef.current?.scrollToEnd?.({ animated: false });
+
+    setOptimisticUserMessages((existing) => [
+      ...existing,
+      {
+        id: messageId,
+        role: "user",
+        text: outgoingMessageText,
+        createdAt,
+        streaming: false,
+      },
+    ]);
+
+    setThreadError(threadIdForSend, null);
+
+    let turnStartSucceeded = false;
+    await (async () => {
+      const threadCreateModelSelection: ModelSelection = {
+        provider: ctxSelectedProvider,
+        model:
+          ctxSelectedModel ||
+          activeProject.defaultModelSelection?.model ||
+          DEFAULT_MODEL_BY_PROVIDER.codex,
+        ...(ctxSelectedModelSelection.options
+          ? { options: ctxSelectedModelSelection.options }
+          : {}),
+      };
+
+      if (isServerThread) {
+        await persistThreadSettingsForNextTurn({
+          threadId: threadIdForSend,
+          createdAt,
+          modelSelection: ctxSelectedModelSelection,
+          runtimeMode,
+          interactionMode,
+        });
+      }
+
+      const bootstrap =
+        isLocalDraftThread || baseBranchForWorktree
+          ? {
+              ...(isLocalDraftThread
+                ? {
+                    createThread: {
+                      projectId: activeProject.id,
+                      title: activeThread.title,
+                      modelSelection: threadCreateModelSelection,
+                      runtimeMode,
+                      interactionMode,
+                      branch: activeThreadBranch,
+                      worktreePath: activeThread.worktreePath,
+                      scopedHostName: activeThread.scopedHostName ?? null,
+                      workflow: activeThread.workflow ?? null,
+                      createdAt: activeThread.createdAt,
+                    },
+                  }
+                : {}),
+              ...(baseBranchForWorktree
+                ? {
+                    prepareWorktree: {
+                      projectCwd: activeProject.cwd,
+                      baseBranch: baseBranchForWorktree,
+                      branch: buildTemporaryWorktreeBranchName(),
+                    },
+                    runSetupScript: true,
+                  }
+                : {}),
+            }
+          : undefined;
+
+      beginLocalDispatch({ preparingWorktree: false });
+      await api.orchestration.dispatchCommand({
+        type: "thread.turn.start",
+        commandId: newCommandId(),
+        threadId: threadIdForSend,
+        message: {
+          messageId,
+          role: "user",
+          text: outgoingMessageText,
+          attachments: [],
+        },
+        modelSelection: ctxSelectedModelSelection,
+        titleSeed: activeThread.title,
+        runtimeMode,
+        interactionMode,
+        ...(bootstrap ? { bootstrap } : {}),
+        createdAt,
+      });
+      turnStartSucceeded = true;
+    })().catch((err: unknown) => {
+      setOptimisticUserMessages((existing) =>
+        existing.filter((message) => message.id !== messageId),
+      );
+      setThreadError(
+        threadIdForSend,
+        err instanceof Error ? err.message : "Failed to start the guided host workflow.",
+      );
+    });
+
+    sendInFlightRef.current = false;
+    if (!turnStartSucceeded) {
+      resetLocalDispatch();
+    }
+  }, [
+    activeProject,
+    activeThread,
+    activeThreadBranch,
+    beginLocalDispatch,
+    environmentId,
+    interactionMode,
+    isConnecting,
+    isLocalDraftThread,
+    isSendBusy,
+    isServerThread,
+    persistThreadSettingsForNextTurn,
+    resetLocalDispatch,
+    runtimeMode,
+    sendEnvMode,
+    setThreadError,
+  ]);
 
   const onInterrupt = async () => {
     const api = readEnvironmentApi(environmentId);
@@ -2908,6 +3098,15 @@ export default function ChatView(props: ChatViewProps) {
           nextInteractionMode,
         );
 
+        if (nextInteractionMode === "default" && activeThread.workflow) {
+          await api.orchestration.dispatchCommand({
+            type: "thread.meta.update",
+            commandId: newCommandId(),
+            threadId: threadIdForSend,
+            workflow: markHostWorkflowReadyToImplement(activeThread.workflow),
+          });
+        }
+
         await api.orchestration.dispatchCommand({
           type: "thread.turn.start",
           commandId: newCommandId(),
@@ -3029,6 +3228,9 @@ export default function ChatView(props: ChatViewProps) {
         branch: activeThreadBranch,
         worktreePath: activeThread.worktreePath,
         scopedHostName: activeThread.scopedHostName ?? null,
+        workflow: activeThread.workflow
+          ? markHostWorkflowReadyToImplement(activeThread.workflow)
+          : null,
         createdAt,
       })
       .then(() => {
@@ -3224,6 +3426,7 @@ export default function ChatView(props: ChatViewProps) {
           {...(routeKind === "draft" && draftId ? { draftId } : {})}
           activeThreadTitle={activeThread.title}
           scopedHostName={activeThread.scopedHostName ?? null}
+          workflow={activeThread.workflow ?? null}
           activeThreadChangeState={activeThread.changeTracking?.state ?? "ongoing"}
           activeProjectName={activeProject?.name}
           isGitRepo={isGitRepo}
@@ -3285,6 +3488,8 @@ export default function ChatView(props: ChatViewProps) {
               timestampFormat={timestampFormat}
               workspaceRoot={activeWorkspaceRoot}
               scopedHostName={activeThread.scopedHostName ?? null}
+              workflow={activeThread.workflow ?? null}
+              onStartWorkflow={activeThread.workflow ? onStartWorkflow : undefined}
               onIsAtEndChange={onIsAtEndChange}
             />
 

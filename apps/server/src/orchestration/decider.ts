@@ -165,6 +165,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           branch: command.branch,
           worktreePath: command.worktreePath,
           scopedHostName: command.scopedHostName,
+          workflow: command.workflow ?? null,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -261,6 +262,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             : {}),
           ...(command.branch !== undefined ? { branch: command.branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
+          ...(command.workflow !== undefined ? { workflow: command.workflow } : {}),
           updatedAt: occurredAt,
         },
       };

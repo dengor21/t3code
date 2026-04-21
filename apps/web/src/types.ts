@@ -17,6 +17,7 @@ import type {
   CheckpointRef,
   ProviderInteractionMode,
   RuntimeMode,
+  ThreadWorkflow,
   ThreadChangeTracking,
 } from "@t3tools/contracts";
 
@@ -118,6 +119,7 @@ export interface Thread {
   branch: string | null;
   worktreePath: string | null;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
   turnDiffSummaries: TurnDiffSummary[];
   activities: OrchestrationThreadActivity[];
@@ -139,6 +141,7 @@ export interface ThreadShell {
   branch: string | null;
   worktreePath: string | null;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
 }
 
@@ -161,6 +164,7 @@ export interface SidebarThreadSummary {
   branch: string | null;
   worktreePath: string | null;
   scopedHostName?: string | null;
+  workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
   latestUserMessageAt: string | null;
   hasPendingApprovals: boolean;

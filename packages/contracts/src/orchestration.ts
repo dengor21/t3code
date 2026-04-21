@@ -237,6 +237,40 @@ export const ThreadChangeTracking = Schema.Struct({
 });
 export type ThreadChangeTracking = typeof ThreadChangeTracking.Type;
 
+export const HostCreationWorkflowOsFamily = Schema.Literals(["nixos", "darwin"]);
+export type HostCreationWorkflowOsFamily = typeof HostCreationWorkflowOsFamily.Type;
+
+export const HostWorkflowStatus = Schema.Literals([
+  "planning",
+  "ready-to-implement",
+  "implemented",
+]);
+export type HostWorkflowStatus = typeof HostWorkflowStatus.Type;
+export const HostCreationWorkflowStatus = HostWorkflowStatus;
+export type HostCreationWorkflowStatus = HostWorkflowStatus;
+
+export const HostCreationWorkflow = Schema.Struct({
+  kind: Schema.Literal("host-creation"),
+  hostName: TrimmedNonEmptyString,
+  target: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  osFamily: Schema.optional(HostCreationWorkflowOsFamily),
+  hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  status: Schema.optional(HostWorkflowStatus),
+});
+export type HostCreationWorkflow = typeof HostCreationWorkflow.Type;
+
+export const HostRemovalWorkflow = Schema.Struct({
+  kind: Schema.Literal("host-removal"),
+  hostName: TrimmedNonEmptyString,
+  target: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  status: Schema.optional(HostWorkflowStatus),
+});
+export type HostRemovalWorkflow = typeof HostRemovalWorkflow.Type;
+
+export const ThreadWorkflow = Schema.Union([HostCreationWorkflow, HostRemovalWorkflow]);
+export type ThreadWorkflow = typeof ThreadWorkflow.Type;
+
 export const OrchestrationCheckpointFile = Schema.Struct({
   path: TrimmedNonEmptyString,
   kind: TrimmedNonEmptyString,
@@ -310,6 +344,9 @@ export const OrchestrationThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   changeTracking: Schema.optional(Schema.NullOr(ThreadChangeTracking)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -362,6 +399,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   changeTracking: Schema.optional(Schema.NullOr(ThreadChangeTracking)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -470,6 +510,7 @@ const ThreadCreateCommand = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
   createdAt: IsoDateTime,
 });
 
@@ -499,6 +540,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
 });
 
 const ThreadRuntimeModeSetCommand = Schema.Struct({
@@ -526,6 +568,7 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
   createdAt: IsoDateTime,
 });
 
@@ -841,6 +884,9 @@ export const ThreadCreatedPayload = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -867,6 +913,7 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
   updatedAt: IsoDateTime,
 });
 

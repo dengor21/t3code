@@ -81,6 +81,7 @@ export function useThreadActions() {
       ) {
         await handleNewThreadRef.current(scopeProjectRef(thread.environmentId, thread.projectId), {
           scopedHostName: null,
+          workflow: null,
         });
       }
     },

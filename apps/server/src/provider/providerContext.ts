@@ -27,12 +27,34 @@ export function buildProviderTurnContext(input: {
 }): ProviderTurnContext {
   const flakeProject = isFlakeProject(input.project);
   const scopedHostName = input.thread.scopedHostName ?? null;
+  const workflow =
+    input.thread.workflow?.kind === "host-creation"
+      ? {
+          kind: "host-creation" as const,
+          hostName: input.thread.workflow.hostName,
+          ...(input.thread.workflow.osFamily !== undefined
+            ? { osFamily: input.thread.workflow.osFamily }
+            : {}),
+          ...(input.thread.workflow.status !== undefined
+            ? { status: input.thread.workflow.status }
+            : {}),
+        }
+      : input.thread.workflow?.kind === "host-removal"
+        ? {
+            kind: "host-removal" as const,
+            hostName: input.thread.workflow.hostName,
+            ...(input.thread.workflow.status !== undefined
+              ? { status: input.thread.workflow.status }
+              : {}),
+          }
+        : undefined;
 
   if (!flakeProject) {
     return {
       projectKind: "generic",
       workspaceRoot: input.project.workspaceRoot,
       ...(scopedHostName !== null ? { scopedHostName } : {}),
+      ...(workflow !== undefined ? { workflow } : {}),
     };
   }
 
@@ -53,6 +75,7 @@ export function buildProviderTurnContext(input: {
     projectKind: "nix-flake",
     workspaceRoot: input.project.workspaceRoot,
     ...(scopedHostName !== null ? { scopedHostName } : {}),
+    ...(workflow !== undefined ? { workflow } : {}),
     flake: flakeContext,
   };
 }

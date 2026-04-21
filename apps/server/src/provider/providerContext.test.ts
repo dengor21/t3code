@@ -35,6 +35,7 @@ const baseThread: OrchestrationThread = {
   branch: null,
   worktreePath: null,
   scopedHostName: null,
+  workflow: null,
   changeTracking: null,
   latestTurn: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -142,6 +143,63 @@ describe("buildProviderTurnContext", () => {
           generalChanges: ".t3code/changes.md",
           hostDoc: ".t3code/docs/hosts/bc250.md",
         },
+      },
+    });
+  });
+
+  it("includes host-creation workflow metadata for workflow threads", () => {
+    expect(
+      buildProviderTurnContext({
+        project: baseProject,
+        thread: {
+          ...baseThread,
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            target: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      }),
+    ).toEqual({
+      projectKind: "generic",
+      workspaceRoot: "/workspace/flake",
+      scopedHostName: "nexus",
+      workflow: {
+        kind: "host-creation",
+        hostName: "nexus",
+        osFamily: "nixos",
+        status: "planning",
+      },
+    });
+  });
+
+  it("includes host-removal workflow metadata for workflow threads", () => {
+    expect(
+      buildProviderTurnContext({
+        project: baseProject,
+        thread: {
+          ...baseThread,
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-removal",
+            hostName: "nexus",
+            target: "root@nexus",
+            hostType: "server",
+            status: "planning",
+          },
+        },
+      }),
+    ).toEqual({
+      projectKind: "generic",
+      workspaceRoot: "/workspace/flake",
+      scopedHostName: "nexus",
+      workflow: {
+        kind: "host-removal",
+        hostName: "nexus",
+        status: "planning",
       },
     });
   });

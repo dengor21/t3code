@@ -1758,6 +1758,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       member: SidebarProjectGroupMember,
       options?: {
         scopedHostName?: string | null;
+        workflow?: import("@t3tools/contracts").ThreadWorkflow | null;
+        interactionMode?: "default" | "plan";
       },
     ) => {
       const currentRouteParams =
@@ -1804,6 +1806,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           : {}),
         envMode: seedContext.envMode,
         scopedHostName: options?.scopedHostName ?? null,
+        workflow: options?.workflow ?? null,
+        ...(options?.interactionMode !== undefined
+          ? { interactionMode: options.interactionMode }
+          : {}),
       });
     },
     [defaultThreadEnvMode, handleNewThread, router],
@@ -1814,6 +1820,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       event: React.MouseEvent<HTMLButtonElement>,
       options?: {
         scopedHostName?: string | null;
+        workflow?: import("@t3tools/contracts").ThreadWorkflow | null;
+        interactionMode?: "default" | "plan";
       },
     ) => {
       event.preventDefault();
