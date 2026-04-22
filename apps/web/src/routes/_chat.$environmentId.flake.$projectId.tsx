@@ -58,6 +58,10 @@ import {
   projectQueryKeys,
 } from "../lib/projectReactQuery";
 import { cn } from "../lib/utils";
+import {
+  buildFlakeDashboardHostMenu,
+  runFlakeDashboardHostMenuAction,
+} from "./flakeDashboardHostMenu";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
 import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
@@ -480,6 +484,13 @@ function FlakeDashboardRouteView() {
       });
     },
     [navigate, projectRef],
+  );
+
+  const openHostDeployPage = useCallback(
+    (hostName: string) => {
+      selectDashboardView(hostName, "deploy");
+    },
+    [selectDashboardView],
   );
 
   const handleStartThread = useCallback(() => {
@@ -1064,6 +1075,10 @@ function FlakeDashboardRouteView() {
                         const deployDisabledReason = deploymentReasonLabel(
                           summary.deployment.reason,
                         );
+                        const hostMenuEntries = buildFlakeDashboardHostMenu({
+                          documentationStatus: summary.documentation.status,
+                          generating,
+                        });
                         return (
                           <div
                             key={`${summary.host.name}:${summary.host.target}`}
@@ -1181,41 +1196,45 @@ function FlakeDashboardRouteView() {
                                     <EllipsisIcon className="size-4 sm:size-3.5" />
                                   </MenuTrigger>
                                   <MenuPopup align="end" sideOffset={4}>
-                                    <MenuItem
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        handleStartHostThread(summary.host);
-                                      }}
-                                    >
-                                      <PlayIcon />
-                                      Start thread
-                                    </MenuItem>
-                                    <MenuItem
-                                      disabled={generating}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        void handleGenerateHostDoc(summary.host);
-                                      }}
-                                    >
-                                      {generating ? (
-                                        <RefreshCcwIcon className="animate-spin" />
-                                      ) : (
-                                        <BookOpenIcon />
-                                      )}
-                                      {summary.documentation.status === "missing"
-                                        ? "Generate doc"
-                                        : "Refresh doc"}
-                                    </MenuItem>
-                                    <MenuSeparator />
-                                    <MenuItem
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        handleRemoveHostThread(summary.host);
-                                      }}
-                                    >
-                                      <Trash2Icon />
-                                      Remove host
-                                    </MenuItem>
+                                    {hostMenuEntries.map((entry) => {
+                                      if (entry.kind === "separator") {
+                                        return <MenuSeparator key={entry.id} />;
+                                      }
+
+                                      return (
+                                        <MenuItem
+                                          key={entry.action}
+                                          disabled={entry.disabled}
+                                          variant={entry.destructive ? "destructive" : "default"}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void runFlakeDashboardHostMenuAction({
+                                              action: entry.action,
+                                              host: summary.host,
+                                              onGenerateDoc: handleGenerateHostDoc,
+                                              onOpenDeployPage: openHostDeployPage,
+                                              onRemoveHost: handleRemoveHostThread,
+                                              onStartThread: handleStartHostThread,
+                                            });
+                                          }}
+                                        >
+                                          {entry.action === "start-thread" ? (
+                                            <PlayIcon />
+                                          ) : entry.action === "open-deploy-page" ? (
+                                            <SquareTerminalIcon />
+                                          ) : entry.action === "generate-doc" ? (
+                                            generating ? (
+                                              <RefreshCcwIcon className="animate-spin" />
+                                            ) : (
+                                              <BookOpenIcon />
+                                            )
+                                          ) : (
+                                            <Trash2Icon />
+                                          )}
+                                          {entry.label}
+                                        </MenuItem>
+                                      );
+                                    })}
                                   </MenuPopup>
                                 </Menu>
                               </div>

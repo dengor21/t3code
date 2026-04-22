@@ -1,5 +1,6 @@
 # Prelude
-The following readme is AI written for now. 
+
+The following readme is AI written for now.
 Real docs will follow.
 
 # T3 Code
