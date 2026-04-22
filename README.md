@@ -1,3 +1,7 @@
+# Prelude
+The following readme is AI written for now. 
+Real docs will follow.
+
 # T3 Code
 
 T3 Code is a local-first UI and runtime for coding agents.
