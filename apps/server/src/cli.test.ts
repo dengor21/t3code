@@ -31,14 +31,14 @@ import {
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
+import { OpenCodeRuntimeLive } from "./provider/opencodeRuntime.ts";
 import { WorkspacePathsLive } from "./workspace/Layers/WorkspacePaths.ts";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore.ts";
 import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(
-  NodeServices.layer,
-  NetService.layer,
-  ServerSettingsService.layerTest(),
+  Layer.mergeAll(NodeServices.layer, NetService.layer, ServerSettingsService.layerTest()),
+  OpenCodeRuntimeLive.pipe(Layer.provideMerge(NodeServices.layer)),
 );
 
 const runCli = (args: ReadonlyArray<string>) => Command.runWith(cli, { version: "0.0.0" })(args);

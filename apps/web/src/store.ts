@@ -15,13 +15,14 @@ import type {
   OrchestrationThreadShell,
   OrchestrationThreadActivity,
   ProjectId,
-  ProviderKind,
   ScopedProjectRef,
   ScopedThreadRef,
   ThreadChangeTracking,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import { ProviderKind } from "@t3tools/contracts";
+import { Schema } from "effect";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
 import { create } from "zustand";
 import {
@@ -130,7 +131,7 @@ function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function normalizeModelSelection<T extends { provider: "codex" | "claudeAgent"; model: string }>(
+function normalizeModelSelection<T extends { provider: ProviderKind; model: string }>(
   selection: T,
 ): T {
   return {
@@ -1100,7 +1101,7 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
+  if (Schema.is(ProviderKind)(providerName)) {
     return providerName;
   }
   return "codex";

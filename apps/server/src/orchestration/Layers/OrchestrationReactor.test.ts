@@ -5,6 +5,7 @@ import { CheckpointReactor } from "../Services/CheckpointReactor.ts";
 import { DocumentationReactor } from "../Services/DocumentationReactor.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
+import { ThreadDeletionReactor } from "../Services/ThreadDeletionReactor.ts";
 import { OrchestrationReactor } from "../Services/OrchestrationReactor.ts";
 import { ThreadChangeLifecycleReactor } from "../Services/ThreadChangeLifecycleReactor.ts";
 import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
@@ -19,7 +20,7 @@ describe("OrchestrationReactor", () => {
     runtime = null;
   });
 
-  it("starts provider ingestion, provider command, checkpoint, documentation, and thread lifecycle reactors", async () => {
+  it("starts provider ingestion, provider command, checkpoint, thread deletion, documentation, and thread lifecycle reactors", async () => {
     const started: string[] = [];
 
     runtime = ManagedRuntime.make(
@@ -52,6 +53,15 @@ describe("OrchestrationReactor", () => {
           }),
         ),
         Layer.provideMerge(
+          Layer.succeed(ThreadDeletionReactor, {
+            start: () => {
+              started.push("thread-deletion-reactor");
+              return Effect.void;
+            },
+            drain: Effect.void,
+          }),
+        ),
+        Layer.provideMerge(
           Layer.succeed(DocumentationReactor, {
             start: () => {
               started.push("documentation-reactor");
@@ -72,7 +82,7 @@ describe("OrchestrationReactor", () => {
       ),
     );
 
-    const reactor = await runtime.runPromise(Effect.service(OrchestrationReactor));
+    const reactor = await runtime!.runPromise(Effect.service(OrchestrationReactor));
     const scope = await Effect.runPromise(Scope.make("sequential"));
     await Effect.runPromise(reactor.start().pipe(Scope.provide(scope)));
 
@@ -80,10 +90,10 @@ describe("OrchestrationReactor", () => {
       "provider-runtime-ingestion",
       "provider-command-reactor",
       "checkpoint-reactor",
+      "thread-deletion-reactor",
       "documentation-reactor",
       "thread-change-lifecycle-reactor",
     ]);
-
     await Effect.runPromise(Scope.close(scope, Exit.void));
   });
 });

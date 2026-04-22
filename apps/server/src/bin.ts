@@ -6,13 +6,13 @@ import { Command } from "effect/unstable/cli";
 
 import { NetService } from "@t3tools/shared/Net";
 import { cli } from "./cli.ts";
-import { ServerSettingsService } from "./serverSettings.ts";
+import { OpenCodeRuntimeLive } from "./provider/opencodeRuntime.ts";
 import packageJson from "../package.json" with { type: "json" };
 
+const CliBaseLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 const CliRuntimeLayer = Layer.mergeAll(
-  NodeServices.layer,
-  NetService.layer,
-  ServerSettingsService.layerTest(),
+  CliBaseLayer,
+  OpenCodeRuntimeLive.pipe(Layer.provideMerge(CliBaseLayer)),
 );
 
 Command.run(cli, { version: packageJson.version }).pipe(
