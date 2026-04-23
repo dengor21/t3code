@@ -902,6 +902,62 @@ describe("ProviderModelPicker", () => {
     }
   });
 
+  it("preserves the full OpenCode slug when the model id contains a colon", async () => {
+    const providers: ReadonlyArray<ServerProvider> = [
+      buildOpenCodeProvider([
+        {
+          slug: "openai/gpt-5",
+          name: "GPT-5",
+          subProvider: "OpenAI",
+          isCustom: false,
+          capabilities: {
+            reasoningEffortLevels: [],
+            supportsFastMode: false,
+            supportsThinkingToggle: false,
+            contextWindowOptions: [],
+            promptInjectedEffortLevels: [],
+          },
+        },
+        {
+          slug: "ollama/qwen2.5-coder:7b",
+          name: "Qwen 2.5 Coder 7B",
+          subProvider: "Ollama",
+          isCustom: false,
+          capabilities: {
+            reasoningEffortLevels: [],
+            supportsFastMode: false,
+            supportsThinkingToggle: false,
+            contextWindowOptions: [],
+            promptInjectedEffortLevels: [],
+          },
+        },
+      ]),
+    ];
+    const mounted = await mountPicker({
+      provider: "opencode",
+      model: "openai/gpt-5",
+      lockedProvider: "opencode",
+      providers,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        expect(document.body.textContent ?? "").toContain("Qwen 2.5 Coder 7B");
+      });
+
+      await page.getByText("Qwen 2.5 Coder 7B").first().click();
+
+      expect(mounted.onProviderModelChange).toHaveBeenCalledWith(
+        "opencode",
+        "ollama/qwen2.5-coder:7b",
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
   it("only shows codex spark when the server reports it", async () => {
     const providersWithoutSpark: ReadonlyArray<ServerProvider> = [
       buildCodexProvider([

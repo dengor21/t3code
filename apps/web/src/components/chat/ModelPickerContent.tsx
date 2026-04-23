@@ -33,6 +33,22 @@ type ModelPickerItem = {
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
 
+function toModelKey(provider: ProviderKind, slug: string): string {
+  return `${provider}:${slug}`;
+}
+
+function parseModelKey(modelKey: string): { provider: ProviderKind; slug: string } | null {
+  const separator = modelKey.indexOf(":");
+  if (separator <= 0 || separator === modelKey.length - 1) {
+    return null;
+  }
+
+  return {
+    provider: modelKey.slice(0, separator) as ProviderKind,
+    slug: modelKey.slice(separator + 1),
+  };
+}
+
 export const ModelPickerContent = memo(function ModelPickerContent(props: {
   provider: ProviderKind;
   model: string;
@@ -139,11 +155,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           score: scoreModelPickerSearch(
             {
               ...model,
-              isFavorite: favoritesSet.has(`${model.provider}:${model.slug}`),
+              isFavorite: favoritesSet.has(toModelKey(model.provider, model.slug)),
             },
             searchQuery,
           ),
-          isFavorite: favoritesSet.has(`${model.provider}:${model.slug}`),
+          isFavorite: favoritesSet.has(toModelKey(model.provider, model.slug)),
           tieBreaker: buildModelPickerSearchText(model),
         }))
         .filter(
@@ -192,14 +208,14 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     if (props.lockedProvider !== null) {
       result = result.filter((m) => m.provider === props.lockedProvider);
     } else if (selectedProvider === "favorites") {
-      result = result.filter((m) => favoritesSet.has(`${m.provider}:${m.slug}`));
+      result = result.filter((m) => favoritesSet.has(toModelKey(m.provider, m.slug)));
     } else {
       result = result.filter((m) => m.provider === selectedProvider);
     }
 
     return result.toSorted((a, b) => {
-      const aOrder = favoriteOrder.get(`${a.provider}:${a.slug}`);
-      const bOrder = favoriteOrder.get(`${b.provider}:${b.slug}`);
+      const aOrder = favoriteOrder.get(toModelKey(a.provider, a.slug));
+      const bOrder = favoriteOrder.get(toModelKey(b.provider, b.slug));
 
       if (aOrder !== undefined && bOrder !== undefined) {
         return aOrder - bOrder;
@@ -264,7 +280,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (!jumpCommand) {
         return mapping;
       }
-      mapping.set(`${model.provider}:${model.slug}`, jumpCommand);
+      mapping.set(toModelKey(model.provider, model.slug), jumpCommand);
     }
     return mapping;
   }, [filteredModels]);
@@ -273,16 +289,18 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     [modelJumpCommandByKey],
   );
   const allModelKeys = useMemo(
-    (): string[] => flatModels.map((model) => `${model.provider}:${model.slug}`),
+    (): string[] => flatModels.map((model) => toModelKey(model.provider, model.slug)),
     [flatModels],
   );
   const filteredModelKeys = useMemo(
-    (): string[] => filteredModels.map((model) => `${model.provider}:${model.slug}`),
+    (): string[] => filteredModels.map((model) => toModelKey(model.provider, model.slug)),
     [filteredModels],
   );
   const filteredModelByKey = useMemo(
     (): ReadonlyMap<string, ModelPickerItem> =>
-      new Map(filteredModels.map((model) => [`${model.provider}:${model.slug}`, model] as const)),
+      new Map(
+        filteredModels.map((model) => [toModelKey(model.provider, model.slug), model] as const),
+      ),
     [filteredModels],
   );
   const modelJumpShortcutContext = useMemo(
@@ -331,10 +349,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       if (!targetModelKey) {
         return;
       }
-      const [provider, slug] = targetModelKey.split(":") as [ProviderKind, string];
+      const parsedModelKey = parseModelKey(targetModelKey);
+      if (!parsedModelKey) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
-      handleModelSelect(slug, provider);
+      handleModelSelect(parsedModelKey.slug, parsedModelKey.provider);
     };
 
     window.addEventListener("keydown", onWindowKeyDown, true);
@@ -422,7 +443,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           filter={null}
           autoHighlight
           open
-          value={`${props.provider}:${props.model}`}
+          value={toModelKey(props.provider, props.model)}
           onItemHighlighted={(modelKey) => {
             highlightedModelKeyRef.current = typeof modelKey === "string" ? modelKey : null;
           }}
@@ -430,8 +451,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             if (typeof modelKey !== "string") {
               return;
             }
-            const [provider, slug] = modelKey.split(":") as [ProviderKind, string];
-            handleModelSelect(slug, provider);
+            const parsedModelKey = parseModelKey(modelKey);
+            if (!parsedModelKey) {
+              return;
+            }
+            handleModelSelect(parsedModelKey.slug, parsedModelKey.provider);
           }}
         >
           <div
@@ -464,11 +488,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     ).preventBaseUIHandler?.();
                     e.preventDefault();
                     e.stopPropagation();
-                    const [provider, slug] = highlightedModelKeyRef.current.split(":") as [
-                      ProviderKind,
-                      string,
-                    ];
-                    handleModelSelect(slug, provider);
+                    const parsedModelKey = parseModelKey(highlightedModelKeyRef.current);
+                    if (!parsedModelKey) {
+                      return;
+                    }
+                    handleModelSelect(parsedModelKey.slug, parsedModelKey.provider);
                     return;
                   }
                   e.stopPropagation();
