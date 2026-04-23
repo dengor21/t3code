@@ -18,6 +18,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { applyProviderTurnPromptPreamble } from "../providerTurnPrompt.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -1114,10 +1115,11 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
       );
 
       const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+        const preparedInput = applyProviderTurnPromptPreamble(input);
         const context = ensureSessionContext(sessions, input.threadId);
         const turnId = TurnId.make(`opencode-turn-${randomUUID()}`);
         const modelSelection =
-          input.modelSelection ??
+          preparedInput.modelSelection ??
           (context.session.model
             ? { provider: PROVIDER, model: context.session.model }
             : undefined);
@@ -1130,9 +1132,9 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           });
         }
 
-        const text = input.input?.trim();
+        const text = preparedInput.input?.trim();
         const fileParts = toOpenCodeFileParts({
-          attachments: input.attachments,
+          attachments: preparedInput.attachments,
           resolveAttachmentPath: (attachment) =>
             resolveAttachmentPath({ attachmentsDir: serverConfig.attachmentsDir, attachment }),
         });
@@ -1145,12 +1147,12 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
         }
 
         const agent =
-          input.modelSelection?.provider === PROVIDER
-            ? input.modelSelection.options?.agent
+          preparedInput.modelSelection?.provider === PROVIDER
+            ? preparedInput.modelSelection.options?.agent
             : undefined;
         const variant =
-          input.modelSelection?.provider === PROVIDER
-            ? input.modelSelection.options?.variant
+          preparedInput.modelSelection?.provider === PROVIDER
+            ? preparedInput.modelSelection.options?.variant
             : undefined;
 
         context.activeTurnId = turnId;

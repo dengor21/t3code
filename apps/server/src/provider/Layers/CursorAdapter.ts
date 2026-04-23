@@ -72,6 +72,7 @@ import {
   extractPlanMarkdown,
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
+import { applyProviderTurnPromptPreamble } from "../providerTurnPrompt.ts";
 import { CursorAdapter, type CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -812,16 +813,19 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
 
     const sendTurn: CursorAdapterShape["sendTurn"] = (input) =>
       Effect.gen(function* () {
+        const preparedInput = applyProviderTurnPromptPreamble(input);
         const ctx = yield* requireSession(input.threadId);
         const turnId = TurnId.make(crypto.randomUUID());
         const turnModelSelection =
-          input.modelSelection?.provider === "cursor" ? input.modelSelection : undefined;
+          preparedInput.modelSelection?.provider === "cursor"
+            ? preparedInput.modelSelection
+            : undefined;
         const model = turnModelSelection?.model ?? ctx.session.model;
         const resolvedModel = resolveCursorAcpBaseModelId(model);
         yield* applyRequestedSessionConfiguration({
           runtime: ctx.acp,
           runtimeMode: ctx.session.runtimeMode,
-          interactionMode: input.interactionMode,
+          interactionMode: preparedInput.interactionMode,
           modelSelection:
             model === undefined
               ? undefined
@@ -850,11 +854,11 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
         });
 
         const promptParts: Array<EffectAcpSchema.ContentBlock> = [];
-        if (input.input?.trim()) {
-          promptParts.push({ type: "text", text: input.input.trim() });
+        if (preparedInput.input?.trim()) {
+          promptParts.push({ type: "text", text: preparedInput.input.trim() });
         }
-        if (input.attachments && input.attachments.length > 0) {
-          for (const attachment of input.attachments) {
+        if (preparedInput.attachments && preparedInput.attachments.length > 0) {
+          for (const attachment of preparedInput.attachments) {
             const attachmentPath = resolveAttachmentPath({
               attachmentsDir: serverConfig.attachmentsDir,
               attachment,

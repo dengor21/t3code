@@ -185,6 +185,72 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
     }),
   );
 
+  it.effect("prepends nix workflow context to Cursor prompts", () =>
+    Effect.gen(function* () {
+      const adapter = yield* CursorAdapter;
+      const settings = yield* ServerSettingsService;
+      const threadId = ThreadId.make("cursor-nix-context");
+      const tempDir = yield* Effect.promise(() =>
+        mkdtemp(path.join(os.tmpdir(), "cursor-adapter-request-log-")),
+      );
+      const requestLogPath = path.join(tempDir, "requests.ndjson");
+      const argvLogPath = path.join(tempDir, "argv.log");
+
+      const wrapperPath = yield* Effect.promise(() =>
+        makeProbeWrapper(requestLogPath, argvLogPath),
+      );
+      yield* settings.updateSettings({ providers: { cursor: { binaryPath: wrapperPath } } });
+
+      yield* adapter.startSession({
+        threadId,
+        provider: "cursor",
+        cwd: process.cwd(),
+        runtimeMode: "full-access",
+        modelSelection: { provider: "cursor", model: "default" },
+      });
+
+      yield* adapter.sendTurn({
+        threadId,
+        input: "Review the host plan",
+        attachments: [],
+        providerContext: {
+          projectKind: "nix-flake",
+          scopedHostName: "nexus",
+          flake: {
+            flakePath: "flake.nix",
+          },
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      });
+      yield* adapter.stopSession(threadId);
+
+      yield* Effect.promise(() => waitForFileContent(requestLogPath));
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      const promptRequest = requests.find((entry) => entry.method === "session/prompt");
+      const promptParams = promptRequest?.params as { prompt?: unknown } | undefined;
+      const promptBlocks = Array.isArray(promptParams?.prompt) ? promptParams.prompt : [];
+      const textBlock = promptBlocks.find(
+        (block): block is { type: "text"; text: string } =>
+          typeof block === "object" &&
+          block !== null &&
+          "type" in block &&
+          (block as { type?: unknown }).type === "text" &&
+          "text" in block &&
+          typeof (block as { text?: unknown }).text === "string",
+      );
+
+      assert.isDefined(textBlock);
+      assert.include(textBlock?.text ?? "", "This workspace is a Nix flake repository.");
+      assert.include(textBlock?.text ?? "", "planning creation of host nexus.");
+      assert.include(textBlock?.text ?? "", "User request:\nReview the host plan");
+    }),
+  );
+
   it.effect("closes the ACP child process when a session stops", () =>
     Effect.gen(function* () {
       const adapter = yield* CursorAdapter;

@@ -1,5 +1,10 @@
 import type { ProviderTurnContext } from "@t3tools/contracts";
-import { HOST_CREATION_STAGES, HOST_REMOVAL_STAGES } from "@t3tools/shared/hostWorkflow";
+import {
+  buildHostWorkflowImplementationGuidance,
+  buildHostWorkflowPlanGuidance,
+  HOST_CREATION_STAGES,
+  HOST_REMOVAL_STAGES,
+} from "@t3tools/shared/hostWorkflow";
 
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
@@ -155,14 +160,8 @@ function buildCodexWorkflowInstructions(input: {
             "Workflow rules:",
             "- Work in stages and keep the plan sidebar current with update_plan.",
             ...stageLines,
-            "- Ask hardware questions before recommending partitioning or install details.",
             "- Use request_user_input for concise structured choices when it fits.",
-            "- Browse current official sources before recommending install, partitioning, or hardware-specific setup details.",
-            "- State the browsing date explicitly when summarizing current guidance.",
-            "- Prefer the NixOS manual, nixos-anywhere, Home Manager, and disko before community sources.",
-            `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
-            "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
-            "- Avoid broad repo changes unless the plan clearly justifies them.",
+            ...buildHostWorkflowPlanGuidance(workflow),
             "- Finish with a single decision-complete <proposed_plan> that is ready for implementation.",
           ].join("\n")
         : [
@@ -170,10 +169,7 @@ function buildCodexWorkflowInstructions(input: {
             "",
             "Execution rules:",
             "- Treat the approved proposed plan and any sourceProposedPlan reference as the source of truth.",
-            `- Keep writes scoped to ${workflow.hostName} unless the approved plan explicitly requires shared-module changes.`,
-            `- Ensure the implementation includes t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
-            "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
-            "- Minimize blast radius and call out any cross-host impact from shared-module edits.",
+            ...buildHostWorkflowImplementationGuidance(workflow),
           ].join("\n");
     }
     case "host-removal": {
@@ -185,11 +181,7 @@ function buildCodexWorkflowInstructions(input: {
             "Workflow rules:",
             "- Work in stages and keep the plan sidebar current with update_plan.",
             ...stageLines,
-            "- Audit the repo for host references before proposing deletions.",
-            `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory removal anchors when they exist.`,
-            "- Identify deploy targets, docs, secrets, automation, and shared-module references that may need cleanup.",
-            "- Separate safe repo changes from manual follow-up steps such as decommissioning infrastructure, DNS, credentials, or monitoring.",
-            "- Avoid broad repo changes unless the plan clearly justifies them.",
+            ...buildHostWorkflowPlanGuidance(workflow),
             "- Finish with a single decision-complete <proposed_plan> that is ready for implementation.",
           ].join("\n")
         : [
@@ -197,9 +189,7 @@ function buildCodexWorkflowInstructions(input: {
             "",
             "Execution rules:",
             "- Treat the approved proposed plan and any sourceProposedPlan reference as the source of truth.",
-            `- Remove t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix when the approved plan includes them.`,
-            "- Keep cleanup scoped to the approved host-related references and avoid deleting unrelated shared code.",
-            "- Minimize blast radius and call out any manual follow-up that still remains after the repo changes land.",
+            ...buildHostWorkflowImplementationGuidance(workflow),
           ].join("\n");
     }
   }

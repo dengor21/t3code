@@ -2,6 +2,7 @@
 
 ## Task Completion Requirements
 
+- This repo provides a Nix development shell via `nix develop`. For all development tools that depend on the project toolchain, invoke them through the dev shell (for example `nix develop -c bun lint`).
 - All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
 - NEVER run `bun test`. Always use `bun run test` (runs Vitest).
 

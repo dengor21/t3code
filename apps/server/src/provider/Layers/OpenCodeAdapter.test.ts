@@ -39,6 +39,7 @@ const runtimeMock = {
     abortCalls: [] as string[],
     closeCalls: [] as string[],
     revertCalls: [] as Array<{ sessionID: string; messageID?: string }>,
+    promptRequests: [] as Array<Record<string, unknown>>,
     promptAsyncError: null as Error | null,
     closeError: null as Error | null,
     messages: [] as MessageEntry[],
@@ -51,6 +52,7 @@ const runtimeMock = {
     this.state.abortCalls.length = 0;
     this.state.closeCalls.length = 0;
     this.state.revertCalls.length = 0;
+    this.state.promptRequests.length = 0;
     this.state.promptAsyncError = null;
     this.state.closeError = null;
     this.state.messages = [];
@@ -111,7 +113,8 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         abort: async ({ sessionID }: { sessionID: string }) => {
           runtimeMock.state.abortCalls.push(sessionID);
         },
-        promptAsync: async () => {
+        promptAsync: async (request: Record<string, unknown>) => {
+          runtimeMock.state.promptRequests.push(request);
           if (runtimeMock.state.promptAsyncError) {
             throw runtimeMock.state.promptAsyncError;
           }
@@ -296,6 +299,58 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       assert.equal(sessions[0]?.status, "ready");
       assert.equal(sessions[0]?.activeTurnId, undefined);
       assert.equal(sessions[0]?.lastError, "prompt failed");
+    }),
+  );
+
+  it.effect("prepends nix workflow context to OpenCode prompts", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId("thread-open-code-nix-context");
+
+      yield* adapter.startSession({
+        provider: "opencode",
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId,
+        input: "Review the host plan",
+        modelSelection: {
+          provider: "opencode",
+          model: "openai/gpt-5",
+        },
+        providerContext: {
+          projectKind: "nix-flake",
+          scopedHostName: "nexus",
+          flake: {
+            flakePath: "flake.nix",
+          },
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      });
+
+      const promptRequest = runtimeMock.state.promptRequests[0];
+      const parts = Array.isArray(promptRequest?.parts) ? promptRequest.parts : [];
+      const textPart = parts.find(
+        (part): part is { type: "text"; text: string } =>
+          typeof part === "object" &&
+          part !== null &&
+          "type" in part &&
+          (part as { type?: unknown }).type === "text" &&
+          "text" in part &&
+          typeof (part as { text?: unknown }).text === "string",
+      );
+
+      assert.ok(textPart);
+      assert.ok(textPart.text.includes("This workspace is a Nix flake repository."));
+      assert.ok(textPart.text.includes("planning creation of host nexus."));
+      assert.ok(textPart.text.includes("User request:\nReview the host plan"));
     }),
   );
 

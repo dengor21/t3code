@@ -93,6 +93,70 @@ export function buildHostWorkflowStartLabel(workflow: ThreadWorkflow): string {
   }
 }
 
+function buildHostCreationPlanGuidance(workflow: HostCreationWorkflow): ReadonlyArray<string> {
+  return [
+    "- Ask hardware questions before recommending partitioning or install details.",
+    "- After the hardware picture is clear, browse current official sources before recommending install or partitioning details and state the browsing date explicitly.",
+    "- Prefer the NixOS manual, nixos-anywhere, Home Manager, and disko before community sources.",
+    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
+    "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
+    "- Avoid broad repo changes unless the plan clearly justifies them.",
+  ];
+}
+
+function buildHostCreationImplementationGuidance(
+  workflow: HostCreationWorkflow,
+): ReadonlyArray<string> {
+  return [
+    "- Treat the approved plan and prior planning decisions as the source of truth.",
+    `- Keep writes scoped to ${workflow.hostName} unless the approved plan explicitly requires shared-module changes.`,
+    `- Ensure the implementation includes t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
+    "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
+    "- Minimize blast radius and call out any cross-host impact from shared-module edits.",
+  ];
+}
+
+function buildHostRemovalPlanGuidance(workflow: HostRemovalWorkflow): ReadonlyArray<string> {
+  return [
+    "- Start by auditing this repo for every reference to the host before proposing deletions.",
+    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory removal anchors when they exist.`,
+    "- Identify deploy targets, documentation, secrets, shared modules, and automation references that may need cleanup.",
+    "- Separate safe repo changes from manual follow-up steps such as decommissioning infrastructure, DNS, credentials, or monitoring.",
+    "- Avoid broad repo changes unless the plan clearly justifies them.",
+  ];
+}
+
+function buildHostRemovalImplementationGuidance(
+  workflow: HostRemovalWorkflow,
+): ReadonlyArray<string> {
+  return [
+    "- Treat the approved plan and prior planning decisions as the source of truth.",
+    `- Remove t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix when the approved plan includes them.`,
+    "- Keep cleanup scoped to the approved host-related references and avoid deleting unrelated shared code.",
+    "- Minimize blast radius and call out any manual follow-up that still remains after the repo changes land.",
+  ];
+}
+
+export function buildHostWorkflowPlanGuidance(workflow: ThreadWorkflow): ReadonlyArray<string> {
+  switch (workflow.kind) {
+    case "host-creation":
+      return buildHostCreationPlanGuidance(workflow);
+    case "host-removal":
+      return buildHostRemovalPlanGuidance(workflow);
+  }
+}
+
+export function buildHostWorkflowImplementationGuidance(
+  workflow: ThreadWorkflow,
+): ReadonlyArray<string> {
+  switch (workflow.kind) {
+    case "host-creation":
+      return buildHostCreationImplementationGuidance(workflow);
+    case "host-removal":
+      return buildHostRemovalImplementationGuidance(workflow);
+  }
+}
+
 export function buildHostCreationStarterPrompt(workflow: HostCreationWorkflow): string {
   const target = resolveHostCreationTarget(workflow.target ?? null, workflow.hostName);
   const osFamily = workflow.osFamily ?? "nixos";
@@ -108,16 +172,12 @@ export function buildHostCreationStarterPrompt(workflow: HostCreationWorkflow): 
     `- os family: ${osFamily}`,
     `- host type: ${hostType}`,
     "",
-    "Work in stages and keep the plan sidebar current with update_plan using these stages:",
+    "Work in stages and keep your running plan aligned to these stages:",
     ...HOST_CREATION_STAGES.map((stage) => `- ${stage.key}: ${stage.label}`),
     "",
     "Workflow rules:",
-    "- Ask hardware questions before recommending partitioning or install details.",
-    "- Use request_user_input for concise structured decisions when it fits.",
-    "- After the hardware picture is clear, browse current official sources before recommending install or partitioning details and state the browsing date explicitly.",
-    "- Prefer the NixOS manual, nixos-anywhere, Home Manager, and disko before community sources.",
-    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
-    "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
+    "- When a decision is missing, ask concise structured follow-up questions.",
+    ...buildHostCreationPlanGuidance(workflow),
     "- Keep this planning-only until I approve implementation.",
     "",
     "The final response should be a single decision-complete <proposed_plan> ready for implementation, including install handoff guidance and explicit assumptions.",
@@ -136,14 +196,11 @@ export function buildHostRemovalStarterPrompt(workflow: HostRemovalWorkflow): st
     ...(target ? [`- target: ${target}`] : []),
     ...(hostType ? [`- host type: ${hostType}`] : []),
     "",
-    "Work in stages and keep the plan sidebar current with update_plan using these stages:",
+    "Work in stages and keep your running plan aligned to these stages:",
     ...HOST_REMOVAL_STAGES.map((stage) => `- ${stage.key}: ${stage.label}`),
     "",
     "Workflow rules:",
-    "- Start by auditing this repo for every reference to the host before proposing deletions.",
-    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory removal anchors when they exist.`,
-    "- Identify deploy targets, documentation, secrets, shared modules, and automation references that may need cleanup.",
-    "- Separate safe repo changes from manual follow-up steps such as decommissioning infrastructure, DNS, credentials, or monitoring.",
+    ...buildHostRemovalPlanGuidance(workflow),
     "- Keep this planning-only until I approve implementation.",
     "",
     "The final response should be a single decision-complete <proposed_plan> ready for implementation, with explicit assumptions and manual follow-up steps.",

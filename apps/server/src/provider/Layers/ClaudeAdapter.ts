@@ -62,6 +62,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { getClaudeModelCapabilities, resolveClaudeApiModelId } from "./ClaudeProvider.ts";
+import { applyProviderTurnPromptPreamble } from "../providerTurnPrompt.ts";
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
@@ -2996,6 +2997,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   );
 
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+    const preparedInput = applyProviderTurnPromptPreamble(input);
     const context = yield* requireSession(input.threadId);
     const modelSelection =
       input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
@@ -3069,7 +3071,7 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       providerRefs: {},
     });
 
-    const message = yield* buildUserMessageEffect(input, {
+    const message = yield* buildUserMessageEffect(preparedInput, {
       fileSystem,
       attachmentsDir: serverConfig.attachmentsDir,
     });

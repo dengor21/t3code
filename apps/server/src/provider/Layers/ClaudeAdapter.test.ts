@@ -592,6 +592,47 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("prepends nix workflow context to Claude prompts", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "Review the host plan",
+        attachments: [],
+        providerContext: {
+          projectKind: "nix-flake",
+          scopedHostName: "nexus",
+          flake: {
+            flakePath: "flake.nix",
+          },
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            osFamily: "nixos",
+            status: "planning",
+          },
+        },
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      const promptText = yield* Effect.promise(() => readFirstPromptText(createInput));
+      assert.isDefined(promptText);
+      assert.include(promptText ?? "", "This workspace is a Nix flake repository.");
+      assert.include(promptText ?? "", "planning creation of host nexus.");
+      assert.include(promptText ?? "", "User request:\nReview the host plan");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("embeds image attachments in Claude user messages", () => {
     const baseDir = mkdtempSync(path.join(os.tmpdir(), "claude-attachments-"));
     const harness = makeHarness({
