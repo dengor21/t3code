@@ -101,16 +101,35 @@ const ProjectDashboardHostDeploymentReason = Schema.NullOr(
   Schema.Literals(["missing-deploy-target", "evaluation-failed"]),
 );
 
-export function buildDeployRsCommand(
-  hostName: string,
-  options?: {
-    deployOnServer?: boolean | null | undefined;
-  },
-): string {
+export interface DeployRsCommandOptions {
+  readonly deployOnServer?: boolean | null | undefined;
+  readonly magicRollback?: boolean | null | undefined;
+  readonly confirmTimeoutSeconds?: number | null | undefined;
+}
+
+export function buildDeployRsCommand(hostName: string, options?: DeployRsCommandOptions): string {
   const target = hostName.trim();
-  return options?.deployOnServer
-    ? `nix run github:serokell/deploy-rs -- .#${target}`
-    : `nix run github:serokell/deploy-rs -- --skip-checks --remote-build .#${target}`;
+  const args = ["nix run github:serokell/deploy-rs --"];
+
+  if (!options?.deployOnServer) {
+    args.push("--skip-checks", "--remote-build");
+  }
+
+  if (options?.magicRollback !== undefined && options.magicRollback !== null) {
+    args.push("--magic-rollback", options.magicRollback ? "true" : "false");
+  }
+
+  if (
+    options?.magicRollback !== false &&
+    options?.confirmTimeoutSeconds !== undefined &&
+    options.confirmTimeoutSeconds !== null
+  ) {
+    args.push("--confirm-timeout", String(options.confirmTimeoutSeconds));
+  }
+
+  args.push(`.#${target}`);
+
+  return args.join(" ");
 }
 
 export const ProjectDashboardHostDeployment = Schema.Struct({

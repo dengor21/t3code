@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { IsoDateTime, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
 export const HostDeploymentStatus = Schema.Literals([
   "starting",
@@ -31,6 +31,8 @@ export const HostDeploymentStartInput = Schema.Struct({
   projectId: ProjectId,
   hostName: TrimmedNonEmptyString,
   deployOnServer: Schema.optional(Schema.Boolean),
+  magicRollback: Schema.optional(Schema.Boolean),
+  confirmTimeoutSeconds: Schema.optional(PositiveInt),
 });
 export type HostDeploymentStartInput = typeof HostDeploymentStartInput.Type;
 

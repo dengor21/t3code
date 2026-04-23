@@ -95,6 +95,7 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
 }
 
 type FlakeDashboardView = "changes" | "deploy" | "doc" | "flake" | "maintenance";
+const DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS = 30;
 
 function buildDashboardSearch(input: {
   hostName: string | null;
@@ -206,6 +207,20 @@ function deploymentStatusClasses(status: HostDeploymentStatus | FlakeMaintenance
 
 function formatDeploymentModeLabel(deployOnServer: boolean): string {
   return deployOnServer ? "Deploy On Server" : "Remote Build";
+}
+
+function parseConfirmTimeoutSeconds(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return null;
+  }
+
+  return parsed;
 }
 
 function formatGitBranchLabel(gitStatus: GitStatusResult | null | undefined): string {
@@ -366,10 +381,18 @@ function FlakeDashboardRouteView() {
   const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
   const [maintenancePending, setMaintenancePending] = useState(false);
   const [deployOnServer, setDeployOnServer] = useState(false);
+  const [deployMagicRollback, setDeployMagicRollback] = useState(true);
+  const [deployConfirmTimeoutSecondsInput, setDeployConfirmTimeoutSecondsInput] = useState("");
   const gitStatusQuery = useGitStatus({
     environmentId: projectRef?.environmentId ?? null,
     cwd: project?.cwd ?? null,
   });
+
+  const resetDeployDialogOptions = useCallback(() => {
+    setDeployOnServer(false);
+    setDeployMagicRollback(true);
+    setDeployConfirmTimeoutSecondsInput("");
+  }, []);
 
   useEffect(() => {
     if (!projectRef || !bootstrapComplete) {
@@ -764,18 +787,21 @@ function FlakeDashboardRouteView() {
     ],
   );
 
-  const handleOpenDeployDialog = useCallback((hostName: string) => {
-    setDeployOnServer(false);
-    setDeployDialogHostName(hostName);
-  }, []);
+  const handleOpenDeployDialog = useCallback(
+    (hostName: string) => {
+      resetDeployDialogOptions();
+      setDeployDialogHostName(hostName);
+    },
+    [resetDeployDialogOptions],
+  );
 
   const handleCloseDeployDialog = useCallback(() => {
     if (deployingHostName !== null) {
       return;
     }
-    setDeployOnServer(false);
+    resetDeployDialogOptions();
     setDeployDialogHostName(null);
-  }, [deployingHostName]);
+  }, [deployingHostName, resetDeployDialogOptions]);
 
   const handleConfirmDeployment = useCallback(async () => {
     if (!projectRef || !project || !deployDialogHostName) {
@@ -810,18 +836,34 @@ function FlakeDashboardRouteView() {
       return;
     }
 
+    const hasConfirmTimeoutInput = deployConfirmTimeoutSecondsInput.trim().length > 0;
+    const confirmTimeoutSeconds = deployMagicRollback
+      ? parseConfirmTimeoutSeconds(deployConfirmTimeoutSecondsInput)
+      : null;
+
+    if (deployMagicRollback && hasConfirmTimeoutInput && confirmTimeoutSeconds === null) {
+      toastManager.add({
+        type: "error",
+        title: "Invalid confirm timeout",
+        description: "Enter a positive number of seconds or leave the field empty.",
+      });
+      return;
+    }
+
     setDeployingHostName(hostSummary.host.name);
     try {
       await api.hostDeployments.start({
         projectId: project.id,
         hostName: hostSummary.host.name,
         deployOnServer,
+        magicRollback: deployMagicRollback,
+        ...(deployMagicRollback && confirmTimeoutSeconds !== null ? { confirmTimeoutSeconds } : {}),
       });
 
       await Promise.all([invalidateHostDeploymentQueries(), invalidateDashboardQueries()]);
       setDeployDialogHostName(null);
       setDeployingHostName(null);
-      setDeployOnServer(false);
+      resetDeployDialogOptions();
 
       await navigate({
         to: "/$environmentId/flake/$projectId",
@@ -842,12 +884,15 @@ function FlakeDashboardRouteView() {
   }, [
     dashboardQuery.data?.hostSummaries,
     deployDialogHostName,
+    deployConfirmTimeoutSecondsInput,
+    deployMagicRollback,
     deployOnServer,
     invalidateDashboardQueries,
     invalidateHostDeploymentQueries,
     navigate,
     project,
     projectRef,
+    resetDeployDialogOptions,
   ]);
 
   const selectedHostSummary = useMemo(() => {
@@ -897,11 +942,27 @@ function FlakeDashboardRouteView() {
     : (dashboardQuery.data?.generalChanges ?? []);
   const deployDialogCommand =
     deployDialogHostSummary?.deployment.status === "deployable"
-      ? buildDeployRsCommand(deployDialogHostSummary.host.name, { deployOnServer })
+      ? buildDeployRsCommand(deployDialogHostSummary.host.name, {
+          deployOnServer,
+          magicRollback: deployMagicRollback,
+          ...(deployMagicRollback
+            ? {
+                confirmTimeoutSeconds: parseConfirmTimeoutSeconds(deployConfirmTimeoutSecondsInput),
+              }
+            : {}),
+        })
       : null;
   const deployDialogDisabledReason = deploymentReasonLabel(
     deployDialogHostSummary?.deployment.reason ?? null,
   );
+  const deployDialogHasConfirmTimeoutInput = deployConfirmTimeoutSecondsInput.trim().length > 0;
+  const deployDialogConfirmTimeoutSeconds = deployMagicRollback
+    ? parseConfirmTimeoutSeconds(deployConfirmTimeoutSecondsInput)
+    : null;
+  const deployDialogConfirmTimeoutInvalid =
+    deployMagicRollback &&
+    deployDialogHasConfirmTimeoutInput &&
+    deployDialogConfirmTimeoutSeconds === null;
   const selectedHostDeployment = selectedHostSummary
     ? (hostDeploymentQuery.data ?? selectedHostSummary.latestDeployment ?? null)
     : null;
@@ -2157,6 +2218,72 @@ function FlakeDashboardRouteView() {
                       </span>
                     </label>
                   </div>
+                  <div className="space-y-3 rounded-xl border border-border/50 bg-background/50 p-3">
+                    <label className="flex items-start gap-3">
+                      <Checkbox
+                        checked={deployMagicRollback}
+                        disabled={deployingHostName !== null}
+                        onCheckedChange={(checked) => {
+                          setDeployMagicRollback(checked !== false);
+                        }}
+                        aria-label="Use magic rollback verification"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          Use magic rollback verification
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Keep this enabled for the normal safe path. Disable it only when the
+                          deployment is expected to break SSH confirmation entirely, such as a
+                          network or host identity change that outlives the reconnect window.
+                        </span>
+                      </span>
+                    </label>
+                    {deployMagicRollback ? (
+                      <div className="space-y-2">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                            Confirm Timeout
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="w-32">
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                inputMode="numeric"
+                                nativeInput
+                                value={deployConfirmTimeoutSecondsInput}
+                                disabled={deployingHostName !== null}
+                                aria-label="Confirm timeout in seconds"
+                                placeholder={String(DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS)}
+                                onChange={(event) =>
+                                  setDeployConfirmTimeoutSecondsInput(event.currentTarget.value)
+                                }
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground">seconds</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Leave empty to use deploy-rs&apos; default of{" "}
+                          {DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS} seconds. Increase this when
+                          activation temporarily restarts networking and the host needs longer to
+                          become reachable again.
+                        </div>
+                        {deployDialogConfirmTimeoutInvalid ? (
+                          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-800 dark:text-rose-200">
+                            Confirm timeout must be a positive number of seconds.
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                        deploy-rs will stop waiting for post-activation confirmation and will not
+                        auto-rollback if the host becomes unreachable after activation.
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                       Branch
@@ -2202,7 +2329,8 @@ function FlakeDashboardRouteView() {
               disabled={
                 deployDialogHostSummary === null ||
                 deployDialogHostSummary.deployment.status !== "deployable" ||
-                deployingHostName !== null
+                deployingHostName !== null ||
+                deployDialogConfirmTimeoutInvalid
               }
             >
               {deployingHostName !== null ? (

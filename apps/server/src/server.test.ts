@@ -2506,6 +2506,62 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect(
+    "routes websocket rpc hostDeployments.start with deploy-rs verification overrides",
+    () =>
+      Effect.gen(function* () {
+        let receivedInput: HostDeploymentStartInput | null = null;
+
+        yield* buildAppUnderTest({
+          layers: {
+            hostDeploymentService: {
+              start: (input) =>
+                Effect.sync(() => {
+                  receivedInput = input;
+                  return {
+                    disposition: "started" as const,
+                    deployment: makeHostDeploymentSummary({
+                      hostName: input.hostName,
+                      command: buildDeployRsCommand(input.hostName, {
+                        deployOnServer: input.deployOnServer,
+                        magicRollback: input.magicRollback,
+                        confirmTimeoutSeconds: input.confirmTimeoutSeconds,
+                      }),
+                    }),
+                  };
+                }),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const response = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.hostDeploymentsStart]({
+              projectId: defaultProjectId,
+              hostName: "router",
+              magicRollback: false,
+              confirmTimeoutSeconds: 180,
+            }),
+          ),
+        );
+
+        assert.deepEqual(receivedInput, {
+          projectId: defaultProjectId,
+          hostName: "router",
+          magicRollback: false,
+          confirmTimeoutSeconds: 180,
+        });
+        assert.equal(
+          response.deployment.command,
+          buildDeployRsCommand("router", {
+            magicRollback: false,
+            confirmTimeoutSeconds: 180,
+          }),
+        );
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc flakeMaintenance.start", () =>
     Effect.gen(function* () {
       let receivedInput: FlakeMaintenanceStartInput | null = null;

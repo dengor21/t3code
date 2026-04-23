@@ -293,13 +293,21 @@ const makeHostDeploymentService = Effect.gen(function* () {
     }
 
     const deployOnServer = input.deployOnServer === true;
+    const magicRollback = input.magicRollback;
+    const confirmTimeoutSeconds = input.confirmTimeoutSeconds;
 
     return {
       project,
       selectedHost,
       deployOnServer,
+      magicRollback,
+      confirmTimeoutSeconds,
       hostNameNormalized,
-      command: buildDeployRsCommand(selectedHost.name, { deployOnServer }),
+      command: buildDeployRsCommand(selectedHost.name, {
+        deployOnServer,
+        magicRollback,
+        confirmTimeoutSeconds,
+      }),
       terminalOwnerId: ownerIdFor(input.projectId, hostNameNormalized),
     } as const;
   });
