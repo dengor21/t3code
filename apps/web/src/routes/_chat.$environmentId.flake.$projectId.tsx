@@ -50,6 +50,10 @@ import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { toastManager } from "../components/ui/toast";
 import { readEnvironmentApi } from "../environmentApi";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
+import {
+  resolvePendingHostDocGeneration,
+  type PendingHostDocGeneration,
+} from "../lib/flakeDashboardHostDocumentationGeneration";
 import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
   flakeMaintenanceQueryOptions,
@@ -119,6 +123,8 @@ function formatDocumentationStatusLabel(
   status: HostDocumentationStatus | null | undefined,
 ): string {
   switch (status) {
+    case "generating":
+      return "Generating";
     case "current":
       return "Current";
     case "stale":
@@ -133,6 +139,8 @@ function formatDocumentationStatusLabel(
 
 function documentationStatusClasses(status: HostDocumentationStatus | null | undefined): string {
   switch (status) {
+    case "generating":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
     case "current":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
     case "stale":
@@ -346,7 +354,9 @@ function FlakeDashboardRouteView() {
   );
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
   const { handleNewThread } = useNewThreadHandler();
-  const [generatingDocsByHost, setGeneratingDocsByHost] = useState<Record<string, true>>({});
+  const [pendingDocGenerationsByHost, setPendingDocGenerationsByHost] = useState<
+    Record<string, PendingHostDocGeneration>
+  >({});
   const [createHostDialogOpen, setCreateHostDialogOpen] = useState(false);
   const [createHostName, setCreateHostName] = useState("");
   const [createHostTarget, setCreateHostTarget] = useState("");
@@ -417,14 +427,16 @@ function FlakeDashboardRouteView() {
     });
   }, [navigate, projectRef, requestedHostName, search.view]);
 
-  const dashboardQuery = useQuery(
-    projectDashboardContentQueryOptions({
+  const hasPendingDocGenerations = Object.keys(pendingDocGenerationsByHost).length > 0;
+  const dashboardQuery = useQuery({
+    ...projectDashboardContentQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
       enabled: bootstrapComplete && projectRef !== null && project !== null,
     }),
-  );
+    refetchInterval: hasPendingDocGenerations ? 2_000 : false,
+  });
 
   const hostDeploymentQuery = useQuery(
     hostDeploymentQueryOptions({
@@ -468,6 +480,52 @@ function FlakeDashboardRouteView() {
       replace: true,
     });
   }, [dashboardQuery.error, dashboardQuery.isError, navigate, projectRef, requestedHostName]);
+
+  useEffect(() => {
+    if (!dashboardQuery.data || Object.keys(pendingDocGenerationsByHost).length === 0) {
+      return;
+    }
+
+    const settledHosts: string[] = [];
+    for (const [hostName, pending] of Object.entries(pendingDocGenerationsByHost)) {
+      const summary =
+        dashboardQuery.data.hostSummaries.find((entry) => entry.host.name === hostName) ?? null;
+      const resolution = resolvePendingHostDocGeneration({
+        pending,
+        summary,
+        dataUpdatedAt: dashboardQuery.dataUpdatedAt,
+        now: Date.now(),
+      });
+      if (resolution.kind === "pending") {
+        continue;
+      }
+
+      toastManager.add({
+        type: resolution.kind === "succeeded" ? "success" : "error",
+        title:
+          resolution.kind === "succeeded"
+            ? `Documentation generated for ${hostName}`
+            : `Failed to generate ${hostName} documentation`,
+        description:
+          resolution.kind === "succeeded"
+            ? `Updated ${resolution.docPath}`
+            : "The background generation job finished without writing a new document.",
+      });
+      settledHosts.push(hostName);
+    }
+
+    if (settledHosts.length === 0) {
+      return;
+    }
+
+    setPendingDocGenerationsByHost((current) => {
+      const next = { ...current };
+      for (const hostName of settledHosts) {
+        delete next[hostName];
+      }
+      return next;
+    });
+  }, [dashboardQuery.data, dashboardQuery.dataUpdatedAt, pendingDocGenerationsByHost]);
 
   const selectDashboardView = useCallback(
     (hostName: string | null, view: FlakeDashboardView) => {
@@ -642,7 +700,15 @@ function FlakeDashboardRouteView() {
 
   const handleGenerateHostDoc = useCallback(
     async (host: FlakeHost) => {
-      if (!projectRef || !project || generatingDocsByHost[host.name]) {
+      if (
+        !projectRef ||
+        !project ||
+        pendingDocGenerationsByHost[host.name] ||
+        dashboardQuery.data?.hostSummaries.some(
+          (summary) =>
+            summary.host.name === host.name && summary.documentation.status === "generating",
+        )
+      ) {
         return;
       }
 
@@ -655,20 +721,30 @@ function FlakeDashboardRouteView() {
         return;
       }
 
-      setGeneratingDocsByHost((current) => ({
-        ...current,
-        [host.name]: true,
-      }));
       try {
+        const previousGeneratedAt =
+          dashboardQuery.data?.hostSummaries.find((summary) => summary.host.name === host.name)
+            ?.documentation.generatedAt ?? null;
         const result = await api.projects.generateHostDocumentation({
           projectId: project.id,
           hostName: host.name,
         });
+        setPendingDocGenerationsByHost((current) => ({
+          ...current,
+          [host.name]: {
+            baselineDataUpdatedAt: dashboardQuery.dataUpdatedAt,
+            previousGeneratedAt,
+            queuedAt: result.queuedAt,
+          },
+        }));
         await invalidateDashboardQueries();
         toastManager.add({
           type: "success",
-          title: `Documentation generated for ${host.name}`,
-          description: `Updated ${result.docPath}`,
+          title:
+            result.status === "already-running"
+              ? `Documentation is already generating for ${host.name}`
+              : `Documentation generation started for ${host.name}`,
+          description: `Writing ${result.docPath} in the background.`,
         });
       } catch (error) {
         toastManager.add({
@@ -676,15 +752,16 @@ function FlakeDashboardRouteView() {
           title: `Failed to generate ${host.name} documentation`,
           description: error instanceof Error ? error.message : "An error occurred.",
         });
-      } finally {
-        setGeneratingDocsByHost((current) => {
-          const next = { ...current };
-          delete next[host.name];
-          return next;
-        });
       }
     },
-    [generatingDocsByHost, invalidateDashboardQueries, project, projectRef],
+    [
+      dashboardQuery.data?.hostSummaries,
+      dashboardQuery.dataUpdatedAt,
+      invalidateDashboardQueries,
+      pendingDocGenerationsByHost,
+      project,
+      projectRef,
+    ],
   );
 
   const handleOpenDeployDialog = useCallback((hostName: string) => {
@@ -835,6 +912,10 @@ function FlakeDashboardRouteView() {
   const isSelectedFlakeMaintenanceActive =
     selectedFlakeMaintenance?.status === "starting" ||
     selectedFlakeMaintenance?.status === "running";
+  const selectedHostDocGenerating =
+    selectedHostSummary !== null &&
+    (selectedHostSummary.documentation.status === "generating" ||
+      pendingDocGenerationsByHost[selectedHostSummary.host.name] !== undefined);
   const maintenanceActionDisabledReason = maintenanceDisabledReason(gitStatusQuery.data);
 
   const handleStopDeployment = useCallback(async () => {
@@ -1067,7 +1148,9 @@ function FlakeDashboardRouteView() {
                       dashboardQuery.data.hostSummaries.map((summary) => {
                         const isSelected =
                           dashboardQuery.data?.selectedHostName === summary.host.name;
-                        const generating = generatingDocsByHost[summary.host.name] === true;
+                        const generating =
+                          summary.documentation.status === "generating" ||
+                          pendingDocGenerationsByHost[summary.host.name] !== undefined;
                         const deploying = deployingHostName === summary.host.name;
                         const hostChangesSelected = isSelected && activeView === "changes";
                         const hostDocSelected = isSelected && activeView === "doc";
@@ -1299,9 +1382,13 @@ function FlakeDashboardRouteView() {
                         </h2>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                           {activeView === "doc"
-                            ? selectedHostSummary?.documentation.generatedAt
-                              ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
-                              : "Manual host documentation is missing or needs to be generated."
+                            ? selectedHostDocGenerating
+                              ? selectedHostSummary?.documentation.generatedAt
+                                ? `Refreshing in the background. Last generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}.`
+                                : "Generating documentation in the background."
+                              : selectedHostSummary?.documentation.generatedAt
+                                ? `Generated ${formatTimestamp(selectedHostSummary.documentation.generatedAt)}`
+                                : "Manual host documentation is missing or needs to be generated."
                             : activeView === "deploy"
                               ? selectedHostDeployment
                                 ? `${formatDeploymentStatusLabel(selectedHostDeployment.status)} deployment output for ${selectedHostDeployment.hostName}.`
@@ -1405,16 +1492,22 @@ function FlakeDashboardRouteView() {
                         ) : (
                           <div className="p-4 sm:p-5">
                             <EmptyPanel
-                              title="No host doc yet"
-                              description={`Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`}
+                              title={
+                                selectedHostDocGenerating
+                                  ? "Generating host doc"
+                                  : "No host doc yet"
+                              }
+                              description={
+                                selectedHostDocGenerating
+                                  ? `T3code is generating documentation for ${selectedHostSummary.host.name} in the background.`
+                                  : `Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`
+                              }
                               icon={<BookOpenIcon className="size-5" />}
                               actionLabel={
-                                generatingDocsByHost[selectedHostSummary.host.name]
-                                  ? "Generating doc"
-                                  : "Generate doc"
+                                selectedHostDocGenerating ? "Generating doc" : "Generate doc"
                               }
                               onAction={() => void handleGenerateHostDoc(selectedHostSummary.host)}
-                              pending={generatingDocsByHost[selectedHostSummary.host.name] === true}
+                              pending={selectedHostDocGenerating}
                             />
                           </div>
                         )

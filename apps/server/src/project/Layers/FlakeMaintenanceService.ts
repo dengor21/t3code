@@ -216,27 +216,24 @@ const makeFlakeMaintenanceService = Effect.gen(function* () {
   const resolveStartContext = Effect.fn("flakeMaintenance.resolveStartContext")(function* (
     input: FlakeMaintenanceGetInput,
   ) {
-    const project = yield* projectionSnapshotQuery.getProjectShellById(input.projectId).pipe(
-      Effect.mapError((cause) =>
-        toFlakeMaintenanceError("Failed to load the selected flake.", cause),
-      ),
-      Effect.flatMap((result) =>
-        Option.match(result, {
-          onNone: () =>
-            Effect.fail(toFlakeMaintenanceError(`Flake ${input.projectId} was not found.`)),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
+    const projectOption = yield* projectionSnapshotQuery
+      .getProjectShellById(input.projectId)
+      .pipe(
+        Effect.mapError((cause) =>
+          toFlakeMaintenanceError("Failed to load the selected flake.", cause),
+        ),
+      );
+    if (Option.isNone(projectOption)) {
+      return yield* toFlakeMaintenanceError(`Flake ${input.projectId} was not found.`);
+    }
+    const project = projectOption.value;
 
     const flakeFile = path.join(project.workspaceRoot, "flake.nix");
     const flakeStats = yield* fileSystem
       .stat(flakeFile)
       .pipe(Effect.catch(() => Effect.succeed(null)));
     if (flakeStats?.type !== "File") {
-      return yield* Effect.fail(
-        toFlakeMaintenanceError("flake.nix is missing for the selected flake."),
-      );
+      return yield* toFlakeMaintenanceError("flake.nix is missing for the selected flake.");
     }
 
     const gitStatus = yield* gitStatusBroadcaster
@@ -247,17 +244,13 @@ const makeFlakeMaintenanceService = Effect.gen(function* () {
         ),
       );
     if (!gitStatus.isRepo) {
-      return yield* Effect.fail(
-        toFlakeMaintenanceError(
-          "Flake maintenance requires a git repository so updates can be reviewed before commit.",
-        ),
+      return yield* toFlakeMaintenanceError(
+        "Flake maintenance requires a git repository so updates can be reviewed before commit.",
       );
     }
     if (gitStatus.hasWorkingTreeChanges) {
-      return yield* Effect.fail(
-        toFlakeMaintenanceError(
-          "Commit, stash, or discard local changes before running flake maintenance.",
-        ),
+      return yield* toFlakeMaintenanceError(
+        "Commit, stash, or discard local changes before running flake maintenance.",
       );
     }
 
@@ -604,8 +597,8 @@ const makeFlakeMaintenanceService = Effect.gen(function* () {
     Effect.gen(function* () {
       const maintenance = yield* get(input);
       if (maintenance === null) {
-        return yield* Effect.fail(
-          toFlakeMaintenanceError("No flake maintenance run exists yet for this project."),
+        return yield* toFlakeMaintenanceError(
+          "No flake maintenance run exists yet for this project.",
         );
       }
 

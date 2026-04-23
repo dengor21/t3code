@@ -587,7 +587,8 @@ const buildAppUnderTest = (options?: {
           generateHostDocumentation: () =>
             Effect.succeed({
               docPath: ".t3code/docs/hosts/default.md",
-              generatedAt: new Date(0).toISOString(),
+              queuedAt: new Date(0).toISOString(),
+              status: "queued" as const,
             }),
           ...options?.layers?.hostDocumentationService,
         }),

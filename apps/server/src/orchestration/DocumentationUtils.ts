@@ -189,6 +189,10 @@ export function parseHostDocumentationFrontmatter(markdown: string): HostDocumen
   };
 }
 
+export function stripMarkdownFrontmatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n*/m, "").trim();
+}
+
 export function renderInlineCodeList(paths: ReadonlyArray<string>): string {
   if (paths.length === 0) {
     return "(none)";

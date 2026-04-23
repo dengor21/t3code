@@ -13,6 +13,8 @@ import { Effect, Layer, Option, Stream } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DocumentationStatusResolverLive } from "../../orchestration/Layers/DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistryLive } from "../../orchestration/Layers/HostDocumentationGenerationRegistry.ts";
+import { HostDocumentationGenerationRegistry } from "../../orchestration/Services/HostDocumentationGenerationRegistry.ts";
 import type { ProjectionSnapshotQueryShape } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { WorkspacePathsLive } from "../../workspace/Layers/WorkspacePaths.ts";
@@ -179,9 +181,20 @@ Current-state documentation for bc250.
     };
   }
 
-  function makeLayer(workspaceRoot: string) {
+  function makeLayer(
+    workspaceRoot: string,
+    options?: {
+      project?: OrchestrationProjectShell | null;
+    },
+  ) {
+    const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
     return ProjectDashboardContentResolverLive.pipe(
-      Layer.provideMerge(DocumentationStatusResolverLive),
+      Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+      Layer.provideMerge(
+        DocumentationStatusResolverLive.pipe(
+          Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+        ),
+      ),
       Layer.provideMerge(WorkspacePathsLive),
       Layer.provideMerge(
         Layer.succeed(FlakeMetadataResolver, {
@@ -216,7 +229,7 @@ Current-state documentation for bc250.
       Layer.provideMerge(
         Layer.succeed(
           ProjectionSnapshotQuery,
-          makeProjectionSnapshotQuery(makeProjectShell(workspaceRoot)),
+          makeProjectionSnapshotQuery(options?.project ?? makeProjectShell(workspaceRoot)),
         ),
       ),
       Layer.provideMerge(
@@ -316,6 +329,7 @@ Current-state documentation for bc250.
     expect(result.hostDoc?.path).toBe(".t3code/docs/hosts/bc250.md");
     expect(result.hostDoc?.status).toBe("current");
     expect(result.hostDoc?.markdown).toContain("# Host: bc250");
+    expect(result.hostDoc?.markdown.startsWith("---")).toBe(false);
   });
 
   it("fails with a typed error when the requested host is unknown", async () => {
@@ -337,5 +351,57 @@ Current-state documentation for bc250.
       _tag: "ProjectGetDashboardContentError",
       message: "Host missing-host was not found in the selected flake.",
     });
+  });
+
+  it("resolves live generating status even when the cached project snapshot is stale", async () => {
+    const workspaceRoot = createWorkspace();
+    const layer = makeLayer(workspaceRoot, {
+      project: {
+        ...makeProjectShell(workspaceRoot),
+        documentationState: {
+          docsRoot: ".t3code/docs/hosts",
+          legacyDocsDetected: false,
+          hosts: [
+            {
+              hostName: "bc250",
+              docPath: ".t3code/docs/hosts/bc250.md",
+              status: "current",
+              generatedAt: "2026-04-19T13:00:00.000Z",
+              coversChangesThrough: "2026-04-19T13:00:00.000Z",
+              latestRelevantChangeAt: null,
+            },
+            {
+              hostName: "nexus",
+              docPath: ".t3code/docs/hosts/nexus.md",
+              status: "missing",
+              generatedAt: null,
+              coversChangesThrough: null,
+              latestRelevantChangeAt: null,
+            },
+          ],
+        },
+      },
+    }).pipe(Layer.provideMerge(HostDocumentationGenerationRegistryLive));
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const registry = yield* HostDocumentationGenerationRegistry;
+        yield* registry.ensureJob({
+          hostName: "bc250",
+          workspaceRoot,
+        });
+
+        const resolver = yield* ProjectDashboardContentResolver;
+        return yield* resolver.resolveDashboardContent({
+          projectId: asProjectId("project-1"),
+          hostName: "bc250",
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(result.hostDoc?.status).toBe("generating");
+    expect(
+      result.hostSummaries.find((entry) => entry.host.name === "bc250")?.documentation.status,
+    ).toBe("generating");
   });
 });

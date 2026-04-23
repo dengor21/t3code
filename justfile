@@ -9,18 +9,17 @@ remote-build-web:
   bun run build
 
 # Recommended remote flow: same-origin app served by the T3 server itself.
-remote-server host port="13773" t3_home="$HOME/.t3-dev":
+# Uses the default runtime home unless T3CODE_HOME is set in the caller's shell.
+remote-server host port="13773":
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts serve \
     --host "{{host}}" \
     --port "{{port}}"
 
 # Split frontend/backend dev flow. Useful for UI work, but not the preferred
 # setup for testing remote pairing/auth across devices.
-remote-server-dev host port="13773" web_port="5733" t3_home="$HOME/.t3-dev":
+remote-server-dev host port="13773" web_port="5733":
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts serve \
     --host "{{host}}" \
     --port "{{port}}" \
@@ -32,30 +31,25 @@ remote-web host port="13773" web_port="5733":
   VITE_WS_URL="ws://{{host}}:{{port}}" \
   bun run dev -- --host 0.0.0.0 --port "{{web_port}}"
 
-remote-pairing-create host port="13773" t3_home="$HOME/.t3-dev":
+remote-pairing-create host port="13773":
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts auth pairing create \
     --base-url "http://{{host}}:{{port}}"
 
-remote-pairing-create-json host port="13773" t3_home="$HOME/.t3-dev":
+remote-pairing-create-json host port="13773":
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts auth pairing create \
     --base-url "http://{{host}}:{{port}}" \
     --json
 
-remote-pairing-list t3_home="$HOME/.t3-dev":
+remote-pairing-list:
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts auth pairing list
 
-remote-pairing-list-json t3_home="$HOME/.t3-dev":
+remote-pairing-list-json:
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts auth pairing list --json
 
-remote-pairing-revoke id t3_home="$HOME/.t3-dev":
+remote-pairing-revoke id:
   cd apps/server && \
-  T3CODE_HOME="{{t3_home}}" \
   bun src/bin.ts auth pairing revoke "{{id}}"

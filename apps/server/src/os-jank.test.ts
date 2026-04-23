@@ -1,6 +1,10 @@
+import * as OS from "node:os";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { fixPath } from "./os-jank.ts";
+import { fixPath, resolveBaseDir } from "./os-jank.ts";
 
 describe("fixPath", () => {
   it("hydrates PATH on linux using the resolved login shell", () => {
@@ -181,5 +185,13 @@ describe("fixPath", () => {
 
     expect(readPath).not.toHaveBeenCalled();
     expect(env.PATH).toBe("C:\\Windows\\System32");
+  });
+
+  it("defaults the runtime home to ~/.hal", async () => {
+    const baseDir = await Effect.runPromise(
+      resolveBaseDir(undefined).pipe(Effect.provide(NodeServices.layer)),
+    );
+
+    expect(baseDir).toBe(`${OS.homedir()}/.hal`);
   });
 });

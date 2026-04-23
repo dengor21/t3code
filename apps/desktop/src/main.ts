@@ -35,6 +35,7 @@ import { autoUpdater } from "electron-updater";
 
 import type { ContextMenuItem } from "@t3tools/contracts";
 import { RotatingFileSink } from "@t3tools/shared/logging";
+import { DEFAULT_T3CODE_HOME_DIR_NAME } from "@t3tools/shared/runtimeHome";
 import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
 import { DEFAULT_DESKTOP_BACKEND_PORT, resolveDesktopBackendPort } from "./backendPort.ts";
 import {
@@ -102,7 +103,8 @@ const SET_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:set-saved-environment-secr
 const REMOVE_SAVED_ENVIRONMENT_SECRET_CHANNEL = "desktop:remove-saved-environment-secret";
 const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
 const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
-const BASE_DIR = process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), ".t3");
+const BASE_DIR =
+  process.env.T3CODE_HOME?.trim() || Path.join(OS.homedir(), DEFAULT_T3CODE_HOME_DIR_NAME);
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SETTINGS_PATH = Path.join(STATE_DIR, "desktop-settings.json");
 const CLIENT_SETTINGS_PATH = Path.join(STATE_DIR, "client-settings.json");

@@ -30,6 +30,7 @@ import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResol
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { DocumentationReactorLive } from "./DocumentationReactor.ts";
 import { DocumentationStatusResolverLive } from "./DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistryLive } from "./HostDocumentationGenerationRegistry.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import { DocumentationReactor } from "../Services/DocumentationReactor.ts";
@@ -170,6 +171,7 @@ describe("DocumentationReactor", () => {
       Layer.provide(WorkspacePathsLive),
       Layer.provide(workspaceEntriesLayer),
     );
+    const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
     const layer = DocumentationReactorLive.pipe(
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(CheckpointStoreLive),
@@ -209,7 +211,12 @@ describe("DocumentationReactor", () => {
       Layer.provideMerge(workspaceFileSystemLayer),
       Layer.provideMerge(workspaceEntriesLayer),
       Layer.provideMerge(WorkspacePathsLive),
-      Layer.provideMerge(DocumentationStatusResolverLive),
+      Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+      Layer.provideMerge(
+        DocumentationStatusResolverLive.pipe(
+          Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+        ),
+      ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(GitCoreLive),
       Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-doc-reactor-test-" })),

@@ -8,6 +8,7 @@ import {
   DocumentationStatusResolver,
   type DocumentationStatusResolverShape,
 } from "../Services/DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistry } from "../Services/HostDocumentationGenerationRegistry.ts";
 import {
   GENERAL_CHANGELOG_PATH,
   HOST_DOCS_DIR,
@@ -38,35 +39,35 @@ function maxIso(left: string | null, right: string | null): string | null {
 }
 
 const make = Effect.gen(function* () {
+  const hostDocumentationGenerationRegistry = yield* HostDocumentationGenerationRegistry;
+
   const resolve: DocumentationStatusResolverShape["resolve"] = (input) =>
-    Effect.tryPromise(async () => {
+    Effect.gen(function* () {
       const hosts = resolveProjectHosts(input.flakeMetadata);
       const changeLogPath = join(input.workspaceRoot, GENERAL_CHANGELOG_PATH);
-      const docsRootAbsolute = join(input.workspaceRoot, HOST_DOCS_DIR);
       const legacyDocsAbsolute = join(input.workspaceRoot, LEGACY_HOST_DOCS_DIR);
-      const changeLogMarkdown = (await pathExists(changeLogPath))
-        ? await readFile(changeLogPath, "utf8")
+      const changeLogMarkdown = (yield* Effect.promise(() => pathExists(changeLogPath)))
+        ? yield* Effect.promise(() => readFile(changeLogPath, "utf8"))
         : "";
       const changeEntries = parseChangeLogEntries({
         markdown: changeLogMarkdown,
         hosts,
       });
 
-      let legacyDocsDetected = false;
-      if (await pathExists(legacyDocsAbsolute)) {
-        const legacyEntries = await readdir(legacyDocsAbsolute).catch(() => []);
-        legacyDocsDetected = legacyEntries.some((entry) => entry.endsWith(".md"));
-      }
+      const legacyDocsDetected = (yield* Effect.promise(() => pathExists(legacyDocsAbsolute)))
+        ? (yield* Effect.promise(() => readdir(legacyDocsAbsolute).catch(() => []))).some((entry) =>
+            entry.endsWith(".md"),
+          )
+        : false;
 
-      return {
-        docsRoot: HOST_DOCS_DIR,
-        legacyDocsDetected,
-        hosts: await Promise.all(
-          hosts.map(async (host) => {
+      const resolvedHosts = yield* Effect.forEach(
+        hosts,
+        (host) =>
+          Effect.gen(function* () {
             const docPath = `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`;
             const absoluteDocPath = join(input.workspaceRoot, docPath);
-            const markdown = (await pathExists(absoluteDocPath))
-              ? await readFile(absoluteDocPath, "utf8")
+            const markdown = (yield* Effect.promise(() => pathExists(absoluteDocPath)))
+              ? yield* Effect.promise(() => readFile(absoluteDocPath, "utf8"))
               : null;
             const frontmatter = markdown ? parseHostDocumentationFrontmatter(markdown) : null;
             const latestHostSpecificChangeAt = changeEntries
@@ -81,16 +82,22 @@ const make = Effect.gen(function* () {
             );
             const coverageCutoff =
               frontmatter?.coversChangesThrough ?? frontmatter?.generatedAt ?? null;
+            const activeJob = yield* hostDocumentationGenerationRegistry.getJob({
+              hostName: host.name,
+              workspaceRoot: input.workspaceRoot,
+            });
             const status: HostDocumentationStatus =
-              markdown === null
-                ? "missing"
-                : latestHostSpecificChangeAt !== null &&
-                    (coverageCutoff === null || latestHostSpecificChangeAt > coverageCutoff)
-                  ? "stale"
-                  : latestAmbiguousChangeAt !== null &&
-                      (coverageCutoff === null || latestAmbiguousChangeAt > coverageCutoff)
-                    ? "needs-review"
-                    : "current";
+              activeJob !== null
+                ? "generating"
+                : markdown === null
+                  ? "missing"
+                  : latestHostSpecificChangeAt !== null &&
+                      (coverageCutoff === null || latestHostSpecificChangeAt > coverageCutoff)
+                    ? "stale"
+                    : latestAmbiguousChangeAt !== null &&
+                        (coverageCutoff === null || latestAmbiguousChangeAt > coverageCutoff)
+                      ? "needs-review"
+                      : "current";
             return {
               hostName: host.name,
               docPath,
@@ -100,7 +107,13 @@ const make = Effect.gen(function* () {
               latestRelevantChangeAt,
             };
           }),
-        ),
+        { concurrency: 4 },
+      );
+
+      return {
+        docsRoot: HOST_DOCS_DIR,
+        legacyDocsDetected,
+        hosts: resolvedHosts,
       } satisfies ProjectDocumentationState;
     }).pipe(Effect.orDie);
 

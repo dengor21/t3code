@@ -49,6 +49,20 @@ describe("buildFlakeDashboardHostMenu", () => {
       },
     ]);
   });
+
+  it("shows a generating label while a host doc job is in flight", () => {
+    expect(
+      buildFlakeDashboardHostMenu({
+        documentationStatus: "generating",
+        generating: true,
+      })[2],
+    ).toEqual({
+      action: "generate-doc",
+      disabled: true,
+      kind: "action",
+      label: "Generating doc",
+    });
+  });
 });
 
 describe("runFlakeDashboardHostMenuAction", () => {

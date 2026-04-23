@@ -46,6 +46,7 @@ import { ProjectionThreadProposedPlan } from "../../persistence/Services/Project
 import { ProjectionThreadSession } from "../../persistence/Services/ProjectionThreadSessions.ts";
 import { ProjectionThread } from "../../persistence/Services/ProjectionThreads.ts";
 import { DocumentationStatusResolverLive } from "./DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistryLive } from "./HostDocumentationGenerationRegistry.ts";
 import { FlakeMetadataResolverLive } from "../../project/Layers/FlakeMetadataResolver.ts";
 import { FlakeMetadataResolver } from "../../project/Services/FlakeMetadataResolver.ts";
 import { RepositoryIdentityResolver } from "../../project/Services/RepositoryIdentityResolver.ts";
@@ -1545,10 +1546,18 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   } satisfies ProjectionSnapshotQueryShape;
 });
 
+const projectionSnapshotHostDocumentationGenerationRegistryLayer =
+  HostDocumentationGenerationRegistryLive;
+
 export const OrchestrationProjectionSnapshotQueryLive = Layer.effect(
   ProjectionSnapshotQuery,
   makeProjectionSnapshotQuery,
 ).pipe(
-  Layer.provideMerge(DocumentationStatusResolverLive),
+  Layer.provideMerge(projectionSnapshotHostDocumentationGenerationRegistryLayer),
+  Layer.provideMerge(
+    DocumentationStatusResolverLive.pipe(
+      Layer.provideMerge(projectionSnapshotHostDocumentationGenerationRegistryLayer),
+    ),
+  ),
   Layer.provideMerge(FlakeMetadataResolverLive),
 );

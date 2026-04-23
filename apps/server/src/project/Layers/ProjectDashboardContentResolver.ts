@@ -14,6 +14,7 @@ import {
   GENERAL_CHANGELOG_PATH,
   HOST_DOCS_DIR,
   parseChangeLogEntries,
+  stripMarkdownFrontmatter,
   resolveProjectHosts,
   slugHostName,
 } from "../../orchestration/DocumentationUtils.ts";
@@ -139,18 +140,16 @@ const make = Effect.gen(function* () {
               toDashboardError("Failed to resolve flake metadata.", cause),
             ),
           ));
-      const documentationState =
-        project.documentationState ??
-        (yield* documentationStatusResolver
-          .resolve({
-            workspaceRoot: project.workspaceRoot,
-            flakeMetadata,
-          })
-          .pipe(
-            Effect.mapError((cause) =>
-              toDashboardError("Failed to resolve documentation status.", cause),
-            ),
-          ));
+      const documentationState = yield* documentationStatusResolver
+        .resolve({
+          workspaceRoot: project.workspaceRoot,
+          flakeMetadata,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            toDashboardError("Failed to resolve documentation status.", cause),
+          ),
+        );
       const hosts = resolveProjectHosts(flakeMetadata);
       const deploymentByHost = yield* deployRsResolver
         .resolveHostDeployments({
@@ -279,7 +278,7 @@ const make = Effect.gen(function* () {
             ? null
             : {
                 path: hostDocState.docPath,
-                markdown: hostDocFile?.contents ?? "",
+                markdown: hostDocFile ? stripMarkdownFrontmatter(hostDocFile.contents) : "",
                 generatedAt: hostDocState.generatedAt,
                 status: hostDocState.status,
               },

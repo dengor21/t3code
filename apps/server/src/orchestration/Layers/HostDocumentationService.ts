@@ -1,10 +1,11 @@
-import { access, constants, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
 import {
   CommandId,
   type FlakeHost,
   type ModelSelection,
+  type ProjectId,
   ProjectGenerateHostDocumentationError,
 } from "@t3tools/contracts";
 import { Effect, Layer, Schema } from "effect";
@@ -17,6 +18,7 @@ import {
   HostDocumentationService,
   type HostDocumentationServiceShape,
 } from "../Services/HostDocumentationService.ts";
+import { HostDocumentationGenerationRegistry } from "../Services/HostDocumentationGenerationRegistry.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { DocumentationStatusResolver } from "../Services/DocumentationStatusResolver.ts";
 import { HOST_DOCS_DIR, resolveProjectHosts, slugHostName } from "../DocumentationUtils.ts";
@@ -32,18 +34,15 @@ interface ContextFile {
   readonly contents: string;
 }
 
-async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await access(targetPath, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function trimToNull(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
+interface ResolvedGenerationTarget {
+  readonly docPath: string;
+  readonly host: FlakeHost;
+  readonly project: {
+    readonly defaultModelSelection: ModelSelection | null;
+    readonly id: ProjectId;
+    readonly title: string;
+    readonly workspaceRoot: string;
+  };
 }
 
 function normalizeRelativePath(value: string): string {
@@ -179,6 +178,7 @@ const make = Effect.gen(function* () {
   const flakeMetadataResolver = yield* FlakeMetadataResolver;
   const workspaceFileSystem = yield* WorkspaceFileSystem;
   const documentationStatusResolver = yield* DocumentationStatusResolver;
+  const hostDocumentationGenerationRegistry = yield* HostDocumentationGenerationRegistry;
 
   const readWorkspaceFile = (workspaceRoot: string, relativePath: string) =>
     Effect.tryPromise(async () => {
@@ -298,9 +298,17 @@ const make = Effect.gen(function* () {
       return contextFiles;
     });
 
-  const generateHostDocumentation: HostDocumentationServiceShape["generateHostDocumentation"] = (
-    input,
-  ) =>
+  const dispatchProjectMetadataRefresh = (projectId: ProjectId) =>
+    orchestrationEngine.dispatch({
+      type: "project.meta.update",
+      commandId: CommandId.make(`server:host-doc-refresh:${crypto.randomUUID()}`),
+      projectId,
+    });
+
+  const resolveGenerationTarget = (input: {
+    hostName: string;
+    projectId: ProjectId;
+  }): Effect.Effect<ResolvedGenerationTarget, ProjectGenerateHostDocumentationError> =>
     Effect.gen(function* () {
       const readModel = yield* orchestrationEngine.getReadModel();
       const project = readModel.projects.find((entry) => entry.id === input.projectId);
@@ -320,50 +328,111 @@ const make = Effect.gen(function* () {
         });
       }
 
-      const contextFiles = yield* collectContextFiles({
-        workspaceRoot: project.workspaceRoot,
+      return {
+        docPath: `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`,
         host,
+        project: {
+          defaultModelSelection: project.defaultModelSelection,
+          id: project.id,
+          title: project.title,
+          workspaceRoot: project.workspaceRoot,
+        },
+      };
+    });
+
+  const runHostDocumentationGeneration = (
+    target: ResolvedGenerationTarget,
+  ): Effect.Effect<void, ProjectGenerateHostDocumentationError> =>
+    Effect.gen(function* () {
+      const contextFiles = yield* collectContextFiles({
+        workspaceRoot: target.project.workspaceRoot,
+        host: target.host,
       });
+      const flakeMetadata = yield* flakeMetadataResolver.resolve(target.project.workspaceRoot);
       const documentationState = yield* documentationStatusResolver.resolve({
-        workspaceRoot: project.workspaceRoot,
+        workspaceRoot: target.project.workspaceRoot,
         flakeMetadata,
       });
       const hostDocState =
-        documentationState.hosts.find((entry) => entry.hostName === host.name) ?? null;
+        documentationState.hosts.find((entry) => entry.hostName === target.host.name) ?? null;
       const generatedAt = new Date().toISOString();
       const coversChangesThrough = hostDocState?.latestRelevantChangeAt ?? generatedAt;
       const modelSelection = yield* resolveModelSelection({
-        projectDefaultModelSelection: project.defaultModelSelection,
+        projectDefaultModelSelection: target.project.defaultModelSelection,
       });
       const generated = yield* textGeneration.generateHostDocumentation({
-        cwd: project.workspaceRoot,
-        projectTitle: project.title,
-        host,
+        cwd: target.project.workspaceRoot,
+        projectTitle: target.project.title,
+        host: target.host,
         contextFiles,
         modelSelection,
       });
-      const docPath = `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`;
       yield* workspaceFileSystem.writeFile({
-        cwd: project.workspaceRoot,
-        relativePath: docPath,
+        cwd: target.project.workspaceRoot,
+        relativePath: target.docPath,
         contents: renderHostDocumentation({
-          host,
+          host: target.host,
           generatedAt,
           coversChangesThrough,
           sourceFiles: contextFiles.map((file) => file.path),
           generated,
         }),
       });
-      yield* orchestrationEngine.dispatch({
-        type: "project.meta.update",
-        commandId: CommandId.make(`server:host-doc-refresh:${crypto.randomUUID()}`),
-        projectId: project.id,
+    }).pipe(
+      Effect.mapError((cause) =>
+        Schema.is(ProjectGenerateHostDocumentationError)(cause)
+          ? cause
+          : new ProjectGenerateHostDocumentationError({
+              message: "Failed to generate host documentation.",
+              cause,
+            }),
+      ),
+    );
+
+  const generateHostDocumentation: HostDocumentationServiceShape["generateHostDocumentation"] = (
+    input,
+  ) =>
+    Effect.gen(function* () {
+      const target = yield* resolveGenerationTarget(input);
+      const queued = yield* hostDocumentationGenerationRegistry.ensureJob({
+        hostName: target.host.name,
+        workspaceRoot: target.project.workspaceRoot,
       });
 
+      if (queued.created) {
+        yield* dispatchProjectMetadataRefresh(target.project.id).pipe(
+          Effect.ignoreCause({ log: true }),
+        );
+        const backgroundGeneration = runHostDocumentationGeneration(target).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning("host documentation generation failed", {
+              error,
+              hostName: target.host.name,
+              projectId: target.project.id,
+              workspaceRoot: target.project.workspaceRoot,
+            }),
+          ),
+          Effect.ensuring(
+            hostDocumentationGenerationRegistry
+              .removeJob({
+                hostName: target.host.name,
+                workspaceRoot: target.project.workspaceRoot,
+              })
+              .pipe(
+                Effect.andThen(dispatchProjectMetadataRefresh(target.project.id)),
+                Effect.ignoreCause({ log: true }),
+              ),
+          ),
+          Effect.ignoreCause({ log: true }),
+        );
+        yield* Effect.scoped(backgroundGeneration).pipe(Effect.forkDetach);
+      }
+
       return {
-        docPath,
-        generatedAt,
-      };
+        docPath: target.docPath,
+        queuedAt: queued.job.queuedAt,
+        status: queued.created ? ("queued" as const) : ("already-running" as const),
+      } as const;
     }).pipe(
       Effect.mapError((cause) =>
         Schema.is(ProjectGenerateHostDocumentationError)(cause)

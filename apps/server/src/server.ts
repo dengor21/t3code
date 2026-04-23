@@ -45,6 +45,7 @@ import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderComma
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
 import { DocumentationReactorLive } from "./orchestration/Layers/DocumentationReactor.ts";
+import { HostDocumentationGenerationRegistryLive } from "./orchestration/Layers/HostDocumentationGenerationRegistry.ts";
 import { DocumentationStatusResolverLive } from "./orchestration/Layers/DocumentationStatusResolver.ts";
 import { HostDocumentationServiceLive } from "./orchestration/Layers/HostDocumentationService.ts";
 import { ThreadChangeLifecycleReactorLive } from "./orchestration/Layers/ThreadChangeLifecycleReactor.ts";
@@ -202,9 +203,18 @@ const GitManagerLayerLive = GitManagerLive.pipe(
   Layer.provideMerge(RoutingTextGenerationLive),
 );
 
-const DocumentationLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(DocumentationStatusResolverLive),
-  Layer.provideMerge(HostDocumentationServiceLive),
+const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
+
+const DocumentationSupportLayerLive = Layer.mergeAll(
+  hostDocumentationGenerationRegistryLayer,
+  DocumentationStatusResolverLive.pipe(
+    Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+  ),
+);
+
+const DocumentationLayerLive = Layer.mergeAll(
+  DocumentationSupportLayerLive,
+  HostDocumentationServiceLive.pipe(Layer.provideMerge(DocumentationSupportLayerLive)),
 );
 
 const GitLayerLive = Layer.empty.pipe(

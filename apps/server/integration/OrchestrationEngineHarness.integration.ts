@@ -63,6 +63,7 @@ import { OrchestrationReactor } from "../src/orchestration/Services/Orchestratio
 import { DocumentationReactor } from "../src/orchestration/Services/DocumentationReactor.ts";
 import { ThreadChangeLifecycleReactor } from "../src/orchestration/Services/ThreadChangeLifecycleReactor.ts";
 import { DocumentationStatusResolverLive } from "../src/orchestration/Layers/DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistryLive } from "../src/orchestration/Layers/HostDocumentationGenerationRegistry.ts";
 import { ProjectionSnapshotQuery } from "../src/orchestration/Services/ProjectionSnapshotQuery.ts";
 import {
   RuntimeReceiptBus,
@@ -380,11 +381,17 @@ export const makeOrchestrationIntegrationHarness = (
         }),
       ),
     );
+    const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
     const layer = Layer.empty.pipe(
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(orchestrationReactorLayer),
       Layer.provide(persistenceLayer),
-      Layer.provideMerge(DocumentationStatusResolverLive),
+      Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+      Layer.provideMerge(
+        DocumentationStatusResolverLive.pipe(
+          Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+        ),
+      ),
       Layer.provideMerge(RepositoryIdentityResolverLive),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(ServerConfig.layerTest(workspaceDir, rootDir)),

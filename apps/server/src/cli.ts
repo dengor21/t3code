@@ -57,6 +57,7 @@ import { OrchestrationEngineService } from "./orchestration/Services/Orchestrati
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { DocumentationStatusResolverLive } from "./orchestration/Layers/DocumentationStatusResolver.ts";
+import { HostDocumentationGenerationRegistryLive } from "./orchestration/Layers/HostDocumentationGenerationRegistry.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { GitCoreLive } from "./git/Layers/GitCore.ts";
 import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration.ts";
@@ -496,7 +497,10 @@ type ProjectCliDispatchCommand = Extract<
   { type: "project.create" | "project.meta.update" | "project.delete" }
 >;
 
+const projectCliHostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
+
 const ProjectCliRuntimeBaseLive = Layer.mergeAll(
+  projectCliHostDocumentationGenerationRegistryLayer,
   WorkspacePathsLive,
   WorkspaceEntriesLive.pipe(Layer.provide(WorkspacePathsLive), Layer.provideMerge(GitCoreLive)),
   WorkspaceFileSystemLive.pipe(
@@ -507,7 +511,9 @@ const ProjectCliRuntimeBaseLive = Layer.mergeAll(
   ),
   RoutingTextGenerationLive,
   DeployRsResolverLive,
-  DocumentationStatusResolverLive,
+  DocumentationStatusResolverLive.pipe(
+    Layer.provideMerge(projectCliHostDocumentationGenerationRegistryLayer),
+  ),
   OrchestrationLayerLive.pipe(
     Layer.provideMerge(RepositoryIdentityResolverLive),
     Layer.provideMerge(SqlitePersistenceLayerLive),

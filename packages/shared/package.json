@@ -79,6 +79,10 @@
     "./hostWorkflow": {
       "types": "./src/hostWorkflow.ts",
       "import": "./src/hostWorkflow.ts"
+    },
+    "./runtimeHome": {
+      "types": "./src/runtimeHome.ts",
+      "import": "./src/runtimeHome.ts"
     }
   },
   "scripts": {

@@ -64,9 +64,12 @@ export const ProjectGenerateHostDocumentationInput = Schema.Struct({
 export type ProjectGenerateHostDocumentationInput =
   typeof ProjectGenerateHostDocumentationInput.Type;
 
+const ProjectGenerateHostDocumentationQueueStatus = Schema.Literals(["queued", "already-running"]);
+
 export const ProjectGenerateHostDocumentationResult = Schema.Struct({
   docPath: TrimmedNonEmptyString,
-  generatedAt: TrimmedNonEmptyString,
+  queuedAt: IsoDateTime,
+  status: ProjectGenerateHostDocumentationQueueStatus,
 });
 export type ProjectGenerateHostDocumentationResult =
   typeof ProjectGenerateHostDocumentationResult.Type;

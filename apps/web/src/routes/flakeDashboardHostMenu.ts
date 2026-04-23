@@ -38,7 +38,11 @@ export function buildFlakeDashboardHostMenu(input: {
       action: "generate-doc",
       disabled: input.generating,
       kind: "action",
-      label: input.documentationStatus === "missing" ? "Generate doc" : "Refresh doc",
+      label: input.generating
+        ? "Generating doc"
+        : input.documentationStatus === "missing"
+          ? "Generate doc"
+          : "Refresh doc",
     },
     {
       id: "host-actions-divider",

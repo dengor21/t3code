@@ -10,6 +10,7 @@ import {
   mergePathEntries,
   readPathFromLaunchctl,
 } from "@t3tools/shared/shell";
+import { DEFAULT_T3CODE_HOME_DIR_NAME } from "@t3tools/shared/runtimeHome";
 
 type WindowsCommandAvailabilityChecker = (
   command: string,
@@ -95,7 +96,7 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    return join(OS.homedir(), ".t3");
+    return join(OS.homedir(), DEFAULT_T3CODE_HOME_DIR_NAME);
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

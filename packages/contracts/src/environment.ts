@@ -86,6 +86,7 @@ export type FlakeMetadata = typeof FlakeMetadata.Type;
 
 export const HostDocumentationStatus = Schema.Literals([
   "missing",
+  "generating",
   "current",
   "stale",
   "needs-review",
