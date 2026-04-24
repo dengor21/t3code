@@ -3,6 +3,7 @@ import {
   type FlakeHost,
   type FlakeMaintenanceStatus,
   type GitStatusResult,
+  type HostCreationWorkflowBootstrapMode,
   type HostDeploymentStatus,
   type HostDocumentationStatus,
   type ProjectDashboardChangeEntry,
@@ -374,6 +375,9 @@ function FlakeDashboardRouteView() {
   >({});
   const [createHostDialogOpen, setCreateHostDialogOpen] = useState(false);
   const [createHostName, setCreateHostName] = useState("");
+  const [createHostBootstrapMode, setCreateHostBootstrapMode] =
+    useState<HostCreationWorkflowBootstrapMode>("new-host");
+  const [createHostSourceSshTarget, setCreateHostSourceSshTarget] = useState("");
   const [createHostTarget, setCreateHostTarget] = useState("");
   const [createHostOsFamily, setCreateHostOsFamily] = useState<"nixos" | "darwin">("nixos");
   const [createHostType, setCreateHostType] = useState("");
@@ -641,11 +645,19 @@ function FlakeDashboardRouteView() {
         : createHostNameIsDuplicate
           ? "That host already exists in this flake."
           : null;
+  const createHostRequiresSshTarget = createHostBootstrapMode === "existing-via-ssh";
+  const normalizedCreateHostSourceSshTarget = createHostSourceSshTarget.trim();
+  const createHostSourceSshTargetError =
+    createHostRequiresSshTarget && normalizedCreateHostSourceSshTarget.length === 0
+      ? "SSH target is required when importing an existing host."
+      : null;
   const canCreateHost =
     project !== undefined && (project.flakeMetadata?.source ?? "missing") !== "missing";
 
   const resetCreateHostForm = useCallback(() => {
     setCreateHostName("");
+    setCreateHostBootstrapMode("new-host");
+    setCreateHostSourceSshTarget("");
     setCreateHostTarget("");
     setCreateHostOsFamily("nixos");
     setCreateHostType("");
@@ -662,7 +674,7 @@ function FlakeDashboardRouteView() {
   );
 
   const handleCreateHostThread = useCallback(async () => {
-    if (!projectRef || !canCreateHost || createHostNameError) {
+    if (!projectRef || !canCreateHost || createHostNameError || createHostSourceSshTargetError) {
       return;
     }
 
@@ -676,6 +688,11 @@ function FlakeDashboardRouteView() {
         hostName,
         target,
         osFamily: createHostOsFamily,
+        bootstrapMode: createHostBootstrapMode,
+        sourceSshTarget:
+          createHostBootstrapMode === "existing-via-ssh"
+            ? normalizedCreateHostSourceSshTarget || null
+            : null,
         hostType: createHostType.trim() || null,
         status: "planning",
       },
@@ -684,11 +701,14 @@ function FlakeDashboardRouteView() {
     resetCreateHostForm();
   }, [
     canCreateHost,
+    createHostBootstrapMode,
     createHostNameError,
     createHostOsFamily,
+    createHostSourceSshTargetError,
     createHostTarget,
     createHostType,
     handleNewThread,
+    normalizedCreateHostSourceSshTarget,
     normalizedCreateHostName,
     projectRef,
     resetCreateHostForm,
@@ -2057,8 +2077,9 @@ function FlakeDashboardRouteView() {
           <DialogHeader>
             <DialogTitle>Create Host</DialogTitle>
             <DialogDescription>
-              Start a guided, plan-first workflow for a new host. The new thread stays scoped to
-              this host and starts in plan mode.
+              Start a guided, plan-first workflow for a new host. You can either scaffold it from
+              scratch or inspect an existing machine over SSH before translating it to Nix. The new
+              thread stays scoped to this host and starts in plan mode.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-4">
@@ -2072,7 +2093,11 @@ function FlakeDashboardRouteView() {
                   setCreateHostName(normalizeHostCreationHostName(event.target.value));
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && createHostNameError === null) {
+                  if (
+                    event.key === "Enter" &&
+                    createHostNameError === null &&
+                    createHostSourceSshTargetError === null
+                  ) {
                     event.preventDefault();
                     void handleCreateHostThread();
                   }
@@ -2089,14 +2114,59 @@ function FlakeDashboardRouteView() {
             </label>
 
             <label className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Target</span>
+              <span className="text-xs font-medium text-foreground">Workflow</span>
+              <select
+                value={createHostBootstrapMode}
+                onChange={(event) =>
+                  setCreateHostBootstrapMode(
+                    event.target.value === "existing-via-ssh" ? "existing-via-ssh" : "new-host",
+                  )
+                }
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                <option value="new-host">Plan a new host</option>
+                <option value="existing-via-ssh">Import existing host via SSH</option>
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Use SSH import when you want the agent to inspect a live machine first, present its
+                findings, and then translate it into Nix config.
+              </span>
+            </label>
+
+            {createHostRequiresSshTarget ? (
+              <label className="grid gap-1.5">
+                <span className="text-xs font-medium text-foreground">SSH discovery target</span>
+                <Input
+                  value={createHostSourceSshTarget}
+                  placeholder="root@example-host"
+                  onChange={(event) => setCreateHostSourceSshTarget(event.target.value)}
+                />
+                <span
+                  className={cn(
+                    "text-xs",
+                    createHostSourceSshTargetError ? "text-destructive" : "text-muted-foreground",
+                  )}
+                >
+                  {createHostSourceSshTargetError ??
+                    "Preferred. If you already use SSH keys, load one into your local ssh-agent before starting. The workflow can fall back to a secure password prompt later if key auth is unavailable or fails. Do not paste passwords into the thread."}
+                </span>
+              </label>
+            ) : null}
+
+            <label className="grid gap-1.5">
+              <span className="text-xs font-medium text-foreground">Deploy target</span>
               <Input
                 value={createHostTarget}
-                placeholder={normalizedCreateHostName || "host target"}
+                placeholder={
+                  normalizedCreateHostName ||
+                  (createHostRequiresSshTarget ? "deployment target" : "host target")
+                }
                 onChange={(event) => setCreateHostTarget(event.target.value)}
               />
               <span className="text-xs text-muted-foreground">
-                Optional. Defaults to the host name until you provide the final install target.
+                {createHostRequiresSshTarget
+                  ? "Optional. This is the eventual deploy target for the flake host. It defaults to the host name until you provide the final target."
+                  : "Optional. Defaults to the host name until you provide the final install target."}
               </span>
             </label>
 
@@ -2132,7 +2202,11 @@ function FlakeDashboardRouteView() {
             </Button>
             <Button
               onClick={() => void handleCreateHostThread()}
-              disabled={createHostNameError !== null || !canCreateHost}
+              disabled={
+                createHostNameError !== null ||
+                createHostSourceSshTargetError !== null ||
+                !canCreateHost
+              }
             >
               Create thread
             </Button>

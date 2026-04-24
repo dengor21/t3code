@@ -106,4 +106,5 @@ export type AuthSessionRepositoryError = PersistenceSqlError | PersistenceDecode
 
 export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type HostDeploymentRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type HostImportRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type FlakeMaintenanceRepositoryError = PersistenceSqlError | PersistenceDecodeError;

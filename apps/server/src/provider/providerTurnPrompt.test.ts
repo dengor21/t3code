@@ -25,15 +25,29 @@ describe("providerTurnPrompt", () => {
         workflow: {
           kind: "host-creation",
           hostName: "nexus",
+          target: "nexus",
           osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
+          hostType: "server",
           status: "planning",
         },
       },
     });
 
     assert.ok(preamble?.includes("This workspace is a Nix flake repository."));
-    assert.ok(preamble?.includes("planning creation of host nexus."));
+    assert.ok(
+      preamble?.includes(
+        "planning creation of host nexus by importing an existing system over SSH.",
+      ),
+    );
+    assert.ok(preamble?.includes("SSH discovery target: root@nexus.example."));
     assert.ok(preamble?.includes("t3hosts.nexus and hosts/nexus/default.nix"));
+    assert.ok(preamble?.includes("secure password prompt UI"));
+    assert.ok(preamble?.includes("Never ask the user to paste passwords into chat"));
+    assert.ok(
+      preamble?.includes("Present a findings summary before locking the translation plan."),
+    );
     assert.ok(preamble?.includes("Keep the thread planning-only"));
   });
 

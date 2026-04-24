@@ -159,6 +159,9 @@ describe("buildProviderTurnContext", () => {
             hostName: "nexus",
             target: "nexus",
             osFamily: "nixos",
+            bootstrapMode: "existing-via-ssh",
+            sourceSshTarget: "root@nexus.example",
+            hostType: "server",
             status: "planning",
           },
         },
@@ -170,7 +173,11 @@ describe("buildProviderTurnContext", () => {
       workflow: {
         kind: "host-creation",
         hostName: "nexus",
+        target: "nexus",
         osFamily: "nixos",
+        bootstrapMode: "existing-via-ssh",
+        sourceSshTarget: "root@nexus.example",
+        hostType: "server",
         status: "planning",
       },
     });
@@ -199,6 +206,8 @@ describe("buildProviderTurnContext", () => {
       workflow: {
         kind: "host-removal",
         hostName: "nexus",
+        target: "root@nexus",
+        hostType: "server",
         status: "planning",
       },
     });

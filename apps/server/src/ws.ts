@@ -59,6 +59,7 @@ import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptR
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
+import { HostImportService } from "./project/Services/HostImportService.ts";
 import { FlakeMaintenanceService } from "./project/Services/FlakeMaintenanceService.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
@@ -154,6 +155,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
       const hostDeploymentService = yield* HostDeploymentService;
+      const hostImportService = yield* HostImportService;
       const flakeMaintenanceService = yield* FlakeMaintenanceService;
       const providerRegistry = yield* ProviderRegistry;
       const config = yield* ServerConfig;
@@ -894,6 +896,44 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcStream(
             WS_METHODS.hostDeploymentsSubscribeTerminalEvents,
             hostDeploymentService.subscribeTerminalEvents(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostImportsStart]: (input) =>
+          observeRpcEffect(WS_METHODS.hostImportsStart, hostImportService.start(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostImportsGet]: (input) =>
+          observeRpcEffect(WS_METHODS.hostImportsGet, hostImportService.get(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostImportsCancel]: (input) =>
+          observeRpcEffect(WS_METHODS.hostImportsCancel, hostImportService.cancel(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostImportsSubmitSecret]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostImportsSubmitSecret,
+            hostImportService.submitSecret(input),
+            {
+              "rpc.aggregate": "workspace",
+            },
+          ),
+        [WS_METHODS.hostImportsTerminalOpen]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostImportsTerminalOpen,
+            hostImportService.openTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostImportsTerminalResize]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostImportsTerminalResize,
+            hostImportService.resizeTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostImportsSubscribeTerminalEvents]: (input) =>
+          observeRpcStream(
+            WS_METHODS.hostImportsSubscribeTerminalEvents,
+            hostImportService.subscribeTerminalEvents(input),
             { "rpc.aggregate": "terminal" },
           ),
         [WS_METHODS.flakeMaintenanceStart]: (input) =>

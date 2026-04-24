@@ -263,6 +263,9 @@ export type ThreadChangeTracking = typeof ThreadChangeTracking.Type;
 export const HostCreationWorkflowOsFamily = Schema.Literals(["nixos", "darwin"]);
 export type HostCreationWorkflowOsFamily = typeof HostCreationWorkflowOsFamily.Type;
 
+export const HostCreationWorkflowBootstrapMode = Schema.Literals(["new-host", "existing-via-ssh"]);
+export type HostCreationWorkflowBootstrapMode = typeof HostCreationWorkflowBootstrapMode.Type;
+
 export const HostWorkflowStatus = Schema.Literals([
   "planning",
   "ready-to-implement",
@@ -277,6 +280,8 @@ export const HostCreationWorkflow = Schema.Struct({
   hostName: TrimmedNonEmptyString,
   target: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   osFamily: Schema.optional(HostCreationWorkflowOsFamily),
+  bootstrapMode: Schema.optional(HostCreationWorkflowBootstrapMode),
+  sourceSshTarget: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   status: Schema.optional(HostWorkflowStatus),
 });

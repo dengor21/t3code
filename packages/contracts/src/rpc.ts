@@ -73,6 +73,20 @@ import {
   NullOrHostDeploymentSummary,
 } from "./hostDeployment.ts";
 import {
+  HostImportCancelInput,
+  HostImportError,
+  HostImportGetInput,
+  HostImportStartInput,
+  HostImportStartResult,
+  HostImportSubmitSecretInput,
+  HostImportSubmitSecretResult,
+  HostImportTerminalEvent,
+  HostImportTerminalOpenInput,
+  HostImportTerminalResizeInput,
+  HostImportTerminalSnapshot,
+  NullOrHostImportSummary,
+} from "./hostImport.ts";
+import {
   ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationError,
   ProjectGenerateHostDocumentationInput,
@@ -122,6 +136,13 @@ export const WS_METHODS = {
   hostDeploymentsTerminalOpen: "hostDeployments.terminalOpen",
   hostDeploymentsTerminalResize: "hostDeployments.terminalResize",
   hostDeploymentsSubscribeTerminalEvents: "hostDeployments.subscribeTerminalEvents",
+  hostImportsStart: "hostImports.start",
+  hostImportsGet: "hostImports.get",
+  hostImportsCancel: "hostImports.cancel",
+  hostImportsSubmitSecret: "hostImports.submitSecret",
+  hostImportsTerminalOpen: "hostImports.terminalOpen",
+  hostImportsTerminalResize: "hostImports.terminalResize",
+  hostImportsSubscribeTerminalEvents: "hostImports.subscribeTerminalEvents",
   flakeMaintenanceStart: "flakeMaintenance.start",
   flakeMaintenanceGet: "flakeMaintenance.get",
   flakeMaintenanceStop: "flakeMaintenance.stop",
@@ -265,6 +286,51 @@ export const WsHostDeploymentsSubscribeTerminalEventsRpc = Rpc.make(
     payload: HostDeploymentGetInput,
     success: HostDeploymentTerminalEvent,
     error: HostDeploymentError,
+    stream: true,
+  },
+);
+
+export const WsHostImportsStartRpc = Rpc.make(WS_METHODS.hostImportsStart, {
+  payload: HostImportStartInput,
+  success: HostImportStartResult,
+  error: HostImportError,
+});
+
+export const WsHostImportsGetRpc = Rpc.make(WS_METHODS.hostImportsGet, {
+  payload: HostImportGetInput,
+  success: NullOrHostImportSummary,
+  error: HostImportError,
+});
+
+export const WsHostImportsCancelRpc = Rpc.make(WS_METHODS.hostImportsCancel, {
+  payload: HostImportCancelInput,
+  success: NullOrHostImportSummary,
+  error: HostImportError,
+});
+
+export const WsHostImportsSubmitSecretRpc = Rpc.make(WS_METHODS.hostImportsSubmitSecret, {
+  payload: HostImportSubmitSecretInput,
+  success: HostImportSubmitSecretResult,
+  error: HostImportError,
+});
+
+export const WsHostImportsTerminalOpenRpc = Rpc.make(WS_METHODS.hostImportsTerminalOpen, {
+  payload: HostImportTerminalOpenInput,
+  success: HostImportTerminalSnapshot,
+  error: HostImportError,
+});
+
+export const WsHostImportsTerminalResizeRpc = Rpc.make(WS_METHODS.hostImportsTerminalResize, {
+  payload: HostImportTerminalResizeInput,
+  error: HostImportError,
+});
+
+export const WsHostImportsSubscribeTerminalEventsRpc = Rpc.make(
+  WS_METHODS.hostImportsSubscribeTerminalEvents,
+  {
+    payload: HostImportGetInput,
+    success: HostImportTerminalEvent,
+    error: HostImportError,
     stream: true,
   },
 );
@@ -514,6 +580,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsHostDeploymentsTerminalOpenRpc,
   WsHostDeploymentsTerminalResizeRpc,
   WsHostDeploymentsSubscribeTerminalEventsRpc,
+  WsHostImportsStartRpc,
+  WsHostImportsGetRpc,
+  WsHostImportsCancelRpc,
+  WsHostImportsSubmitSecretRpc,
+  WsHostImportsTerminalOpenRpc,
+  WsHostImportsTerminalResizeRpc,
+  WsHostImportsSubscribeTerminalEventsRpc,
   WsFlakeMaintenanceStartRpc,
   WsFlakeMaintenanceGetRpc,
   WsFlakeMaintenanceStopRpc,

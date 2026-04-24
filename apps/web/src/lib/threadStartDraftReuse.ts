@@ -25,6 +25,8 @@ function workflowsEqual(
         left.hostName === right.hostName &&
         (left.target ?? null) === (right.target ?? null) &&
         (left.osFamily ?? null) === (right.osFamily ?? null) &&
+        (left.bootstrapMode ?? null) === (right.bootstrapMode ?? null) &&
+        (left.sourceSshTarget ?? null) === (right.sourceSshTarget ?? null) &&
         (left.hostType ?? null) === (right.hostType ?? null) &&
         (left.status ?? null) === (right.status ?? null)
       );

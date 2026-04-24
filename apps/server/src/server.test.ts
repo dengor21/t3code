@@ -15,6 +15,9 @@ import {
   type HostDeploymentStartInput,
   type HostDeploymentSummary,
   type HostDeploymentTerminalSnapshot,
+  type HostImportStartInput,
+  type HostImportSummary,
+  type HostImportTerminalSnapshot,
   KeybindingRule,
   MessageId,
   OpenError,
@@ -128,6 +131,10 @@ import {
   type HostDeploymentServiceShape,
 } from "./project/Services/HostDeploymentService.ts";
 import {
+  HostImportService,
+  type HostImportServiceShape,
+} from "./project/Services/HostImportService.ts";
+import {
   FlakeMaintenanceService,
   type FlakeMaintenanceServiceShape,
 } from "./project/Services/FlakeMaintenanceService.ts";
@@ -214,6 +221,42 @@ const makeFlakeMaintenanceTerminalSnapshot = (
   const now = new Date(0).toISOString();
   return {
     terminalOwnerId: "flake-maintenance:project-default",
+    terminalId: "default",
+    cwd: "/workspace",
+    worktreePath: null,
+    status: "running" as const,
+    pid: 123,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: now,
+    ...overrides,
+  };
+};
+
+const makeHostImportSummary = (overrides: Partial<HostImportSummary> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    projectId: defaultProjectId,
+    threadId: defaultThreadId,
+    hostName: "nexus",
+    sshTarget: "root@nexus.example",
+    status: "running" as const,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
+    lastError: null,
+    findingsSummary: null,
+    exitCode: null,
+    exitSignal: null,
+    ...overrides,
+  };
+};
+
+const makeHostImportTerminalSnapshot = (overrides: Partial<HostImportTerminalSnapshot> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    terminalOwnerId: "host-import:project-default:thread-default",
     terminalId: "default",
     cwd: "/workspace",
     worktreePath: null,
@@ -442,6 +485,7 @@ const buildAppUnderTest = (options?: {
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
+    hostImportService?: Partial<HostImportServiceShape>;
     flakeMaintenanceService?: Partial<FlakeMaintenanceServiceShape>;
     deployRsResolver?: Partial<DeployRsResolverShape>;
     flakeMetadataResolver?: Partial<FlakeMetadataResolverShape>;
@@ -561,6 +605,8 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         Layer.mock(TerminalManager)({
+          registerOutputSanitizer: () => Effect.void,
+          unregisterOutputSanitizer: () => Effect.void,
           ...options?.layers?.terminalManager,
         }),
       ),
@@ -707,6 +753,26 @@ const buildAppUnderTest = (options?: {
           resizeTerminal: () => Effect.void,
           subscribeTerminalEvents: () => Stream.empty,
           ...options?.layers?.hostDeploymentService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(HostImportService)({
+          start: () =>
+            Effect.succeed({
+              disposition: "started" as const,
+              summary: makeHostImportSummary(),
+            }),
+          get: () => Effect.succeed(null),
+          cancel: () => Effect.succeed(null),
+          submitSecret: () =>
+            Effect.succeed({
+              accepted: false,
+              status: "idle" as const,
+            }),
+          openTerminal: () => Effect.succeed(makeHostImportTerminalSnapshot()),
+          resizeTerminal: () => Effect.void,
+          subscribeTerminalEvents: () => Stream.empty,
+          ...options?.layers?.hostImportService,
         }),
       ),
       Layer.provide(
@@ -2560,6 +2626,144 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           }),
         );
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc hostImports.start", () =>
+    Effect.gen(function* () {
+      let receivedInput: HostImportStartInput | null = null;
+
+      yield* buildAppUnderTest({
+        layers: {
+          hostImportService: {
+            start: (input) =>
+              Effect.sync(() => {
+                receivedInput = input;
+                return {
+                  disposition: "started" as const,
+                  summary: makeHostImportSummary({
+                    projectId: input.projectId,
+                    threadId: input.threadId,
+                  }),
+                };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.hostImportsStart]({
+            projectId: defaultProjectId,
+            threadId: defaultThreadId,
+          }),
+        ),
+      );
+
+      assert.deepEqual(receivedInput, {
+        projectId: defaultProjectId,
+        threadId: defaultThreadId,
+      });
+      assert.equal(response.disposition, "started");
+      assert.equal(response.summary.threadId, defaultThreadId);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc hostImports.get", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          hostImportService: {
+            get: () =>
+              Effect.succeed(
+                makeHostImportSummary({
+                  status: "completed",
+                  findingsSummary: "# Host Import Findings",
+                  finishedAt: new Date(1_000).toISOString(),
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.hostImportsGet]({
+            projectId: defaultProjectId,
+            threadId: defaultThreadId,
+          }),
+        ),
+      );
+
+      assert.equal(response?.status, "completed");
+      assert.equal(response?.findingsSummary, "# Host Import Findings");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc hostImports.submitSecret", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          hostImportService: {
+            submitSecret: (input) =>
+              Effect.succeed({
+                accepted: input.secret === "hunter2",
+                status: input.phase === "ssh-login" ? "starting" : "running",
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.hostImportsSubmitSecret]({
+            projectId: defaultProjectId,
+            threadId: defaultThreadId,
+            phase: "ssh-login",
+            secret: "hunter2",
+          }),
+        ),
+      );
+
+      assert.deepEqual(response, {
+        accepted: true,
+        status: "starting",
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc hostImports.terminalOpen", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          hostImportService: {
+            openTerminal: () =>
+              Effect.succeed(
+                makeHostImportTerminalSnapshot({
+                  history: "secure host import output\n",
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.hostImportsTerminalOpen]({
+            projectId: defaultProjectId,
+            threadId: defaultThreadId,
+            cols: 120,
+            rows: 30,
+          }),
+        ),
+      );
+
+      assert.equal(response.cwd, "/workspace");
+      assert.equal(response.history, "secure host import output\n");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("routes websocket rpc flakeMaintenance.start", () =>

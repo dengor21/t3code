@@ -42,6 +42,19 @@ import type {
   NullOrHostDeploymentSummary,
 } from "./hostDeployment.ts";
 import type {
+  HostImportCancelInput,
+  HostImportGetInput,
+  HostImportStartInput,
+  HostImportStartResult,
+  HostImportSubmitSecretInput,
+  HostImportSubmitSecretResult,
+  HostImportTerminalEvent,
+  HostImportTerminalOpenInput,
+  HostImportTerminalResizeInput,
+  HostImportTerminalSnapshot,
+  NullOrHostImportSummary,
+} from "./hostImport.ts";
+import type {
   ProjectDashboardContentResult,
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
@@ -288,6 +301,18 @@ export interface EnvironmentApi {
     onTerminalEvent: (
       input: HostDeploymentGetInput,
       callback: (event: HostDeploymentTerminalEvent) => void,
+    ) => () => void;
+  };
+  hostImports: {
+    start: (input: HostImportStartInput) => Promise<HostImportStartResult>;
+    get: (input: HostImportGetInput) => Promise<NullOrHostImportSummary>;
+    cancel: (input: HostImportCancelInput) => Promise<NullOrHostImportSummary>;
+    submitSecret: (input: HostImportSubmitSecretInput) => Promise<HostImportSubmitSecretResult>;
+    openTerminal: (input: HostImportTerminalOpenInput) => Promise<HostImportTerminalSnapshot>;
+    resizeTerminal: (input: HostImportTerminalResizeInput) => Promise<void>;
+    onTerminalEvent: (
+      input: HostImportGetInput,
+      callback: (event: HostImportTerminalEvent) => void,
     ) => () => void;
   };
   flakeMaintenance: {

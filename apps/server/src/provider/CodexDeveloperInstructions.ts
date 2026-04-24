@@ -1,9 +1,11 @@
 import type { ProviderTurnContext } from "@t3tools/contracts";
 import {
   buildHostWorkflowImplementationGuidance,
+  buildHostWorkflowPlanningOutcomeGuidance,
   buildHostWorkflowPlanGuidance,
-  HOST_CREATION_STAGES,
   HOST_REMOVAL_STAGES,
+  resolveHostCreationBootstrapMode,
+  resolveHostCreationStages,
 } from "@t3tools/shared/hostWorkflow";
 
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
@@ -152,23 +154,41 @@ function buildCodexWorkflowInstructions(input: {
 
   switch (workflow.kind) {
     case "host-creation": {
-      const stageLines = HOST_CREATION_STAGES.map((stage) => `- ${stage.key}: ${stage.label}`);
+      const stageLines = resolveHostCreationStages(workflow).map(
+        (stage) => `- ${stage.key}: ${stage.label}`,
+      );
       return input.interactionMode === "plan"
         ? [
-            `This thread is running the host-creation workflow for ${workflow.hostName}.`,
+            `This thread is running the host-creation workflow for ${workflow.hostName}${
+              resolveHostCreationBootstrapMode(workflow.bootstrapMode) === "existing-via-ssh"
+                ? " by importing an existing system over SSH."
+                : "."
+            }`,
             "",
             "Workflow rules:",
             "- Work in stages and keep the plan sidebar current with update_plan.",
             ...stageLines,
             "- Use request_user_input for concise structured choices when it fits.",
+            ...(workflow.target ? [`- Planned deploy target: ${workflow.target}.`] : []),
+            ...(workflow.sourceSshTarget
+              ? [`- SSH discovery target: ${workflow.sourceSshTarget}.`]
+              : []),
+            ...(workflow.osFamily ? [`- Target OS family: ${workflow.osFamily}.`] : []),
+            ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
             ...buildHostWorkflowPlanGuidance(workflow),
-            "- Finish with a single decision-complete <proposed_plan> that is ready for implementation.",
+            ...buildHostWorkflowPlanningOutcomeGuidance(workflow),
           ].join("\n")
         : [
             `This thread is implementing an approved host-creation plan for ${workflow.hostName}.`,
             "",
             "Execution rules:",
             "- Treat the approved proposed plan and any sourceProposedPlan reference as the source of truth.",
+            ...(workflow.target ? [`- Planned deploy target: ${workflow.target}.`] : []),
+            ...(workflow.sourceSshTarget
+              ? [`- SSH discovery target: ${workflow.sourceSshTarget}.`]
+              : []),
+            ...(workflow.osFamily ? [`- Target OS family: ${workflow.osFamily}.`] : []),
+            ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
             ...buildHostWorkflowImplementationGuidance(workflow),
           ].join("\n");
     }

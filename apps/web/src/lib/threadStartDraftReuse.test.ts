@@ -78,6 +78,8 @@ describe("shouldReuseDraftForThreadStart", () => {
           hostName: "nexus",
           target: "nexus",
           osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
           status: "planning",
         },
         existingScopedHostName: "nexus",
@@ -86,11 +88,40 @@ describe("shouldReuseDraftForThreadStart", () => {
           hostName: "nexus",
           target: "nexus",
           osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
           status: "planning",
         },
         existingPrompt: "   ",
       }),
     ).toBe(true);
+  });
+
+  it("does not reuse a host-creation draft when the bootstrap mode changed", () => {
+    expect(
+      shouldReuseDraftForThreadStart({
+        requestedScopedHostName: "nexus",
+        requestedWorkflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
+          status: "planning",
+        },
+        existingScopedHostName: "nexus",
+        existingWorkflow: {
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          bootstrapMode: "new-host",
+          status: "planning",
+        },
+        existingPrompt: "   ",
+      }),
+    ).toBe(false);
   });
 
   it("reuses a matching host-removal draft", () => {

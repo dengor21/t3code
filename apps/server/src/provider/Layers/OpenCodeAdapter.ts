@@ -18,6 +18,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { buildOpenCodeSystemInstructions } from "../OpenCodeSystemInstructions.ts";
 import { applyProviderTurnPromptPreamble } from "../providerTurnPrompt.ts";
 import {
   ProviderAdapterProcessError,
@@ -34,6 +35,8 @@ import {
   openCodeQuestionId,
   openCodeRuntimeErrorDetail,
   parseOpenCodeModelSlug,
+  resolveOpenCodeQuestionHeader,
+  resolveOpenCodeQuestionPrompt,
   runOpenCodeSdk,
   toOpenCodeFileParts,
   toOpenCodePermissionReply,
@@ -257,16 +260,26 @@ function ensureSessionContext(
 }
 
 function normalizeQuestionRequest(request: QuestionRequest): ReadonlyArray<UserInputQuestion> {
-  return request.questions.map((question, index) => ({
-    id: openCodeQuestionId(index, question),
-    header: question.header,
-    question: question.question,
-    options: question.options.map((option) => ({
-      label: option.label,
-      description: option.description,
-    })),
-    ...(question.multiple ? { multiSelect: true } : {}),
-  }));
+  return request.questions.flatMap((question, index) => {
+    const options = question.options.flatMap((option) => {
+      const label = typeof option.label === "string" ? option.label.trim() : "";
+      const description = typeof option.description === "string" ? option.description.trim() : "";
+      return label.length > 0 && description.length > 0 ? [{ label, description }] : [];
+    });
+    if (options.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        id: openCodeQuestionId(index, question),
+        header: resolveOpenCodeQuestionHeader(index, question),
+        question: resolveOpenCodeQuestionPrompt(index, question),
+        options,
+        ...(question.multiple ? { multiSelect: true } : {}),
+      },
+    ];
+  });
 }
 
 function resolveTextStreamKind(part: Part | undefined): "assistant_text" | "reasoning_text" {
@@ -1183,6 +1196,9 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
             model: parsedModel,
             ...(context.activeAgent ? { agent: context.activeAgent } : {}),
             ...(context.activeVariant ? { variant: context.activeVariant } : {}),
+            system: buildOpenCodeSystemInstructions({
+              interactionMode: input.interactionMode === "plan" ? "plan" : "default",
+            }),
             parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
           }),
         ).pipe(

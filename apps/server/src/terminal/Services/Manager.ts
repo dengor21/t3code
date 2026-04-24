@@ -143,6 +143,21 @@ export interface TerminalManagerShape {
   readonly subscribe: (
     listener: (event: TerminalEvent) => Effect.Effect<void>,
   ) => Effect.Effect<() => void>;
+
+  /**
+   * Register an output sanitizer for every session under a thread id.
+   *
+   * The sanitizer runs before terminal output is persisted or published.
+   */
+  readonly registerOutputSanitizer: (
+    threadId: string,
+    sanitizer: (chunk: string) => string,
+  ) => Effect.Effect<void>;
+
+  /**
+   * Remove a previously registered output sanitizer for a thread id.
+   */
+  readonly unregisterOutputSanitizer: (threadId: string) => Effect.Effect<void>;
 }
 
 /**

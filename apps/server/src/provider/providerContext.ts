@@ -32,8 +32,20 @@ export function buildProviderTurnContext(input: {
       ? {
           kind: "host-creation" as const,
           hostName: input.thread.workflow.hostName,
+          ...(input.thread.workflow.target !== undefined
+            ? { target: input.thread.workflow.target }
+            : {}),
           ...(input.thread.workflow.osFamily !== undefined
             ? { osFamily: input.thread.workflow.osFamily }
+            : {}),
+          ...(input.thread.workflow.bootstrapMode !== undefined
+            ? { bootstrapMode: input.thread.workflow.bootstrapMode }
+            : {}),
+          ...(input.thread.workflow.sourceSshTarget !== undefined
+            ? { sourceSshTarget: input.thread.workflow.sourceSshTarget }
+            : {}),
+          ...(input.thread.workflow.hostType !== undefined
+            ? { hostType: input.thread.workflow.hostType }
             : {}),
           ...(input.thread.workflow.status !== undefined
             ? { status: input.thread.workflow.status }
@@ -43,6 +55,12 @@ export function buildProviderTurnContext(input: {
         ? {
             kind: "host-removal" as const,
             hostName: input.thread.workflow.hostName,
+            ...(input.thread.workflow.target !== undefined
+              ? { target: input.thread.workflow.target }
+              : {}),
+            ...(input.thread.workflow.hostType !== undefined
+              ? { hostType: input.thread.workflow.hostType }
+              : {}),
             ...(input.thread.workflow.status !== undefined
               ? { status: input.thread.workflow.status }
               : {}),

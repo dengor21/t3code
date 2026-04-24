@@ -30,6 +30,7 @@ import {
   buildHostWorkflowStarterPrompt,
   buildHostWorkflowThreadTitle,
   markHostWorkflowReadyToImplement,
+  resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
 import { applyClaudePromptEffortPrefix, createModelSelection } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
@@ -145,6 +146,7 @@ import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
+import HostImportWorkflowPanel from "./HostImportWorkflowPanel";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
@@ -2372,6 +2374,174 @@ export default function ChatView(props: ChatViewProps) {
     ],
   );
 
+  const ensureServerThreadForWorkflowAction = useCallback(async () => {
+    const api = readEnvironmentApi(environmentId);
+    if (!api || !activeThread || !activeProject) {
+      return null;
+    }
+    if (isServerThread) {
+      return activeThread.id;
+    }
+
+    const sendCtx = composerRef.current?.getSendContext();
+    if (!sendCtx) {
+      return null;
+    }
+
+    const modelSelection = createModelSelection(
+      sendCtx.selectedProvider,
+      sendCtx.selectedModel ||
+        activeProject.defaultModelSelection?.model ||
+        DEFAULT_MODEL_BY_PROVIDER.codex,
+      sendCtx.selectedModelSelection.options,
+    );
+
+    await api.orchestration.dispatchCommand({
+      type: "thread.create",
+      commandId: newCommandId(),
+      threadId: activeThread.id,
+      projectId: activeProject.id,
+      title: activeThread.title,
+      modelSelection,
+      runtimeMode,
+      interactionMode,
+      branch: activeThreadBranch,
+      worktreePath: activeThread.worktreePath,
+      scopedHostName: activeThread.scopedHostName ?? null,
+      workflow: activeThread.workflow ?? null,
+      createdAt: activeThread.createdAt,
+    });
+
+    // `thread.create` only materializes the server thread shell. It does not start
+    // a session or turn, so waiting for a "started" thread here will time out on
+    // workflow actions like secure host import that must run before the first turn.
+    return activeThread.id;
+  }, [
+    activeProject,
+    activeThread,
+    activeThreadBranch,
+    environmentId,
+    interactionMode,
+    isServerThread,
+    runtimeMode,
+  ]);
+
+  const maybeHandleSshImportWorkflowSend = useCallback(async () => {
+    const api = readEnvironmentApi(environmentId);
+    if (
+      !api ||
+      !activeThread ||
+      !activeProject ||
+      activeThread.workflow?.kind !== "host-creation" ||
+      resolveHostCreationBootstrapMode(activeThread.workflow.bootstrapMode) !== "existing-via-ssh"
+    ) {
+      return false;
+    }
+
+    try {
+      const serverThreadId = await ensureServerThreadForWorkflowAction();
+      if (!serverThreadId) {
+        setThreadError(activeThread.id, "The secure host import thread could not be created.");
+        return true;
+      }
+
+      const threadRef = scopeThreadRef(activeThread.environmentId, serverThreadId);
+      const showWorkflowToast = (
+        input: Pick<Parameters<typeof stackedThreadToast>[0], "type" | "title" | "description">,
+      ) => {
+        toastManager.add(
+          stackedThreadToast({
+            ...input,
+            timeout: 4_500,
+            data: {
+              threadRef,
+            },
+          }),
+        );
+      };
+
+      setThreadError(serverThreadId, null);
+
+      const summary = await api.hostImports.get({
+        projectId: activeProject.id,
+        threadId: serverThreadId,
+      });
+
+      if (summary === null || summary.status === "idle") {
+        await api.hostImports.start({
+          projectId: activeProject.id,
+          threadId: serverThreadId,
+        });
+        showWorkflowToast({
+          type: "info",
+          title: "Secure host analysis started",
+          description:
+            "This workflow stays in the secure import panel until findings are ready. If key auth is unavailable, the password prompt will appear there instead of in chat.",
+        });
+        return true;
+      }
+
+      switch (summary.status) {
+        case "starting":
+        case "running":
+          showWorkflowToast({
+            type: "info",
+            title: "Secure host analysis is already running",
+            description: "Wait for the secure import panel above to finish or ask for a password.",
+          });
+          return true;
+        case "awaiting-ssh-password":
+          showWorkflowToast({
+            type: "warning",
+            title: "SSH password required",
+            description:
+              "Use the secure password prompt in the import panel above. The password will not be sent to the agent.",
+          });
+          return true;
+        case "awaiting-sudo-password":
+          showWorkflowToast({
+            type: "warning",
+            title: "Remote sudo password required",
+            description:
+              "Use the secure password prompt in the import panel above. The password will not be sent to the agent.",
+          });
+          return true;
+        case "completed":
+          if (activeThread.messages.length === 0) {
+            showWorkflowToast({
+              type: "info",
+              title: "Review the import findings first",
+              description:
+                'Use "Continue with findings" above to hand the sanitized import results to the agent before sending the first chat message.',
+            });
+            return true;
+          }
+          return false;
+        case "failed":
+        case "canceled":
+          showWorkflowToast({
+            type: "warning",
+            title: "Restart secure host analysis",
+            description:
+              "Use the secure import panel above to restart analysis before continuing this workflow.",
+          });
+          return true;
+      }
+    } catch (err) {
+      setThreadError(
+        activeThread.id,
+        err instanceof Error ? err.message : "The secure host import thread could not be created.",
+      );
+      return true;
+    }
+  }, [
+    activeProject,
+    activeThread,
+    ensureServerThreadForWorkflowAction,
+    environmentId,
+    setThreadError,
+  ]);
+
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readEnvironmentApi(environmentId);
@@ -2444,6 +2614,9 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (!activeProject) return;
+    if (await maybeHandleSshImportWorkflowSend()) {
+      return;
+    }
     const threadIdForSend = activeThread.id;
     const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
     const baseBranchForWorktree =
@@ -2673,6 +2846,186 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
 
+  const sendPreparedUserPrompt = useCallback(
+    async (input: { readonly prompt: string; readonly failureMessage: string }) => {
+      const api = readEnvironmentApi(environmentId);
+      if (
+        !api ||
+        !activeThread ||
+        !activeProject ||
+        isSendBusy ||
+        isConnecting ||
+        sendInFlightRef.current
+      ) {
+        return;
+      }
+
+      const sendCtx = composerRef.current?.getSendContext();
+      if (!sendCtx) {
+        return;
+      }
+
+      const {
+        selectedProvider: ctxSelectedProvider,
+        selectedModel: ctxSelectedModel,
+        selectedProviderModels: ctxSelectedProviderModels,
+        selectedPromptEffort: ctxSelectedPromptEffort,
+        selectedModelSelection: ctxSelectedModelSelection,
+      } = sendCtx;
+
+      const threadIdForSend = activeThread.id;
+      const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
+      const baseBranchForWorktree =
+        isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
+          ? activeThreadBranch
+          : null;
+
+      if (
+        isFirstMessage &&
+        sendEnvMode === "worktree" &&
+        !activeThread.worktreePath &&
+        !activeThreadBranch
+      ) {
+        setThreadError(
+          threadIdForSend,
+          "Select a base branch before sending in New worktree mode.",
+        );
+        return;
+      }
+
+      sendInFlightRef.current = true;
+      beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
+
+      const createdAt = new Date().toISOString();
+      const messageId = newMessageId();
+      const outgoingMessageText = formatOutgoingPrompt({
+        provider: ctxSelectedProvider,
+        model: ctxSelectedModel,
+        models: ctxSelectedProviderModels,
+        effort: ctxSelectedPromptEffort,
+        text: input.prompt,
+      });
+
+      isAtEndRef.current = true;
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+      await legendListRef.current?.scrollToEnd?.({ animated: false });
+
+      setOptimisticUserMessages((existing) => [
+        ...existing,
+        {
+          id: messageId,
+          role: "user",
+          text: outgoingMessageText,
+          createdAt,
+          streaming: false,
+        },
+      ]);
+
+      setThreadError(threadIdForSend, null);
+
+      let turnStartSucceeded = false;
+      await (async () => {
+        const threadCreateModelSelection = createModelSelection(
+          ctxSelectedProvider,
+          ctxSelectedModel ||
+            activeProject.defaultModelSelection?.model ||
+            DEFAULT_MODEL_BY_PROVIDER.codex,
+          ctxSelectedModelSelection.options,
+        );
+
+        if (isServerThread) {
+          await persistThreadSettingsForNextTurn({
+            threadId: threadIdForSend,
+            createdAt,
+            modelSelection: ctxSelectedModelSelection,
+            runtimeMode,
+            interactionMode,
+          });
+        }
+
+        const bootstrap =
+          isLocalDraftThread || baseBranchForWorktree
+            ? {
+                ...(isLocalDraftThread
+                  ? {
+                      createThread: {
+                        projectId: activeProject.id,
+                        title: activeThread.title,
+                        modelSelection: threadCreateModelSelection,
+                        runtimeMode,
+                        interactionMode,
+                        branch: activeThreadBranch,
+                        worktreePath: activeThread.worktreePath,
+                        scopedHostName: activeThread.scopedHostName ?? null,
+                        workflow: activeThread.workflow ?? null,
+                        createdAt: activeThread.createdAt,
+                      },
+                    }
+                  : {}),
+                ...(baseBranchForWorktree
+                  ? {
+                      prepareWorktree: {
+                        projectCwd: activeProject.cwd,
+                        baseBranch: baseBranchForWorktree,
+                        branch: buildTemporaryWorktreeBranchName(),
+                      },
+                      runSetupScript: true,
+                    }
+                  : {}),
+              }
+            : undefined;
+
+        beginLocalDispatch({ preparingWorktree: false });
+        await api.orchestration.dispatchCommand({
+          type: "thread.turn.start",
+          commandId: newCommandId(),
+          threadId: threadIdForSend,
+          message: {
+            messageId,
+            role: "user",
+            text: outgoingMessageText,
+            attachments: [],
+          },
+          modelSelection: ctxSelectedModelSelection,
+          titleSeed: activeThread.title,
+          runtimeMode,
+          interactionMode,
+          ...(bootstrap ? { bootstrap } : {}),
+          createdAt,
+        });
+        turnStartSucceeded = true;
+      })().catch((err: unknown) => {
+        setOptimisticUserMessages((existing) =>
+          existing.filter((message) => message.id !== messageId),
+        );
+        setThreadError(threadIdForSend, err instanceof Error ? err.message : input.failureMessage);
+      });
+
+      sendInFlightRef.current = false;
+      if (!turnStartSucceeded) {
+        resetLocalDispatch();
+      }
+    },
+    [
+      activeProject,
+      activeThread,
+      activeThreadBranch,
+      beginLocalDispatch,
+      environmentId,
+      interactionMode,
+      isConnecting,
+      isLocalDraftThread,
+      isSendBusy,
+      isServerThread,
+      persistThreadSettingsForNextTurn,
+      resetLocalDispatch,
+      runtimeMode,
+      sendEnvMode,
+      setThreadError,
+    ],
+  );
+
   const onStartWorkflow = useCallback(async () => {
     const api = readEnvironmentApi(environmentId);
     if (
@@ -2687,170 +3040,56 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
 
-    const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx) {
-      return;
-    }
-
-    const {
-      selectedProvider: ctxSelectedProvider,
-      selectedModel: ctxSelectedModel,
-      selectedProviderModels: ctxSelectedProviderModels,
-      selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: ctxSelectedModelSelection,
-    } = sendCtx;
-
-    const threadIdForSend = activeThread.id;
-    const isFirstMessage = !isServerThread || activeThread.messages.length === 0;
-    const baseBranchForWorktree =
-      isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
-        ? activeThreadBranch
-        : null;
-
     if (
-      isFirstMessage &&
-      sendEnvMode === "worktree" &&
-      !activeThread.worktreePath &&
-      !activeThreadBranch
+      activeThread.workflow.kind === "host-creation" &&
+      resolveHostCreationBootstrapMode(activeThread.workflow.bootstrapMode) === "existing-via-ssh"
     ) {
-      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
+      try {
+        const serverThreadId = await ensureServerThreadForWorkflowAction();
+        if (!serverThreadId) {
+          setThreadError(activeThread.id, "The secure host import thread could not be created.");
+          return;
+        }
+        setThreadError(serverThreadId, null);
+        await api.hostImports.start({
+          projectId: activeProject.id,
+          threadId: serverThreadId,
+        });
+      } catch (err) {
+        setThreadError(
+          activeThread.id,
+          err instanceof Error
+            ? err.message
+            : "The secure host import thread could not be created.",
+        );
+      }
       return;
     }
 
-    sendInFlightRef.current = true;
-    beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
-
-    const workflowPrompt = buildHostWorkflowStarterPrompt(activeThread.workflow);
-    const createdAt = new Date().toISOString();
-    const messageId = newMessageId();
-    const outgoingMessageText = formatOutgoingPrompt({
-      provider: ctxSelectedProvider,
-      model: ctxSelectedModel,
-      models: ctxSelectedProviderModels,
-      effort: ctxSelectedPromptEffort,
-      text: workflowPrompt,
+    await sendPreparedUserPrompt({
+      prompt: buildHostWorkflowStarterPrompt(activeThread.workflow),
+      failureMessage: "Failed to start the guided host workflow.",
     });
-
-    isAtEndRef.current = true;
-    showScrollDebouncer.current.cancel();
-    setShowScrollToBottom(false);
-    await legendListRef.current?.scrollToEnd?.({ animated: false });
-
-    setOptimisticUserMessages((existing) => [
-      ...existing,
-      {
-        id: messageId,
-        role: "user",
-        text: outgoingMessageText,
-        createdAt,
-        streaming: false,
-      },
-    ]);
-
-    setThreadError(threadIdForSend, null);
-
-    let turnStartSucceeded = false;
-    await (async () => {
-      const threadCreateModelSelection = createModelSelection(
-        ctxSelectedProvider,
-        ctxSelectedModel ||
-          activeProject.defaultModelSelection?.model ||
-          DEFAULT_MODEL_BY_PROVIDER.codex,
-        ctxSelectedModelSelection.options,
-      );
-
-      if (isServerThread) {
-        await persistThreadSettingsForNextTurn({
-          threadId: threadIdForSend,
-          createdAt,
-          modelSelection: ctxSelectedModelSelection,
-          runtimeMode,
-          interactionMode,
-        });
-      }
-
-      const bootstrap =
-        isLocalDraftThread || baseBranchForWorktree
-          ? {
-              ...(isLocalDraftThread
-                ? {
-                    createThread: {
-                      projectId: activeProject.id,
-                      title: activeThread.title,
-                      modelSelection: threadCreateModelSelection,
-                      runtimeMode,
-                      interactionMode,
-                      branch: activeThreadBranch,
-                      worktreePath: activeThread.worktreePath,
-                      scopedHostName: activeThread.scopedHostName ?? null,
-                      workflow: activeThread.workflow ?? null,
-                      createdAt: activeThread.createdAt,
-                    },
-                  }
-                : {}),
-              ...(baseBranchForWorktree
-                ? {
-                    prepareWorktree: {
-                      projectCwd: activeProject.cwd,
-                      baseBranch: baseBranchForWorktree,
-                      branch: buildTemporaryWorktreeBranchName(),
-                    },
-                    runSetupScript: true,
-                  }
-                : {}),
-            }
-          : undefined;
-
-      beginLocalDispatch({ preparingWorktree: false });
-      await api.orchestration.dispatchCommand({
-        type: "thread.turn.start",
-        commandId: newCommandId(),
-        threadId: threadIdForSend,
-        message: {
-          messageId,
-          role: "user",
-          text: outgoingMessageText,
-          attachments: [],
-        },
-        modelSelection: ctxSelectedModelSelection,
-        titleSeed: activeThread.title,
-        runtimeMode,
-        interactionMode,
-        ...(bootstrap ? { bootstrap } : {}),
-        createdAt,
-      });
-      turnStartSucceeded = true;
-    })().catch((err: unknown) => {
-      setOptimisticUserMessages((existing) =>
-        existing.filter((message) => message.id !== messageId),
-      );
-      setThreadError(
-        threadIdForSend,
-        err instanceof Error ? err.message : "Failed to start the guided host workflow.",
-      );
-    });
-
-    sendInFlightRef.current = false;
-    if (!turnStartSucceeded) {
-      resetLocalDispatch();
-    }
   }, [
     activeProject,
     activeThread,
-    activeThreadBranch,
-    beginLocalDispatch,
+    ensureServerThreadForWorkflowAction,
     environmentId,
-    interactionMode,
     isConnecting,
-    isLocalDraftThread,
     isSendBusy,
-    isServerThread,
-    persistThreadSettingsForNextTurn,
-    resetLocalDispatch,
-    runtimeMode,
-    sendEnvMode,
+    sendPreparedUserPrompt,
     setThreadError,
   ]);
+
+  const onContinueWithHostImportFindings = useCallback(
+    async (message: string) => {
+      await sendPreparedUserPrompt({
+        prompt: message,
+        failureMessage: "Failed to continue with secure host import findings.",
+      });
+    },
+    [sendPreparedUserPrompt],
+  );
 
   const onInterrupt = async () => {
     const api = readEnvironmentApi(environmentId);
@@ -3478,6 +3717,21 @@ export default function ChatView(props: ChatViewProps) {
       <div className="flex min-h-0 min-w-0 flex-1">
         {/* Chat column */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {isServerThread &&
+          activeProject &&
+          activeThread.workflow?.kind === "host-creation" &&
+          resolveHostCreationBootstrapMode(activeThread.workflow.bootstrapMode) ===
+            "existing-via-ssh" ? (
+            <HostImportWorkflowPanel
+              environmentId={activeThread.environmentId}
+              projectId={activeProject.id}
+              threadId={activeThread.id}
+              workflow={activeThread.workflow}
+              projectCwd={activeProject.cwd}
+              onContinueWithFindings={onContinueWithHostImportFindings}
+              onError={(message) => setThreadError(activeThread.id, message)}
+            />
+          ) : null}
           {/* Messages Wrapper */}
           <div className="relative flex min-h-0 flex-1 flex-col">
             {/* Messages — LegendList handles virtualization and scrolling internally */}

@@ -96,6 +96,15 @@ function createRegisteredGitStatusClient(environmentId: EnvironmentId) {
       resizeTerminal: vi.fn(async () => undefined),
       onTerminalEvent: vi.fn(() => () => undefined),
     },
+    hostImports: {
+      start: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      cancel: vi.fn(async () => null),
+      submitSecret: vi.fn(async () => ({ accepted: false, status: "idle" }) as any),
+      openTerminal: vi.fn(async () => undefined),
+      resizeTerminal: vi.fn(async () => undefined),
+      onTerminalEvent: vi.fn(() => () => undefined),
+    },
     flakeMaintenance: {
       start: vi.fn(async () => undefined),
       get: vi.fn(async () => null),

@@ -9,6 +9,7 @@ import {
   TurnId,
 } from "./baseSchemas.ts";
 import {
+  HostCreationWorkflowBootstrapMode,
   ChatAttachment,
   HostCreationWorkflowOsFamily,
   HostWorkflowStatus,
@@ -53,12 +54,18 @@ export const ProviderWorkflowContext = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("host-creation"),
     hostName: TrimmedNonEmptyString,
+    target: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     osFamily: Schema.optional(HostCreationWorkflowOsFamily),
+    bootstrapMode: Schema.optional(HostCreationWorkflowBootstrapMode),
+    sourceSshTarget: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+    hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     status: Schema.optional(HostWorkflowStatus),
   }),
   Schema.Struct({
     kind: Schema.Literal("host-removal"),
     hostName: TrimmedNonEmptyString,
+    target: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+    hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     status: Schema.optional(HostWorkflowStatus),
   }),
 ]);

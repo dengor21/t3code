@@ -14,6 +14,7 @@ export * from "./orchestration.ts";
 export * from "./editor.ts";
 export * from "./project.ts";
 export * from "./hostDeployment.ts";
+export * from "./hostImport.ts";
 export * from "./flakeMaintenance.ts";
 export * from "./filesystem.ts";
 export * from "./rpc.ts";

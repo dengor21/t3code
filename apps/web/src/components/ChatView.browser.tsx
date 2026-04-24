@@ -6,6 +6,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   EnvironmentId,
   type EnvironmentApi,
+  type HostImportSummary,
   type MessageId,
   type OrchestrationReadModel,
   type ProjectId,
@@ -200,6 +201,7 @@ function createMockEnvironmentApi(input: {
     terminal: {} as EnvironmentApi["terminal"],
     projects: {} as EnvironmentApi["projects"],
     hostDeployments: {} as EnvironmentApi["hostDeployments"],
+    hostImports: {} as EnvironmentApi["hostImports"],
     flakeMaintenance: {} as EnvironmentApi["flakeMaintenance"],
     filesystem: {
       browse: input.browse,
@@ -431,6 +433,36 @@ function addThreadToSnapshot(
         },
       },
     ],
+  };
+}
+
+function addSshImportWorkflowToSnapshot(
+  snapshot: OrchestrationReadModel,
+  threadId: ThreadId,
+): OrchestrationReadModel {
+  return {
+    ...snapshot,
+    snapshotSequence: snapshot.snapshotSequence + 1,
+    threads: snapshot.threads.map((thread) =>
+      thread.id === threadId
+        ? {
+            ...thread,
+            title: "Create host: nexus",
+            scopedHostName: "nexus",
+            workflow: {
+              kind: "host-creation",
+              hostName: "nexus",
+              target: "nexus",
+              osFamily: "nixos",
+              bootstrapMode: "existing-via-ssh",
+              sourceSshTarget: "root@nexus.example",
+              hostType: "server",
+              status: "planning",
+            },
+            updatedAt: NOW_ISO,
+          }
+        : thread,
+    ),
   };
 }
 
@@ -2527,6 +2559,185 @@ describe("ChatView timeline estimator parity (full app)", () => {
         },
         { timeout: 8_000, interval: 16 },
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("creates the secure host import thread from a draft SSH-import workflow before starting analysis", async () => {
+    useComposerDraftStore.setState({
+      draftThreadsByThreadKey: {
+        [THREAD_KEY]: {
+          threadId: THREAD_ID,
+          environmentId: LOCAL_ENVIRONMENT_ID,
+          projectId: PROJECT_ID,
+          logicalProjectKey: PROJECT_DRAFT_KEY,
+          createdAt: NOW_ISO,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          envMode: "local",
+          scopedHostName: "nexus",
+          workflow: {
+            kind: "host-creation",
+            hostName: "nexus",
+            target: "nexus",
+            osFamily: "nixos",
+            bootstrapMode: "existing-via-ssh",
+            sourceSshTarget: "root@nexus.example",
+            hostType: "server",
+            status: "planning",
+          },
+        },
+      },
+      logicalProjectDraftThreadKeyByLogicalProjectKey: {
+        [PROJECT_DRAFT_KEY]: THREAD_KEY,
+      },
+    });
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createDraftOnlySnapshot(),
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        if (body._tag === WS_METHODS.hostImportsStart) {
+          const summary: HostImportSummary = {
+            projectId: PROJECT_ID,
+            threadId: THREAD_ID,
+            hostName: "nexus",
+            sshTarget: "root@nexus.example",
+            status: "starting",
+            startedAt: NOW_ISO,
+            updatedAt: NOW_ISO,
+            finishedAt: null,
+            lastError: null,
+            findingsSummary: null,
+            exitCode: null,
+            exitSignal: null,
+          };
+          return {
+            disposition: "started",
+            summary,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await expect.element(page.getByRole("button", { name: "Begin SSH analysis" })).toBeVisible();
+      await page.getByRole("button", { name: "Begin SSH analysis" }).click();
+
+      await vi.waitFor(
+        () => {
+          expect(
+            wsRequests.some(
+              (request) =>
+                request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+                request.type === "thread.create",
+            ),
+          ).toBe(true);
+          expect(wsRequests.some((request) => request._tag === WS_METHODS.hostImportsStart)).toBe(
+            true,
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("starts secure host import instead of dispatching a normal first turn for SSH-import workflows", async () => {
+    let hostImportSummary: HostImportSummary | null = null;
+    const snapshot = addSshImportWorkflowToSnapshot(
+      addThreadToSnapshot(createDraftOnlySnapshot(), THREAD_ID),
+      THREAD_ID,
+    );
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot,
+      resolveRpc: (body) => {
+        if (body._tag === WS_METHODS.hostImportsGet) {
+          return hostImportSummary;
+        }
+        if (body._tag === WS_METHODS.hostImportsStart) {
+          hostImportSummary = {
+            projectId: PROJECT_ID,
+            threadId: THREAD_ID,
+            hostName: "nexus",
+            sshTarget: "root@nexus.example",
+            status: "starting",
+            startedAt: NOW_ISO,
+            updatedAt: NOW_ISO,
+            finishedAt: null,
+            lastError: null,
+            findingsSummary: null,
+            exitCode: null,
+            exitSignal: null,
+          };
+          return {
+            disposition: "started",
+            summary: hostImportSummary,
+          };
+        }
+        if (body._tag === WS_METHODS.hostImportsTerminalOpen) {
+          return {
+            terminalOwnerId: "host-import:project-1:thread-browser-test",
+            terminalId: "default",
+            cwd: "/repo/project",
+            worktreePath: null,
+            status: "starting",
+            pid: null,
+            history: "",
+            exitCode: null,
+            exitSignal: null,
+            updatedAt: NOW_ISO,
+          };
+        }
+        if (body._tag === WS_METHODS.hostImportsTerminalResize) {
+          return undefined;
+        }
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+          };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("Secure host import")).toBeVisible();
+
+      useComposerDraftStore.getState().setPrompt(THREAD_REF, "Continue");
+      await waitForLayout();
+
+      const sendButton = await waitForSendButton();
+      expect(sendButton.disabled).toBe(false);
+      sendButton.click();
+
+      await vi.waitFor(
+        () => {
+          expect(wsRequests.some((request) => request._tag === WS_METHODS.hostImportsStart)).toBe(
+            true,
+          );
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      expect(
+        wsRequests.some(
+          (request) =>
+            request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+            request.type === "thread.turn.start",
+        ),
+      ).toBe(false);
     } finally {
       await mounted.cleanup();
     }

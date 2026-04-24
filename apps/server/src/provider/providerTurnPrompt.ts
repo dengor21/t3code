@@ -6,7 +6,9 @@ import type {
 } from "@t3tools/contracts";
 import {
   buildHostWorkflowImplementationGuidance,
+  buildHostWorkflowPlanningOutcomeGuidance,
   buildHostWorkflowPlanGuidance,
+  resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
 
 function toThreadWorkflow(workflow: ProviderTurnContext["workflow"]): ThreadWorkflow | undefined {
@@ -19,13 +21,21 @@ function toThreadWorkflow(workflow: ProviderTurnContext["workflow"]): ThreadWork
       return {
         kind: "host-creation",
         hostName: workflow.hostName,
+        ...(workflow.target !== undefined ? { target: workflow.target } : {}),
         ...(workflow.osFamily !== undefined ? { osFamily: workflow.osFamily } : {}),
+        ...(workflow.bootstrapMode !== undefined ? { bootstrapMode: workflow.bootstrapMode } : {}),
+        ...(workflow.sourceSshTarget !== undefined
+          ? { sourceSshTarget: workflow.sourceSshTarget }
+          : {}),
+        ...(workflow.hostType !== undefined ? { hostType: workflow.hostType } : {}),
         ...(workflow.status !== undefined ? { status: workflow.status } : {}),
       };
     case "host-removal":
       return {
         kind: "host-removal",
         hostName: workflow.hostName,
+        ...(workflow.target !== undefined ? { target: workflow.target } : {}),
+        ...(workflow.hostType !== undefined ? { hostType: workflow.hostType } : {}),
         ...(workflow.status !== undefined ? { status: workflow.status } : {}),
       };
   }
@@ -68,28 +78,45 @@ function buildWorkflowContextLines(input: {
 
   switch (workflow.kind) {
     case "host-creation":
-      return implementationMode
-        ? [
-            `- This thread is implementing the approved host-creation plan for ${workflow.hostName}.`,
-            ...buildHostWorkflowImplementationGuidance(workflow),
-          ]
-        : [
-            `- This thread is planning creation of host ${workflow.hostName}.`,
-            ...buildHostWorkflowPlanGuidance(workflow),
-            "- Keep the thread planning-only until implementation is explicitly approved.",
-            "- Finish planning with a single decision-complete <proposed_plan>.",
-          ];
+      return [
+        `- This thread is ${
+          implementationMode
+            ? "implementing the approved host-creation plan for"
+            : "planning creation of"
+        } host ${workflow.hostName}${
+          resolveHostCreationBootstrapMode(workflow.bootstrapMode) === "existing-via-ssh"
+            ? " by importing an existing system over SSH."
+            : "."
+        }`,
+        ...(workflow.target ? [`- Planned deploy target: ${workflow.target}.`] : []),
+        ...(workflow.sourceSshTarget
+          ? [`- SSH discovery target: ${workflow.sourceSshTarget}.`]
+          : []),
+        ...(workflow.osFamily ? [`- Target OS family: ${workflow.osFamily}.`] : []),
+        ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
+        ...(implementationMode
+          ? buildHostWorkflowImplementationGuidance(workflow)
+          : [
+              ...buildHostWorkflowPlanGuidance(workflow),
+              "- Keep the thread planning-only until implementation is explicitly approved.",
+              ...buildHostWorkflowPlanningOutcomeGuidance(workflow),
+            ]),
+      ];
     case "host-removal":
       return implementationMode
         ? [
             `- This thread is implementing the approved host-removal plan for ${workflow.hostName}.`,
+            ...(workflow.target ? [`- Removal target: ${workflow.target}.`] : []),
+            ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
             ...buildHostWorkflowImplementationGuidance(workflow),
           ]
         : [
             `- This thread is planning removal of host ${workflow.hostName}.`,
+            ...(workflow.target ? [`- Removal target: ${workflow.target}.`] : []),
+            ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
             ...buildHostWorkflowPlanGuidance(workflow),
             "- Keep the thread planning-only until implementation is explicitly approved.",
-            "- Finish planning with a single decision-complete <proposed_plan>.",
+            ...buildHostWorkflowPlanningOutcomeGuidance(workflow),
           ];
   }
 }

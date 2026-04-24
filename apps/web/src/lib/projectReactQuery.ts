@@ -1,4 +1,9 @@
-import type { EnvironmentId, ProjectId, ProjectSearchEntriesResult } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProjectId,
+  ProjectSearchEntriesResult,
+  ThreadId,
+} from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { ensureEnvironmentApi } from "~/environmentApi";
 
@@ -32,6 +37,30 @@ export const projectQueryKeys = {
       projectId ?? null,
       hostName ?? null,
     ] as const,
+  hostImportPrefix: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    threadId: ThreadId | null,
+  ) =>
+    [
+      "projects",
+      "host-import",
+      environmentId ?? null,
+      projectId ?? null,
+      threadId ?? null,
+    ] as const,
+  hostImport: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    threadId: ThreadId | null,
+  ) =>
+    [
+      "projects",
+      "host-import",
+      environmentId ?? null,
+      projectId ?? null,
+      threadId ?? null,
+    ] as const,
   flakeMaintenancePrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
     ["projects", "flake-maintenance", environmentId ?? null, projectId ?? null] as const,
   flakeMaintenance: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
@@ -48,6 +77,7 @@ const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
 const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
 const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
+const DEFAULT_HOST_IMPORT_STALE_TIME = 2_000;
 const DEFAULT_FLAKE_MAINTENANCE_STALE_TIME = 2_000;
 const EMPTY_SEARCH_ENTRIES_RESULT: ProjectSearchEntriesResult = {
   entries: [],
@@ -169,6 +199,35 @@ export function flakeMaintenanceQueryOptions(input: {
     },
     enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
     staleTime: input.staleTime ?? DEFAULT_FLAKE_MAINTENANCE_STALE_TIME,
+    placeholderData: (previous) => previous ?? null,
+  });
+}
+
+export function hostImportQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  threadId: ThreadId | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  return queryOptions({
+    queryKey: projectQueryKeys.hostImport(input.environmentId, input.projectId, input.threadId),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId || !input.threadId) {
+        throw new Error("Host import is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.hostImports.get({
+        projectId: input.projectId,
+        threadId: input.threadId,
+      });
+    },
+    enabled:
+      (input.enabled ?? true) &&
+      input.environmentId !== null &&
+      input.projectId !== null &&
+      input.threadId !== null,
+    staleTime: input.staleTime ?? DEFAULT_HOST_IMPORT_STALE_TIME,
     placeholderData: (previous) => previous ?? null,
   });
 }

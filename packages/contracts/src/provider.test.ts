@@ -152,7 +152,11 @@ describe("ProviderSendTurnInput", () => {
         workflow: {
           kind: "host-creation",
           hostName: "nexus",
+          target: "nexus",
           osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
+          hostType: "server",
           status: "planning",
         },
       },
@@ -172,7 +176,11 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.providerContext?.workflow).toEqual({
       kind: "host-creation",
       hostName: "nexus",
+      target: "nexus",
       osFamily: "nixos",
+      bootstrapMode: "existing-via-ssh",
+      sourceSshTarget: "root@nexus.example",
+      hostType: "server",
       status: "planning",
     });
   });
@@ -185,6 +193,8 @@ describe("ProviderSendTurnInput", () => {
         workflow: {
           kind: "host-removal",
           hostName: "nexus",
+          target: "root@nexus",
+          hostType: "server",
           status: "planning",
         },
       },
@@ -193,6 +203,8 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.providerContext?.workflow).toEqual({
       kind: "host-removal",
       hostName: "nexus",
+      target: "root@nexus",
+      hostType: "server",
       status: "planning",
     });
   });

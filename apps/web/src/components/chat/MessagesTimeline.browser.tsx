@@ -207,6 +207,39 @@ describe("MessagesTimeline", () => {
     }
   });
 
+  it("shows the SSH-import host-creation CTA for empty workflow threads", async () => {
+    const onStartWorkflow = vi.fn();
+    const screen = await render(
+      <MessagesTimeline
+        {...buildProps()}
+        workflow={{
+          kind: "host-creation",
+          hostName: "nexus",
+          target: "nexus",
+          osFamily: "nixos",
+          bootstrapMode: "existing-via-ssh",
+          sourceSshTarget: "root@nexus.example",
+          status: "planning",
+        }}
+        scopedHostName="nexus"
+        onStartWorkflow={onStartWorkflow}
+        timelineEntries={[]}
+      />,
+    );
+
+    try {
+      await expect.element(page.getByText("Create host")).toBeVisible();
+      await expect.element(page.getByText("Begin SSH analysis")).toBeVisible();
+      await expect
+        .element(page.getByText(/fall back to a secure password prompt when needed/i))
+        .toBeVisible();
+      await page.getByRole("button", { name: "Begin SSH analysis" }).click();
+      expect(onStartWorkflow).toHaveBeenCalledTimes(1);
+    } finally {
+      await screen.unmount();
+    }
+  });
+
   it("shows the guided host-removal CTA for empty workflow threads", async () => {
     const onStartWorkflow = vi.fn();
     const screen = await render(

@@ -8,6 +8,7 @@ import {
   HOST_CREATION_WORKFLOW_KIND,
   buildHostWorkflowBadgeLabel,
   buildHostWorkflowStartLabel,
+  resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
 import {
   createContext,
@@ -273,12 +274,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               </div>
               <p className="text-center text-sm text-muted-foreground">
                 {workflow.kind === HOST_CREATION_WORKFLOW_KIND ? (
-                  <>
-                    Start the guided host-creation workflow for{" "}
-                    <span className="font-medium text-foreground">{workflow.hostName}</span>. The
-                    agent will ask hardware questions first, research current guidance, and build an
-                    implementation-ready scaffold plan.
-                  </>
+                  resolveHostCreationBootstrapMode(workflow.bootstrapMode) ===
+                  "existing-via-ssh" ? (
+                    <>
+                      Start the SSH-assisted host-import workflow for{" "}
+                      <span className="font-medium text-foreground">{workflow.hostName}</span>. The
+                      secure import flow will inspect the live system outside the agent terminal,
+                      use key-based SSH first, fall back to a secure password prompt when needed,
+                      and then hand sanitized findings back to the agent for Nix translation with
+                      room for improvements before deployment.
+                    </>
+                  ) : (
+                    <>
+                      Start the guided host-creation workflow for{" "}
+                      <span className="font-medium text-foreground">{workflow.hostName}</span>. The
+                      agent will ask hardware questions first, research current guidance, and build
+                      an implementation-ready scaffold plan.
+                    </>
+                  )
                 ) : (
                   <>
                     Plan the removal of{" "}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Stream } from "effect";
 import { beforeEach } from "vitest";
 
 import { ThreadId } from "@t3tools/contracts";
@@ -336,6 +336,7 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       });
 
       const promptRequest = runtimeMock.state.promptRequests[0];
+      const system = typeof promptRequest?.system === "string" ? promptRequest.system : undefined;
       const parts = Array.isArray(promptRequest?.parts) ? promptRequest.parts : [];
       const textPart = parts.find(
         (part): part is { type: "text"; text: string } =>
@@ -348,9 +349,91 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       );
 
       assert.ok(textPart);
+      assert.ok(system);
+      assert.ok(system.includes("OpenCode exposes a `question` tool."));
+      assert.ok(system.includes('"custom":false'));
+      assert.ok(system.includes("OpenCode exposes `todowrite` and `todoread`"));
+      assert.ok(system.includes('"status":"pending"'));
+      assert.ok(system.includes("preserve unchanged `content` and `priority` fields"));
       assert.ok(textPart.text.includes("This workspace is a Nix flake repository."));
       assert.ok(textPart.text.includes("planning creation of host nexus."));
       assert.ok(textPart.text.includes("User request:\nReview the host plan"));
+    }),
+  );
+
+  it.effect("normalizes OpenCode question events into valid user-input payloads", () =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "question.asked",
+          properties: {
+            id: "question-request-1",
+            sessionID: "http://127.0.0.1:9999/session",
+            questions: [
+              {
+                header: "   ",
+                question: "  Which environment should I target?  ",
+                options: [
+                  { label: "  Production  ", description: "  Use the live environment  " },
+                  { label: "   ", description: "Invalid blank label" },
+                ],
+                multiple: true,
+              },
+              {
+                header: "Broken",
+                question: "   ",
+                options: [{ label: "Skip", description: "Falls back to the header when blank" }],
+              },
+            ],
+          },
+        },
+      ];
+
+      yield* adapter.startSession({
+        provider: "opencode",
+        threadId: asThreadId("thread-question-normalization"),
+        runtimeMode: "full-access",
+      });
+
+      yield* Stream.take(adapter.streamEvents, 2).pipe(Stream.runDrain);
+      const requestedEvent = yield* Stream.runHead(adapter.streamEvents);
+
+      assert.equal(requestedEvent._tag, "Some");
+      if (requestedEvent._tag !== "Some") {
+        return;
+      }
+
+      assert.equal(requestedEvent.value.type, "user-input.requested");
+      if (requestedEvent.value.type !== "user-input.requested") {
+        return;
+      }
+
+      assert.deepEqual(requestedEvent.value.payload.questions, [
+        {
+          id: "question-0-question-1",
+          header: "Question 1",
+          question: "Which environment should I target?",
+          options: [
+            {
+              label: "Production",
+              description: "Use the live environment",
+            },
+          ],
+          multiSelect: true,
+        },
+        {
+          id: "question-1-broken",
+          header: "Broken",
+          question: "Broken",
+          options: [
+            {
+              label: "Skip",
+              description: "Falls back to the header when blank",
+            },
+          ],
+        },
+      ]);
     }),
   );
 

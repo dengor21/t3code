@@ -15,6 +15,7 @@ import { websocketRpcRouteLayer } from "./ws.ts";
 import { OpenLive } from "./open.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { HostDeploymentRepositoryLive } from "./persistence/Layers/HostDeployments.ts";
+import { HostImportRepositoryLive } from "./persistence/Layers/HostImports.ts";
 import { FlakeMaintenanceRepositoryLive } from "./persistence/Layers/FlakeMaintenance.ts";
 import { ServerLifecycleEventsLive } from "./serverLifecycleEvents.ts";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService.ts";
@@ -55,7 +56,9 @@ import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResol
 import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
 import { HostDeploymentServiceLive } from "./project/Layers/HostDeploymentService.ts";
+import { HostImportServiceLive } from "./project/Layers/HostImportService.ts";
 import { FlakeMaintenanceServiceLive } from "./project/Layers/FlakeMaintenanceService.ts";
+import { EphemeralWorkflowSecretVaultLive } from "./project/Layers/EphemeralWorkflowSecretVault.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
@@ -275,7 +278,9 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(FlakeMetadataResolverLive),
   Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(HostDeploymentRepositoryLive),
+  Layer.provideMerge(HostImportRepositoryLive),
   Layer.provideMerge(FlakeMaintenanceRepositoryLive),
+  Layer.provideMerge(EphemeralWorkflowSecretVaultLive),
   Layer.provideMerge(RuntimeMiscLayerLive),
   Layer.provide(NetService.layer),
 );
@@ -283,6 +288,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
 const RuntimeServicesLive = Layer.empty.pipe(
   Layer.provideMerge(ServerRuntimeStartupLive),
   Layer.provideMerge(HostDeploymentServiceLive),
+  Layer.provideMerge(HostImportServiceLive),
   Layer.provideMerge(FlakeMaintenanceServiceLive),
   Layer.provide(RuntimeDependenciesLive),
 );

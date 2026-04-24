@@ -241,6 +241,8 @@ it.effect("accepts bootstrap metadata in thread.turn.start", () =>
             hostName: "nexus",
             target: "nexus",
             osFamily: "nixos",
+            bootstrapMode: "existing-via-ssh",
+            sourceSshTarget: "root@nexus.example",
             status: "planning",
           },
           createdAt: "2026-01-01T00:00:00.000Z",
@@ -279,6 +281,8 @@ it.effect("decodes thread.created runtime mode for historical events", () =>
         hostName: "thread-1",
         target: "thread-1",
         osFamily: "nixos",
+        bootstrapMode: "existing-via-ssh",
+        sourceSshTarget: "root@thread-1.example",
         status: "planning",
       },
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -314,6 +318,8 @@ it.effect("decodes thread workflow metadata on thread.meta.update payloads", () 
         hostName: "teletype",
         target: "teletype",
         osFamily: "nixos",
+        bootstrapMode: "existing-via-ssh",
+        sourceSshTarget: "root@teletype.example",
         hostType: "server",
         status: "ready-to-implement",
       },
@@ -321,6 +327,8 @@ it.effect("decodes thread workflow metadata on thread.meta.update payloads", () 
     });
     assert.strictEqual(parsed.workflow?.kind, "host-creation");
     assert.strictEqual(parsed.workflow?.hostName, "teletype");
+    assert.strictEqual(parsed.workflow?.bootstrapMode, "existing-via-ssh");
+    assert.strictEqual(parsed.workflow?.sourceSshTarget, "root@teletype.example");
     assert.strictEqual(parsed.workflow?.status, "ready-to-implement");
   }),
 );

@@ -101,6 +101,14 @@ export interface ParsedOpenCodeModelSlug {
   readonly modelID: string;
 }
 
+function trimNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export interface OpenCodeRuntimeShape {
   /**
    * Spawns a local OpenCode server process. Its lifetime is bound to the caller's
@@ -174,11 +182,25 @@ export function openCodeQuestionId(
   index: number,
   question: QuestionRequest["questions"][number],
 ): string {
-  const header = question.header
+  const header = resolveOpenCodeQuestionHeader(index, question)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "-");
   return header.length > 0 ? `question-${index}-${header}` : `question-${index}`;
+}
+
+export function resolveOpenCodeQuestionHeader(
+  index: number,
+  question: QuestionRequest["questions"][number],
+): string {
+  return trimNonEmptyString(question.header) ?? `Question ${index + 1}`;
+}
+
+export function resolveOpenCodeQuestionPrompt(
+  index: number,
+  question: QuestionRequest["questions"][number],
+): string {
+  return trimNonEmptyString(question.question) ?? resolveOpenCodeQuestionHeader(index, question);
 }
 
 export function toOpenCodeFileParts(input: {
@@ -242,10 +264,9 @@ export function toOpenCodeQuestionAnswers(
   answers: Record<string, unknown>,
 ): Array<QuestionAnswer> {
   return request.questions.map((question, index) => {
-    const raw =
-      answers[openCodeQuestionId(index, question)] ??
-      answers[question.header] ??
-      answers[question.question];
+    const header = resolveOpenCodeQuestionHeader(index, question);
+    const prompt = resolveOpenCodeQuestionPrompt(index, question);
+    const raw = answers[openCodeQuestionId(index, question)] ?? answers[header] ?? answers[prompt];
     if (Array.isArray(raw)) {
       return raw.filter((value): value is string => typeof value === "string");
     }

@@ -125,6 +125,7 @@ interface TerminalSessionState {
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;
   runtimeEnv: Record<string, string> | null;
+  outputSanitizer: ((chunk: string) => string) | null;
 }
 
 interface PersistHistoryRequest {
@@ -155,6 +156,7 @@ type DrainProcessEventAction =
 interface TerminalManagerState {
   sessions: Map<string, TerminalSessionState>;
   killFibers: Map<PtyProcess, Fiber.Fiber<void, never>>;
+  outputSanitizers: Map<string, (chunk: string) => string>;
 }
 
 function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
@@ -745,6 +747,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
     const managerStateRef = yield* SynchronizedRef.make<TerminalManagerState>({
       sessions: new Map(),
       killFibers: new Map(),
+      outputSanitizers: new Map(),
     });
     const threadLocksRef = yield* SynchronizedRef.make(new Map<string, Semaphore.Semaphore>());
     const terminalEventListeners = new Set<(event: TerminalEvent) => Effect.Effect<void>>();
@@ -780,6 +783,20 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
         });
 
     const readManagerState = SynchronizedRef.get(managerStateRef);
+
+    const applyOutputSanitizer = (
+      sanitizer: ((chunk: string) => string) | null,
+      chunk: string,
+    ): string => {
+      if (!sanitizer) {
+        return chunk;
+      }
+      try {
+        return sanitizer(chunk);
+      } catch {
+        return chunk;
+      }
+    };
 
     const modifyManagerState = <A>(
       f: (state: TerminalManagerState) => readonly [A, TerminalManagerState],
@@ -1194,9 +1211,10 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           }
 
           if (nextEvent.type === "output") {
+            const sanitizedData = applyOutputSanitizer(session.outputSanitizer, nextEvent.data);
             const sanitized = sanitizeTerminalHistoryChunk(
               session.pendingHistoryControlSequence,
-              nextEvent.data,
+              sanitizedData,
             );
             session.pendingHistoryControlSequence = sanitized.pendingControlSequence;
             if (sanitized.visibleText.length > 0) {
@@ -1212,7 +1230,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               threadId: session.threadId,
               terminalId: session.terminalId,
               history: sanitized.visibleText.length > 0 ? session.history : null,
-              data: nextEvent.data,
+              data: sanitizedData,
             } as const;
           }
 
@@ -1664,6 +1682,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
             const history = yield* loadHistory(input.threadId, terminalId);
             const cols = input.cols ?? DEFAULT_OPEN_COLS;
             const rows = input.rows ?? DEFAULT_OPEN_ROWS;
+            const outputSanitizer = yield* readManagerState.pipe(
+              Effect.map((state) => state.outputSanitizers.get(input.threadId) ?? null),
+            );
             const session: TerminalSessionState = {
               threadId: input.threadId,
               terminalId,
@@ -1686,6 +1707,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               unsubscribeExit: null,
               hasRunningSubprocess: false,
               runtimeEnv: normalizedRuntimeEnv(input.env),
+              outputSanitizer,
             };
 
             const createdSession = session;
@@ -1790,6 +1812,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           const existing = yield* getSession(input.threadId, terminalId);
 
           if (Option.isNone(existing)) {
+            const outputSanitizer = yield* readManagerState.pipe(
+              Effect.map((state) => state.outputSanitizers.get(input.threadId) ?? null),
+            );
             const session: TerminalSessionState = {
               threadId: input.threadId,
               terminalId,
@@ -1812,6 +1837,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               unsubscribeExit: null,
               hasRunningSubprocess: false,
               runtimeEnv: normalizedRuntimeEnv(input.env),
+              outputSanitizer,
             };
 
             yield* modifyManagerState((state) => {
@@ -1975,6 +2001,9 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           if (Option.isNone(existingSession)) {
             const cols = input.cols ?? DEFAULT_OPEN_COLS;
             const rows = input.rows ?? DEFAULT_OPEN_ROWS;
+            const outputSanitizer = yield* readManagerState.pipe(
+              Effect.map((state) => state.outputSanitizers.get(input.threadId) ?? null),
+            );
             session = {
               threadId: input.threadId,
               terminalId,
@@ -1997,6 +2026,7 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
               unsubscribeExit: null,
               hasRunningSubprocess: false,
               runtimeEnv: normalizedRuntimeEnv(input.env),
+              outputSanitizer,
             };
             const createdSession = session;
             yield* modifyManagerState((state) => {
@@ -2077,6 +2107,31 @@ export const makeTerminalManagerWithOptions = Effect.fn("makeTerminalManagerWith
           return () => {
             terminalEventListeners.delete(listener);
           };
+        }),
+      registerOutputSanitizer: (threadId, sanitizer) =>
+        modifyManagerState((state) => {
+          const outputSanitizers = new Map(state.outputSanitizers);
+          outputSanitizers.set(threadId, sanitizer);
+          const sessions = new Map(state.sessions);
+          for (const [key, session] of sessions) {
+            if (session.threadId !== threadId) continue;
+            sessions.set(key, { ...session, outputSanitizer: sanitizer });
+          }
+          return [undefined, { ...state, outputSanitizers, sessions }] as const;
+        }),
+      unregisterOutputSanitizer: (threadId) =>
+        modifyManagerState((state) => {
+          if (!state.outputSanitizers.has(threadId)) {
+            return [undefined, state] as const;
+          }
+          const outputSanitizers = new Map(state.outputSanitizers);
+          outputSanitizers.delete(threadId);
+          const sessions = new Map(state.sessions);
+          for (const [key, session] of sessions) {
+            if (session.threadId !== threadId) continue;
+            sessions.set(key, { ...session, outputSanitizer: null });
+          }
+          return [undefined, { ...state, outputSanitizers, sessions }] as const;
         }),
     } satisfies TerminalManagerShape;
   },

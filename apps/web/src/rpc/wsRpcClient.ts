@@ -82,6 +82,17 @@ export interface WsRpcClient {
       typeof WS_METHODS.hostDeploymentsSubscribeTerminalEvents
     >;
   };
+  readonly hostImports: {
+    readonly start: RpcUnaryMethod<typeof WS_METHODS.hostImportsStart>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.hostImportsGet>;
+    readonly cancel: RpcUnaryMethod<typeof WS_METHODS.hostImportsCancel>;
+    readonly submitSecret: RpcUnaryMethod<typeof WS_METHODS.hostImportsSubmitSecret>;
+    readonly openTerminal: RpcUnaryMethod<typeof WS_METHODS.hostImportsTerminalOpen>;
+    readonly resizeTerminal: RpcUnaryMethod<typeof WS_METHODS.hostImportsTerminalResize>;
+    readonly onTerminalEvent: RpcInputStreamMethod<
+      typeof WS_METHODS.hostImportsSubscribeTerminalEvents
+    >;
+  };
   readonly flakeMaintenance: {
     readonly start: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceStart>;
     readonly get: RpcUnaryMethod<typeof WS_METHODS.flakeMaintenanceGet>;
@@ -188,6 +199,23 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       onTerminalEvent: (input, listener, options) =>
         transport.subscribe(
           (client) => client[WS_METHODS.hostDeploymentsSubscribeTerminalEvents](input),
+          listener,
+          options,
+        ),
+    },
+    hostImports: {
+      start: (input) => transport.request((client) => client[WS_METHODS.hostImportsStart](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.hostImportsGet](input)),
+      cancel: (input) => transport.request((client) => client[WS_METHODS.hostImportsCancel](input)),
+      submitSecret: (input) =>
+        transport.request((client) => client[WS_METHODS.hostImportsSubmitSecret](input)),
+      openTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostImportsTerminalOpen](input)),
+      resizeTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostImportsTerminalResize](input)),
+      onTerminalEvent: (input, listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.hostImportsSubscribeTerminalEvents](input),
           listener,
           options,
         ),
