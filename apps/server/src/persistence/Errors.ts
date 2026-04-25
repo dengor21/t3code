@@ -108,3 +108,4 @@ export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeE
 export type HostDeploymentRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type HostImportRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type FlakeMaintenanceRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type FleetDeploymentRepositoryError = PersistenceSqlError | PersistenceDecodeError;

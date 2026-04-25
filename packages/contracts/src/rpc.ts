@@ -10,6 +10,14 @@ import {
   FilesystemBrowseError,
 } from "./filesystem.ts";
 import {
+  FleetDeploymentError,
+  FleetDeploymentGetInput,
+  FleetDeploymentStartInput,
+  FleetDeploymentStartResult,
+  FleetDeploymentStopInput,
+  NullOrFleetDeploymentSummary,
+} from "./fleetDeployment.ts";
+import {
   FlakeMaintenanceError,
   FlakeMaintenanceGetInput,
   FlakeMaintenanceStartInput,
@@ -130,6 +138,9 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
+  fleetDeploymentsStart: "fleetDeployments.start",
+  fleetDeploymentsGet: "fleetDeployments.get",
+  fleetDeploymentsStop: "fleetDeployments.stop",
   hostDeploymentsStart: "hostDeployments.start",
   hostDeploymentsGet: "hostDeployments.get",
   hostDeploymentsStop: "hostDeployments.stop",
@@ -246,6 +257,24 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   payload: ProjectGetDashboardContentInput,
   success: ProjectDashboardContentResult,
   error: ProjectGetDashboardContentError,
+});
+
+export const WsFleetDeploymentsStartRpc = Rpc.make(WS_METHODS.fleetDeploymentsStart, {
+  payload: FleetDeploymentStartInput,
+  success: FleetDeploymentStartResult,
+  error: FleetDeploymentError,
+});
+
+export const WsFleetDeploymentsGetRpc = Rpc.make(WS_METHODS.fleetDeploymentsGet, {
+  payload: FleetDeploymentGetInput,
+  success: NullOrFleetDeploymentSummary,
+  error: FleetDeploymentError,
+});
+
+export const WsFleetDeploymentsStopRpc = Rpc.make(WS_METHODS.fleetDeploymentsStop, {
+  payload: FleetDeploymentStopInput,
+  success: NullOrFleetDeploymentSummary,
+  error: FleetDeploymentError,
 });
 
 export const WsHostDeploymentsStartRpc = Rpc.make(WS_METHODS.hostDeploymentsStart, {
@@ -574,6 +603,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
+  WsFleetDeploymentsStartRpc,
+  WsFleetDeploymentsGetRpc,
+  WsFleetDeploymentsStopRpc,
   WsHostDeploymentsStartRpc,
   WsHostDeploymentsGetRpc,
   WsHostDeploymentsStopRpc,

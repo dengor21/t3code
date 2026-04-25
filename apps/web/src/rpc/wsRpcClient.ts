@@ -72,6 +72,11 @@ export interface WsRpcClient {
       typeof WS_METHODS.projectsGenerateHostDocumentation
     >;
   };
+  readonly fleetDeployments: {
+    readonly start: RpcUnaryMethod<typeof WS_METHODS.fleetDeploymentsStart>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.fleetDeploymentsGet>;
+    readonly stop: RpcUnaryMethod<typeof WS_METHODS.fleetDeploymentsStop>;
+  };
   readonly hostDeployments: {
     readonly start: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsStart>;
     readonly get: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsGet>;
@@ -186,6 +191,13 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsGetDashboardContent](input)),
       generateHostDocumentation: (input) =>
         transport.request((client) => client[WS_METHODS.projectsGenerateHostDocumentation](input)),
+    },
+    fleetDeployments: {
+      start: (input) =>
+        transport.request((client) => client[WS_METHODS.fleetDeploymentsStart](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.fleetDeploymentsGet](input)),
+      stop: (input) =>
+        transport.request((client) => client[WS_METHODS.fleetDeploymentsStop](input)),
     },
     hostDeployments: {
       start: (input) =>

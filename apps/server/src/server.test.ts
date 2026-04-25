@@ -8,6 +8,8 @@ import {
   DEFAULT_SERVER_SETTINGS,
   EnvironmentId,
   EventId,
+  type FleetDeploymentStartInput,
+  type FleetDeploymentSummary,
   type FlakeMaintenanceStartInput,
   type FlakeMaintenanceSummary,
   type FlakeMaintenanceTerminalSnapshot,
@@ -131,6 +133,10 @@ import {
   type HostDeploymentServiceShape,
 } from "./project/Services/HostDeploymentService.ts";
 import {
+  FleetDeploymentService,
+  type FleetDeploymentServiceShape,
+} from "./project/Services/FleetDeploymentService.ts";
+import {
   HostImportService,
   type HostImportServiceShape,
 } from "./project/Services/HostImportService.ts";
@@ -194,6 +200,38 @@ const makeHostDeploymentTerminalSnapshot = (
     exitCode: null,
     exitSignal: null,
     updatedAt: now,
+    ...overrides,
+  };
+};
+
+const makeFleetDeploymentSummary = (overrides: Partial<FleetDeploymentSummary> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    rolloutId: "rollout-default",
+    projectId: defaultProjectId,
+    status: "running" as const,
+    maxParallelism: 1,
+    stopOnFirstFailure: true,
+    deployOnServer: false,
+    magicRollback: true,
+    confirmTimeoutSeconds: 30,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
+    lastError: null,
+    hostEntries: [
+      {
+        hostName: "bc250",
+        order: 0,
+        status: "running" as const,
+        terminalOwnerId: "host-deploy:project-default:bc250",
+        startedAt: now,
+        finishedAt: null,
+        updatedAt: now,
+        exitCode: null,
+        exitSignal: null,
+      },
+    ],
     ...overrides,
   };
 };
@@ -485,6 +523,7 @@ const buildAppUnderTest = (options?: {
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
+    fleetDeploymentService?: Partial<FleetDeploymentServiceShape>;
     hostImportService?: Partial<HostImportServiceShape>;
     flakeMaintenanceService?: Partial<FlakeMaintenanceServiceShape>;
     deployRsResolver?: Partial<DeployRsResolverShape>;
@@ -753,6 +792,18 @@ const buildAppUnderTest = (options?: {
           resizeTerminal: () => Effect.void,
           subscribeTerminalEvents: () => Stream.empty,
           ...options?.layers?.hostDeploymentService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(FleetDeploymentService)({
+          start: () =>
+            Effect.succeed({
+              disposition: "started" as const,
+              rollout: makeFleetDeploymentSummary(),
+            }),
+          get: () => Effect.succeed(null),
+          stop: () => Effect.succeed(null),
+          ...options?.layers?.fleetDeploymentService,
         }),
       ),
       Layer.provide(
@@ -2520,6 +2571,176 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.disposition, "started");
       assert.equal(response.deployment.hostName, "bc250");
       assert.equal(response.deployment.command, buildDeployRsCommand("bc250"));
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc fleetDeployments.start", () =>
+    Effect.gen(function* () {
+      let receivedInput: FleetDeploymentStartInput | null = null;
+
+      yield* buildAppUnderTest({
+        layers: {
+          fleetDeploymentService: {
+            start: (input) =>
+              Effect.sync(() => {
+                receivedInput = input;
+                return {
+                  disposition: "started" as const,
+                  rollout: makeFleetDeploymentSummary({
+                    projectId: input.projectId,
+                    maxParallelism: input.maxParallelism ?? 1,
+                    stopOnFirstFailure: input.stopOnFirstFailure !== false,
+                    deployOnServer: input.deployOnServer === true,
+                    magicRollback: input.magicRollback ?? true,
+                    confirmTimeoutSeconds: input.confirmTimeoutSeconds ?? 30,
+                    hostEntries: input.hostNames.map((hostName, index) => ({
+                      hostName,
+                      order: index,
+                      status: "queued" as const,
+                      terminalOwnerId: null,
+                      startedAt: null,
+                      finishedAt: null,
+                      updatedAt: new Date(0).toISOString(),
+                      exitCode: null,
+                      exitSignal: null,
+                    })),
+                  }),
+                };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.fleetDeploymentsStart]({
+            projectId: defaultProjectId,
+            hostNames: ["bc250", "router"],
+            maxParallelism: 2,
+            deployOnServer: true,
+            magicRollback: false,
+            confirmTimeoutSeconds: 120,
+            stopOnFirstFailure: true,
+          }),
+        ),
+      );
+
+      assert.deepEqual(receivedInput, {
+        projectId: defaultProjectId,
+        hostNames: ["bc250", "router"],
+        maxParallelism: 2,
+        deployOnServer: true,
+        magicRollback: false,
+        confirmTimeoutSeconds: 120,
+        stopOnFirstFailure: true,
+      });
+      assert.equal(response.disposition, "started");
+      assert.equal(response.rollout.maxParallelism, 2);
+      assert.equal(response.rollout.hostEntries.length, 2);
+      assert.equal(response.rollout.hostEntries[1]?.hostName, "router");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc fleetDeployments.get", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          fleetDeploymentService: {
+            get: () =>
+              Effect.succeed(
+                makeFleetDeploymentSummary({
+                  status: "running",
+                  hostEntries: [
+                    {
+                      hostName: "bc250",
+                      order: 0,
+                      status: "running",
+                      terminalOwnerId: "host-deploy:project-default:bc250",
+                      startedAt: new Date(0).toISOString(),
+                      finishedAt: null,
+                      updatedAt: new Date(0).toISOString(),
+                      exitCode: null,
+                      exitSignal: null,
+                    },
+                    {
+                      hostName: "router",
+                      order: 1,
+                      status: "queued",
+                      terminalOwnerId: null,
+                      startedAt: null,
+                      finishedAt: null,
+                      updatedAt: new Date(0).toISOString(),
+                      exitCode: null,
+                      exitSignal: null,
+                    },
+                  ],
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.fleetDeploymentsGet]({
+            projectId: defaultProjectId,
+          }),
+        ),
+      );
+
+      assert.equal(response?.status, "running");
+      assert.equal(response?.hostEntries.length, 2);
+      assert.equal(response?.hostEntries[1]?.status, "queued");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc fleetDeployments.stop", () =>
+    Effect.gen(function* () {
+      let receivedProjectId: ProjectId | null = null;
+
+      yield* buildAppUnderTest({
+        layers: {
+          fleetDeploymentService: {
+            stop: (input) =>
+              Effect.sync(() => {
+                receivedProjectId = input.projectId;
+                return makeFleetDeploymentSummary({
+                  status: "canceled",
+                  finishedAt: new Date(1_000).toISOString(),
+                  updatedAt: new Date(1_000).toISOString(),
+                  hostEntries: [
+                    {
+                      hostName: "bc250",
+                      order: 0,
+                      status: "canceled",
+                      terminalOwnerId: "host-deploy:project-default:bc250",
+                      startedAt: new Date(0).toISOString(),
+                      finishedAt: new Date(1_000).toISOString(),
+                      updatedAt: new Date(1_000).toISOString(),
+                      exitCode: null,
+                      exitSignal: null,
+                    },
+                  ],
+                });
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.fleetDeploymentsStop]({
+            projectId: defaultProjectId,
+          }),
+        ),
+      );
+
+      assert.equal(receivedProjectId, defaultProjectId);
+      assert.equal(response?.status, "canceled");
+      assert.equal(response?.hostEntries[0]?.status, "canceled");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

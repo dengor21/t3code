@@ -20,6 +20,13 @@ import type {
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  FleetDeploymentGetInput,
+  FleetDeploymentStartInput,
+  FleetDeploymentStartResult,
+  FleetDeploymentStopInput,
+  NullOrFleetDeploymentSummary,
+} from "./fleetDeployment.ts";
+import type {
   FlakeMaintenanceGetInput,
   FlakeMaintenanceStartInput,
   FlakeMaintenanceStartResult,
@@ -289,6 +296,11 @@ export interface EnvironmentApi {
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,
     ) => Promise<ProjectGenerateHostDocumentationResult>;
+  };
+  fleetDeployments: {
+    start: (input: FleetDeploymentStartInput) => Promise<FleetDeploymentStartResult>;
+    get: (input: FleetDeploymentGetInput) => Promise<NullOrFleetDeploymentSummary>;
+    stop: (input: FleetDeploymentStopInput) => Promise<NullOrFleetDeploymentSummary>;
   };
   hostDeployments: {
     start: (input: HostDeploymentStartInput) => Promise<HostDeploymentStartResult>;

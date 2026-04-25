@@ -37,6 +37,10 @@ export const projectQueryKeys = {
       projectId ?? null,
       hostName ?? null,
     ] as const,
+  fleetDeploymentPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "fleet-deployment", environmentId ?? null, projectId ?? null] as const,
+  fleetDeployment: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "fleet-deployment", environmentId ?? null, projectId ?? null] as const,
   hostImportPrefix: (
     environmentId: EnvironmentId | null,
     projectId: ProjectId | null,
@@ -76,6 +80,7 @@ export const projectQueryKeys = {
 const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
 const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
+const DEFAULT_FLEET_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_IMPORT_STALE_TIME = 2_000;
 const DEFAULT_FLAKE_MAINTENANCE_STALE_TIME = 2_000;
@@ -176,6 +181,29 @@ export function hostDeploymentQueryOptions(input: {
       input.projectId !== null &&
       normalizedHostName !== null,
     staleTime: input.staleTime ?? DEFAULT_HOST_DEPLOYMENT_STALE_TIME,
+    placeholderData: (previous) => previous ?? null,
+  });
+}
+
+export function fleetDeploymentQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  return queryOptions({
+    queryKey: projectQueryKeys.fleetDeployment(input.environmentId, input.projectId),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId) {
+        throw new Error("Fleet deployment is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.fleetDeployments.get({
+        projectId: input.projectId,
+      });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
+    staleTime: input.staleTime ?? DEFAULT_FLEET_DEPLOYMENT_STALE_TIME,
     placeholderData: (previous) => previous ?? null,
   });
 }

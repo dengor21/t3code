@@ -61,6 +61,7 @@ import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
 import { HostImportService } from "./project/Services/HostImportService.ts";
 import { FlakeMaintenanceService } from "./project/Services/FlakeMaintenanceService.ts";
+import { FleetDeploymentService } from "./project/Services/FleetDeploymentService.ts";
 import { RepositoryIdentityResolver } from "./project/Services/RepositoryIdentityResolver.ts";
 import { ServerEnvironment } from "./environment/Services/ServerEnvironment.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
@@ -155,6 +156,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
       const hostDeploymentService = yield* HostDeploymentService;
+      const fleetDeploymentService = yield* FleetDeploymentService;
       const hostImportService = yield* HostImportService;
       const flakeMaintenanceService = yield* FlakeMaintenanceService;
       const providerRegistry = yield* ProviderRegistry;
@@ -868,6 +870,18 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             }),
             { "rpc.aggregate": "workspace" },
           ),
+        [WS_METHODS.fleetDeploymentsStart]: (input) =>
+          observeRpcEffect(WS_METHODS.fleetDeploymentsStart, fleetDeploymentService.start(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.fleetDeploymentsGet]: (input) =>
+          observeRpcEffect(WS_METHODS.fleetDeploymentsGet, fleetDeploymentService.get(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.fleetDeploymentsStop]: (input) =>
+          observeRpcEffect(WS_METHODS.fleetDeploymentsStop, fleetDeploymentService.stop(input), {
+            "rpc.aggregate": "workspace",
+          }),
         [WS_METHODS.hostDeploymentsStart]: (input) =>
           observeRpcEffect(WS_METHODS.hostDeploymentsStart, hostDeploymentService.start(input), {
             "rpc.aggregate": "workspace",

@@ -22,6 +22,11 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       getDashboardContent: rpcClient.projects.getDashboardContent,
       generateHostDocumentation: rpcClient.projects.generateHostDocumentation,
     },
+    fleetDeployments: {
+      start: rpcClient.fleetDeployments.start,
+      get: rpcClient.fleetDeployments.get,
+      stop: rpcClient.fleetDeployments.stop,
+    },
     hostDeployments: {
       start: rpcClient.hostDeployments.start,
       get: rpcClient.hostDeployments.get,
