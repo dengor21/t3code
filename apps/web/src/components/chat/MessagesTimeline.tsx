@@ -285,7 +285,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           {workflow && (
             <div className="w-full rounded-xl border border-border/60 bg-card/40 px-4 py-3 text-left">
               <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="label" className="text-[10px]">
                   {buildHostWorkflowBadgeLabel(workflow)}
                 </Badge>
                 <Badge variant="outline" className="text-[10px]">

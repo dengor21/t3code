@@ -848,7 +848,9 @@ export function GeneralSettingsPanel() {
             >
               <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
                 <SelectValue>
-                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
+                  <Badge variant="label" size="sm" className="w-fit max-w-full">
+                    {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
+                  </Badge>
                 </SelectValue>
               </SelectTrigger>
               <SelectPopup align="end" alignItemWithTrigger={false}>

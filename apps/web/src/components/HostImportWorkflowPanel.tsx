@@ -292,7 +292,7 @@ export default function HostImportWorkflowPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">Secure host import</Badge>
+                <Badge variant="label">Secure host import</Badge>
                 <Badge variant="outline">Host: {workflow.hostName}</Badge>
                 <Badge variant="outline">{workflow.sourceSshTarget ?? "SSH target missing"}</Badge>
                 {summary ? (

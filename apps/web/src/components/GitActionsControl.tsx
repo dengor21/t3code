@@ -990,7 +990,7 @@ export default function GitActionsControl({
         <Group aria-label="Git actions" className="shrink-0">
           {isCommittedChange ? (
             <>
-              <Badge variant="outline" className="h-7 px-2 text-[11px]">
+              <Badge variant="label" className="h-7 px-2 text-[11px]">
                 Committed
               </Badge>
               {committedFollowUpActions.map((action) => (
@@ -1139,9 +1139,12 @@ export default function GitActionsControl({
               <div className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
                 <span className="text-muted-foreground">Branch</span>
                 <span className="flex items-center justify-between gap-2">
-                  <span className="font-medium">
+                  <Badge
+                    variant="label"
+                    className="min-w-0 max-w-full justify-start text-[11px] font-medium"
+                  >
                     {gitStatusForActions?.branch ?? "(detached HEAD)"}
-                  </span>
+                  </Badge>
                   {isDefaultBranch && (
                     <span className="text-right text-warning text-xs">Warning: default branch</span>
                   )}

@@ -716,12 +716,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   </Tooltip>
                 )}
                 {jumpLabel ? (
-                  <span
-                    className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+                  <Kbd
+                    className="h-5 min-w-0 rounded-full px-1.5 font-mono text-[10px] tracking-tight shadow-sm"
                     title={jumpLabel}
                   >
                     {jumpLabel}
-                  </span>
+                  </Kbd>
                 ) : (
                   <span
                     className={`text-[10px] ${

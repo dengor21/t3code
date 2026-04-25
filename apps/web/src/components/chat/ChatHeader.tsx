@@ -86,14 +86,11 @@ export const ChatHeader = memo(function ChatHeader({
         >
           {activeThreadTitle}
         </h2>
-        <Badge
-          variant={activeThreadChangeState === "committed" ? "outline" : "secondary"}
-          className="shrink-0 text-[10px]"
-        >
+        <Badge variant="label" className="shrink-0 text-[10px]">
           {activeThreadChangeState === "committed" ? "Committed" : "Ongoing change"}
         </Badge>
         {workflow && (
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
+          <Badge variant="label" className="shrink-0 text-[10px]">
             {buildHostWorkflowBadgeLabel(workflow)}
           </Badge>
         )}

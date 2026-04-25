@@ -11,6 +11,8 @@
   --color-warning: var(--warning);
   --color-success-foreground: var(--success-foreground);
   --color-success: var(--success);
+  --color-label-foreground: var(--label-foreground);
+  --color-label: var(--label);
   --color-info-foreground: var(--info-foreground);
   --color-info: var(--info);
   --color-destructive-foreground: var(--destructive-foreground);
@@ -98,6 +100,8 @@
   --input: --alpha(#3b1638 / 12%);
   --ring: oklch(0.5 0.2 330);
   --destructive-foreground: var(--color-red-700);
+  --label: var(--color-blue-500);
+  --label-foreground: var(--color-blue-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
   --success: var(--color-emerald-500);
@@ -134,6 +138,8 @@
     --input: --alpha(#c890c0 / 10%);
     --ring: oklch(0.62 0.2 335);
     --destructive-foreground: var(--color-red-400);
+    --label: var(--color-blue-500);
+    --label-foreground: var(--color-blue-400);
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);
     --success: var(--color-emerald-500);
@@ -149,42 +155,44 @@
     --sidebar-primary-foreground: var(--color-white);
   }
 
-  /* HAL 9000 — black panel, glowing red eye, amber pupil. */
+  /* HAL 9000 — black panel, silver chrome, glowing red eye. */
   @variant hal {
     color-scheme: dark;
-    --background: #0a0507;
+    --background: #000000;
     --app-chrome-background: var(--background);
-    --foreground: #fceee9;
-    --card: #190e10;
-    --card-foreground: #fceee9;
-    --popover: #1c1012;
-    --popover-foreground: #fceee9;
-    --primary: oklch(0.62 0.26 25);
-    --primary-foreground: #fff5ec;
-    --secondary: --alpha(#ff5040 / 10%);
-    --secondary-foreground: #ffd9d0;
-    --muted: --alpha(#ff5040 / 7%);
-    --muted-foreground: #d6a098;
-    --accent: --alpha(#ff8a3a / 18%);
-    --accent-foreground: #ffe1bf;
-    --destructive: oklch(0.66 0.27 25);
-    --border: --alpha(#ff5040 / 18%);
-    --input: --alpha(#ff5040 / 20%);
-    --ring: oklch(0.62 0.26 25);
-    --destructive-foreground: oklch(0.82 0.2 25);
+    --foreground: #e8e8e8;
+    --card: #101214;
+    --card-foreground: #e8e8e8;
+    --popover: #111317;
+    --popover-foreground: #e8e8e8;
+    --primary: oklch(0.5 0.26 20);
+    --primary-foreground: #ffffff;
+    --secondary: rgba(160, 160, 160, 0.08);
+    --secondary-foreground: #c8c8c8;
+    --muted: rgba(160, 160, 160, 0.06);
+    --muted-foreground: #888888;
+    --accent: rgba(26, 77, 255, 0.18);
+    --accent-foreground: #ffffff;
+    --destructive: oklch(0.5 0.26 20);
+    --border: #a09c9c;
+    --input: rgba(160, 160, 160, 0.14);
+    --ring: oklch(0.5 0.26 20);
+    --destructive-foreground: oklch(0.78 0.2 22);
+    --label: #1a4dff;
+    --label-foreground: #ffffff;
     --info: oklch(0.78 0.17 60);
     --info-foreground: oklch(0.88 0.15 65);
     --success: oklch(0.78 0.18 75);
     --success-foreground: oklch(0.9 0.16 80);
     --warning: oklch(0.86 0.18 80);
     --warning-foreground: oklch(0.92 0.16 85);
-    --sidebar: #0d0608;
-    --sidebar-foreground: #fceee9;
-    --sidebar-border: --alpha(#ff5040 / 14%);
-    --sidebar-accent: --alpha(#ff5040 / 16%);
-    --sidebar-accent-foreground: #ffe1bf;
-    --sidebar-primary: oklch(0.62 0.26 25);
-    --sidebar-primary-foreground: #fff5ec;
+    --sidebar: #080808;
+    --sidebar-foreground: #c8c8c8;
+    --sidebar-border: #a09c9c;
+    --sidebar-accent: rgba(26, 77, 255, 0.16);
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-primary: oklch(0.5 0.26 20);
+    --sidebar-primary-foreground: #ffffff;
   }
 }
 
