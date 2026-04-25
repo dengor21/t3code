@@ -23,6 +23,8 @@ export const projectQueryKeys = {
       projectId ?? null,
       hostName ?? null,
     ] as const,
+  secretsSummary: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "secrets-summary", environmentId ?? null, projectId ?? null] as const,
   hostDeploymentPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
     ["projects", "host-deployment", environmentId ?? null, projectId ?? null] as const,
   hostDeployment: (
@@ -112,6 +114,7 @@ export const projectQueryKeys = {
 const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
 const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
+const DEFAULT_SECRETS_SUMMARY_STALE_TIME = 10_000;
 const DEFAULT_FLEET_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_PREVIEW_STALE_TIME = Number.POSITIVE_INFINITY;
@@ -181,6 +184,29 @@ export function projectDashboardContentQueryOptions(input: {
     },
     enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
     staleTime: input.staleTime ?? DEFAULT_DASHBOARD_CONTENT_STALE_TIME,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function projectSecretsSummaryQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  return queryOptions({
+    queryKey: projectQueryKeys.secretsSummary(input.environmentId, input.projectId),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId) {
+        throw new Error("Project secrets are unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.projects.getSecretsSummary({
+        projectId: input.projectId,
+      });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
+    staleTime: input.staleTime ?? DEFAULT_SECRETS_SUMMARY_STALE_TIME,
     placeholderData: (previous) => previous,
   });
 }

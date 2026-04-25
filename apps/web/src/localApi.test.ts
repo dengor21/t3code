@@ -51,6 +51,7 @@ const rpcClientMock = {
     searchEntries: vi.fn(),
     writeFile: vi.fn(),
     getDashboardContent: vi.fn(),
+    getSecretsSummary: vi.fn(),
     generateHostDocumentation: vi.fn(),
   },
   fleetDeployments: {

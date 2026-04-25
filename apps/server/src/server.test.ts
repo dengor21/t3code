@@ -119,6 +119,10 @@ import {
   type ProjectDashboardContentResolverShape,
 } from "./project/Services/ProjectDashboardContentResolver.ts";
 import {
+  ProjectSecretsService,
+  type ProjectSecretsServiceShape,
+} from "./project/Services/ProjectSecretsService.ts";
+import {
   DeployRsResolver,
   type DeployRsResolverShape,
 } from "./project/Services/DeployRsResolver.ts";
@@ -575,6 +579,7 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
+    projectSecretsService?: Partial<ProjectSecretsServiceShape>;
     deploymentSafetyService?: Partial<DeploymentSafetyServiceShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
     fleetDeploymentService?: Partial<FleetDeploymentServiceShape>;
@@ -829,8 +834,21 @@ const buildAppUnderTest = (options?: {
               hostDoc: null,
               hostSummaries: [],
               latestMaintenance: null,
+              secrets: null,
             }),
           ...options?.layers?.projectDashboardContentResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(ProjectSecretsService)({
+          getSummary: () =>
+            Effect.succeed({
+              provider: "none" as const,
+              detectionSummary: null,
+              hostInventories: [],
+              updatedAt: new Date(0).toISOString(),
+            }),
+          ...options?.layers?.projectSecretsService,
         }),
       ),
       Layer.provide(

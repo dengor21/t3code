@@ -55,6 +55,7 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
+import { ProjectSecretsService } from "./project/Services/ProjectSecretsService.ts";
 import { DeploymentSafetyService } from "./project/Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
@@ -170,6 +171,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const projectDashboardContentResolver = yield* ProjectDashboardContentResolver;
+      const projectSecretsService = yield* ProjectSecretsService;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const documentationStatusResolver = yield* DocumentationStatusResolver;
@@ -870,6 +872,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               projectId: input.projectId,
               ...(input.hostName ? { hostName: input.hostName } : {}),
             }),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsGetSecretsSummary]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsGetSecretsSummary,
+            projectSecretsService.getSummary(input),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.fleetDeploymentsStart]: (input) =>

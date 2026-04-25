@@ -5,6 +5,7 @@ import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./en
 import { FlakeMaintenanceSummary } from "./flakeMaintenance.ts";
 import { HostDeploymentSummary } from "./hostDeployment.ts";
 import { HostDriftSummary } from "./hostDrift.ts";
+import { ProjectSecretsSummary } from "./projectSecrets.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -206,6 +207,9 @@ export const ProjectDashboardContentResult = Schema.Struct({
   hostDoc: Schema.NullOr(ProjectDashboardHostDoc),
   hostSummaries: Schema.Array(ProjectDashboardHostSummary),
   latestMaintenance: Schema.NullOr(FlakeMaintenanceSummary),
+  secrets: Schema.NullOr(ProjectSecretsSummary).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type ProjectDashboardContentResult = typeof ProjectDashboardContentResult.Type;
 

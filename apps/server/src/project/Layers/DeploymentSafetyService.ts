@@ -27,6 +27,7 @@ import {
   type DeploymentSafetyServiceShape,
 } from "../Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
+import { ProjectSecretsService } from "../Services/ProjectSecretsService.ts";
 
 const DEFAULT_SSH_TIMEOUT_MS = 7_500;
 const DEFAULT_DRY_ACTIVATE_TIMEOUT_MS = 30_000;
@@ -248,6 +249,7 @@ function toPreflightReport(input: {
 
 interface ResolvedPreviewContext {
   readonly workspaceRoot: string;
+  readonly projectId: HostDeploymentPreviewInput["projectId"];
   readonly selectedHost: FlakeHost | null;
   readonly flakeExists: boolean;
   readonly deployTarget: "deployable" | "missing-deploy-target" | "evaluation-failed" | "missing";
@@ -410,6 +412,7 @@ export const DeploymentSafetyServiceLive = Layer.effect(
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const flakeMetadataResolver = yield* FlakeMetadataResolver;
     const deployRsResolver = yield* DeployRsResolver;
+    const projectSecretsService = yield* ProjectSecretsService;
     const gitStatusBroadcaster = yield* GitStatusBroadcaster;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -479,10 +482,77 @@ export const DeploymentSafetyServiceLive = Layer.effect(
 
       return {
         workspaceRoot: project.workspaceRoot,
+        projectId: input.projectId,
         selectedHost,
         flakeExists,
         deployTarget,
       } satisfies ResolvedPreviewContext;
+    });
+
+    const resolveSecretChecks = Effect.fn("deploymentSafety.resolveSecretChecks")(function* (
+      context: ResolvedPreviewContext,
+    ) {
+      const selectedHost = context.selectedHost;
+      if (selectedHost === null) {
+        return [] as ReadonlyArray<DeploymentCheck>;
+      }
+
+      const secretsSummary = yield* projectSecretsService
+        .getSummary({
+          projectId: context.projectId,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            toDeploymentSafetyError("Failed to resolve project secrets.", cause),
+          ),
+        );
+
+      if (secretsSummary.provider !== "sops-nix") {
+        return [] as ReadonlyArray<DeploymentCheck>;
+      }
+
+      const inventory =
+        secretsSummary.hostInventories.find(
+          (entry) => normalizeHostName(entry.hostName) === normalizeHostName(selectedHost.name),
+        ) ?? null;
+      if (inventory === null) {
+        return [] as ReadonlyArray<DeploymentCheck>;
+      }
+
+      return inventory.validationChecks.map((check) => {
+        switch (check.code) {
+          case "declaration-eval":
+            return makeCheck({
+              code: "secret-declarations",
+              label: "Secret declarations",
+              severity: "blocking",
+              result:
+                check.result === "pass" ? "pass" : check.result === "fail" ? "fail" : "skipped",
+              summary: check.summary,
+              detail: check.detail,
+            });
+          case "encrypted-source-exists":
+            return makeCheck({
+              code: "secret-source-files",
+              label: "Encrypted source files",
+              severity: "blocking",
+              result:
+                check.result === "pass" ? "pass" : check.result === "fail" ? "fail" : "skipped",
+              summary: check.summary,
+              detail: check.detail,
+            });
+          case "encrypted-source-readable":
+            return makeCheck({
+              code: "secret-source-readability",
+              label: "Encrypted source readability",
+              severity: "blocking",
+              result:
+                check.result === "pass" ? "pass" : check.result === "fail" ? "fail" : "skipped",
+              summary: check.summary,
+              detail: check.detail,
+            });
+        }
+      });
     });
 
     const preview: DeploymentSafetyServiceShape["preview"] = (input) =>
@@ -583,8 +653,12 @@ export const DeploymentSafetyServiceLive = Layer.effect(
           ),
         );
 
-        const [gitStatusCheck, sshReachabilityCheck] = yield* Effect.all(
-          [gitStatusCheckEffect, makeSshReachabilityCheck(context.selectedHost)],
+        const [gitStatusCheck, sshReachabilityCheck, secretChecks] = yield* Effect.all(
+          [
+            gitStatusCheckEffect,
+            makeSshReachabilityCheck(context.selectedHost),
+            resolveSecretChecks(context),
+          ],
           {
             concurrency: "unbounded",
           },
@@ -726,6 +800,7 @@ export const DeploymentSafetyServiceLive = Layer.effect(
               flakeExistsCheck,
               hostExistsCheck,
               deployTargetCheck,
+              ...secretChecks,
               gitStatusCheck,
               sshReachabilityCheck,
               switchActivationPreviewCheck,

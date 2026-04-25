@@ -23,6 +23,7 @@ import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
 import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
 import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
+import { ProjectSecretsService } from "../Services/ProjectSecretsService.ts";
 import {
   ProjectDashboardContentResolver,
   type ProjectDashboardContentResolverShape,
@@ -71,6 +72,7 @@ const make = Effect.gen(function* () {
   const hostDeploymentService = yield* HostDeploymentService;
   const hostDriftService = yield* HostDriftService;
   const flakeMaintenanceService = yield* FlakeMaintenanceService;
+  const projectSecretsService = yield* ProjectSecretsService;
 
   const resolveWithinWorkspace = (workspaceRoot: string, relativePath: string) =>
     workspacePaths
@@ -187,6 +189,13 @@ const make = Effect.gen(function* () {
             toDashboardError("Failed to load flake maintenance state.", cause),
           ),
         );
+      const secrets = yield* projectSecretsService
+        .getSummary({
+          projectId: input.projectId,
+        })
+        .pipe(
+          Effect.mapError((cause) => toDashboardError("Failed to resolve project secrets.", cause)),
+        );
       const requestedHostName = normalizeHostName(input.hostName);
       const selectedHost =
         requestedHostName === null
@@ -292,6 +301,7 @@ const make = Effect.gen(function* () {
               },
         hostSummaries,
         latestMaintenance,
+        secrets,
       } satisfies ProjectDashboardContentResult;
     }).pipe(
       Effect.mapError((cause) =>

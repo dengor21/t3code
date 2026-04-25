@@ -20,6 +20,9 @@ export const DeploymentCheckCode = Schema.Literals([
   "git-status",
   "ssh-reachability",
   "switch-activation-preview",
+  "secret-declarations",
+  "secret-source-files",
+  "secret-source-readability",
   "postflight-ssh-reachability",
   "reboot-pending",
 ]);

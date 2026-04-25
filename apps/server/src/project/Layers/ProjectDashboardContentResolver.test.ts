@@ -24,6 +24,7 @@ import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
 import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
 import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
+import { ProjectSecretsService } from "../Services/ProjectSecretsService.ts";
 import { ProjectDashboardContentResolverLive } from "./ProjectDashboardContentResolver.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -267,6 +268,53 @@ Current-state documentation for bc250.
           subscribeTerminalEvents: () => Stream.empty,
         }),
       ),
+      Layer.provideMerge(
+        Layer.succeed(ProjectSecretsService, {
+          getSummary: () =>
+            Effect.succeed({
+              provider: "sops-nix" as const,
+              detectionSummary: null,
+              hostInventories: [
+                {
+                  hostName: "bc250",
+                  secretCount: 1,
+                  sourceFileCount: 1,
+                  secrets: [
+                    {
+                      name: "wireguard",
+                      encryptedSourcePath: "secrets/wireguard.yaml",
+                      workspaceRelativeEncryptedSourcePath: "secrets/wireguard.yaml",
+                    },
+                  ],
+                  validationChecks: [
+                    {
+                      code: "declaration-eval" as const,
+                      label: "Secret declarations",
+                      result: "pass" as const,
+                      summary: "Resolved 1 secret for bc250.",
+                      detail: null,
+                    },
+                    {
+                      code: "encrypted-source-exists" as const,
+                      label: "Encrypted source files",
+                      result: "pass" as const,
+                      summary: "All encrypted source files exist inside the workspace for bc250.",
+                      detail: null,
+                    },
+                    {
+                      code: "encrypted-source-readable" as const,
+                      label: "Encrypted source readability",
+                      result: "pass" as const,
+                      summary: "All encrypted source files are readable for bc250.",
+                      detail: null,
+                    },
+                  ],
+                },
+              ],
+              updatedAt: new Date(0).toISOString(),
+            }),
+        }),
+      ),
       Layer.provide(NodeServices.layer),
     );
   }
@@ -315,6 +363,10 @@ Current-state documentation for bc250.
       reason: "missing-deploy-target",
       command: null,
     });
+    expect(result.secrets?.provider).toBe("sops-nix");
+    expect(result.secrets?.hostInventories[0]?.secrets[0]?.encryptedSourcePath).toBe(
+      "secrets/wireguard.yaml",
+    );
   });
 
   it("returns host-level dashboard content with ambiguous and legacy host changes", async () => {

@@ -90,6 +90,7 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
+import type { ProjectSecretsGetInput, ProjectSecretsSummary } from "./projectSecrets.ts";
 import type {
   ServerConfig,
   ServerProviderUpdatedPayload,
@@ -312,6 +313,7 @@ export interface EnvironmentApi {
     getDashboardContent: (
       input: ProjectGetDashboardContentInput,
     ) => Promise<ProjectDashboardContentResult>;
+    getSecretsSummary: (input: ProjectSecretsGetInput) => Promise<ProjectSecretsSummary>;
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,
     ) => Promise<ProjectGenerateHostDocumentationResult>;

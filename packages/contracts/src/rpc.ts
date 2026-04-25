@@ -130,6 +130,11 @@ import {
   ProjectWriteFileResult,
 } from "./project.ts";
 import {
+  ProjectSecretsError,
+  ProjectSecretsGetInput,
+  ProjectSecretsSummary,
+} from "./projectSecrets.ts";
+import {
   TerminalClearInput,
   TerminalCloseInput,
   TerminalError,
@@ -159,6 +164,7 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
+  projectsGetSecretsSummary: "projects.getSecretsSummary",
   fleetDeploymentsStart: "fleetDeployments.start",
   fleetDeploymentsGet: "fleetDeployments.get",
   fleetDeploymentsStop: "fleetDeployments.stop",
@@ -287,6 +293,12 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   payload: ProjectGetDashboardContentInput,
   success: ProjectDashboardContentResult,
   error: ProjectGetDashboardContentError,
+});
+
+export const WsProjectsGetSecretsSummaryRpc = Rpc.make(WS_METHODS.projectsGetSecretsSummary, {
+  payload: ProjectSecretsGetInput,
+  success: ProjectSecretsSummary,
+  error: ProjectSecretsError,
 });
 
 export const WsFleetDeploymentsStartRpc = Rpc.make(WS_METHODS.fleetDeploymentsStart, {
@@ -690,6 +702,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
+  WsProjectsGetSecretsSummaryRpc,
   WsFleetDeploymentsStartRpc,
   WsFleetDeploymentsGetRpc,
   WsFleetDeploymentsStopRpc,

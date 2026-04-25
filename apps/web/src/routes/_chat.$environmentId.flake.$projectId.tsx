@@ -8,6 +8,7 @@ import {
   type FlakeHost,
   type FlakeMaintenanceStatus,
   type GitStatusResult,
+  type HostSecretInventory,
   type HostCreationWorkflowBootstrapMode,
   type HostDriftAuthPhase,
   type HostDriftCategory,
@@ -18,6 +19,8 @@ import {
   type HostDeploymentStatus,
   type HostDocumentationStatus,
   type ProjectDashboardChangeEntry,
+  type SecretValidationCheck,
+  type SecretsProviderKind,
 } from "@t3tools/contracts";
 import {
   isValidHostCreationHostName,
@@ -34,7 +37,9 @@ import {
   EllipsisIcon,
   FileTextIcon,
   InboxIcon,
+  KeyRoundIcon,
   LoaderIcon,
+  LockKeyholeIcon,
   PlayIcon,
   RefreshCcwIcon,
   RocketIcon,
@@ -44,6 +49,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { openInPreferredEditor } from "../editorPreferences";
 import ChatMarkdown from "../components/ChatMarkdown";
 import FlakeMaintenanceTerminal from "../components/FlakeMaintenanceTerminal";
 import GitActionsControl from "../components/GitActionsControl";
@@ -78,8 +84,10 @@ import {
   hostDeploymentQueryOptions,
   hostDeploymentPreviewQueryOptions,
   projectDashboardContentQueryOptions,
+  projectSecretsSummaryQueryOptions,
   projectQueryKeys,
 } from "../lib/projectReactQuery";
+import { ensureLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
 import {
   buildFlakeDashboardHostMenu,
@@ -95,7 +103,7 @@ import {
 
 export interface FlakeDashboardSearch {
   host?: string;
-  view?: "changes" | "deploy" | "doc" | "drift" | "flake" | "maintenance" | "rollout";
+  view?: "changes" | "deploy" | "doc" | "drift" | "flake" | "maintenance" | "rollout" | "secrets";
 }
 
 function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashboardSearch {
@@ -112,7 +120,8 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
     view === "drift" ||
     view === "flake" ||
     view === "maintenance" ||
-    view === "rollout"
+    view === "rollout" ||
+    view === "secrets"
   ) {
     next.view = view;
   }
@@ -126,7 +135,8 @@ type FlakeDashboardView =
   | "drift"
   | "flake"
   | "maintenance"
-  | "rollout";
+  | "rollout"
+  | "secrets";
 const DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS = 30;
 const DEFAULT_ROLLOUT_MAX_PARALLELISM = 1;
 const HOST_DRIFT_CATEGORY_ORDER: ReadonlyArray<HostDriftCategory> = [
@@ -162,6 +172,9 @@ function buildDashboardSearch(input: {
   }
   if (input.view === "rollout") {
     return { view: "rollout" };
+  }
+  if (input.view === "secrets") {
+    return { view: "secrets" };
   }
   return {};
 }
@@ -410,11 +423,61 @@ function orderHostDriftCategoryResults(
   const rank = new Map(
     HOST_DRIFT_CATEGORY_ORDER.map((category, index) => [category, index] as const),
   );
-  return [...results].sort(
+  return [...results].toSorted(
     (left, right) =>
       (rank.get(left.category) ?? Number.MAX_SAFE_INTEGER) -
       (rank.get(right.category) ?? Number.MAX_SAFE_INTEGER),
   );
+}
+
+function formatSecretsProviderLabel(provider: SecretsProviderKind): string {
+  return provider === "sops-nix" ? "sops-nix" : "No provider";
+}
+
+function secretValidationResultClasses(result: SecretValidationCheck["result"]): string {
+  switch (result) {
+    case "pass":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "fail":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+    case "skipped":
+    default:
+      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+  }
+}
+
+function formatSecretValidationResultLabel(result: SecretValidationCheck["result"]): string {
+  switch (result) {
+    case "pass":
+      return "Pass";
+    case "fail":
+      return "Fail";
+    case "skipped":
+    default:
+      return "Skipped";
+  }
+}
+
+function countFailingSecretChecks(inventory: HostSecretInventory): number {
+  return inventory.validationChecks.filter((check) => check.result === "fail").length;
+}
+
+function describeProjectSecretsSummary(
+  hostInventories: ReadonlyArray<HostSecretInventory>,
+  provider: SecretsProviderKind | null,
+): string {
+  if (provider !== "sops-nix") {
+    return "Inspect sops-nix inventory and validation state for this flake.";
+  }
+  const secretCount = hostInventories.reduce((sum, inventory) => sum + inventory.secretCount, 0);
+  const failingChecks = hostInventories.reduce(
+    (sum, inventory) => sum + countFailingSecretChecks(inventory),
+    0,
+  );
+  if (failingChecks > 0) {
+    return `${secretCount} declared secrets with ${failingChecks} validation issue${failingChecks === 1 ? "" : "s"}.`;
+  }
+  return `${secretCount} declared secrets across ${hostInventories.length} host${hostInventories.length === 1 ? "" : "s"}.`;
 }
 
 function deploymentCheckClasses(check: DeploymentCheck): string {
@@ -944,6 +1007,18 @@ function FlakeDashboardRouteView() {
     });
   }, [navigate, projectRef, requestedHostName, search.view]);
 
+  useEffect(() => {
+    if (!projectRef || search.view !== "secrets" || requestedHostName === null) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: { view: "secrets" },
+      replace: true,
+    });
+  }, [navigate, projectRef, requestedHostName, search.view]);
+
   const hasPendingDocGenerations = Object.keys(pendingDocGenerationsByHost).length > 0;
   const dashboardQuery = useQuery({
     ...projectDashboardContentQueryOptions({
@@ -954,6 +1029,18 @@ function FlakeDashboardRouteView() {
     }),
     refetchInterval: hasPendingDocGenerations ? 2_000 : false,
   });
+  const projectSecretsQuery = useQuery(
+    projectSecretsSummaryQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      enabled:
+        bootstrapComplete &&
+        projectRef !== null &&
+        project !== null &&
+        search.view === "secrets" &&
+        requestedHostName === null,
+    }),
+  );
 
   const hostDeploymentQuery = useQuery({
     ...hostDeploymentQueryOptions({
@@ -1308,13 +1395,47 @@ function FlakeDashboardRouteView() {
     resetCreateHostForm,
   ]);
 
+  const handleOpenSecretSource = useCallback(
+    async (sourcePath: string) => {
+      if (!project) {
+        return;
+      }
+
+      const normalizedPath = sourcePath.trim();
+      if (!normalizedPath) {
+        return;
+      }
+
+      const targetPath = normalizedPath.startsWith("/")
+        ? normalizedPath
+        : `${project.cwd.replace(/\/+$/, "")}/${normalizedPath.replace(/^\.?\//, "")}`;
+
+      try {
+        const api = ensureLocalApi();
+        await openInPreferredEditor(api, targetPath);
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: "Failed to open encrypted source file",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      }
+    },
+    [project],
+  );
+
   const invalidateDashboardQueries = useCallback(() => {
     if (!projectRef || !project) {
       return Promise.resolve();
     }
-    return queryClient.invalidateQueries({
-      queryKey: projectQueryKeys.dashboardContentPrefix(projectRef.environmentId, project.id),
-    });
+    return Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.dashboardContentPrefix(projectRef.environmentId, project.id),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.secretsSummary(projectRef.environmentId, project.id),
+      }),
+    ]);
   }, [project, projectRef, queryClient]);
 
   const invalidateHostDeploymentQueries = useCallback(() => {
@@ -1585,6 +1706,30 @@ function FlakeDashboardRouteView() {
       ),
     [dashboardQuery.data?.hostSummaries],
   );
+  const selectedProjectSecrets = projectSecretsQuery.data ?? dashboardQuery.data?.secrets ?? null;
+  const projectSecretsHostInventories = useMemo(
+    () =>
+      selectedProjectSecrets?.provider === "sops-nix"
+        ? (selectedProjectSecrets?.hostInventories ?? [])
+        : (selectedProjectSecrets?.hostInventories ?? []).filter(
+            (inventory) =>
+              inventory.secretCount > 0 ||
+              inventory.validationChecks.some((check) => check.result === "fail"),
+          ),
+    [selectedProjectSecrets],
+  );
+  const totalProjectSecretCount = useMemo(
+    () => projectSecretsHostInventories.reduce((sum, inventory) => sum + inventory.secretCount, 0),
+    [projectSecretsHostInventories],
+  );
+  const totalProjectSecretFailures = useMemo(
+    () =>
+      projectSecretsHostInventories.reduce(
+        (sum, inventory) => sum + countFailingSecretChecks(inventory),
+        0,
+      ),
+    [projectSecretsHostInventories],
+  );
 
   const flakeSourceMarkdown = useMemo(
     () => renderFlakeSourceMarkdown(dashboardQuery.data?.flakeSource.contents ?? ""),
@@ -1611,6 +1756,9 @@ function FlakeDashboardRouteView() {
     }
     if (search.view === "rollout") {
       return "rollout";
+    }
+    if (search.view === "secrets") {
+      return "secrets";
     }
     return "changes";
   }, [search.view, selectedHostSummary]);
@@ -2373,6 +2521,18 @@ function FlakeDashboardRouteView() {
                       <RocketIcon className="size-3.5" />
                       Rollout
                     </Button>
+                    <Button
+                      size="sm"
+                      variant={
+                        selectedHostSummary === null && activeView === "secrets"
+                          ? "secondary"
+                          : "ghost"
+                      }
+                      onClick={() => selectDashboardView(null, "secrets")}
+                    >
+                      <LockKeyholeIcon className="size-3.5" />
+                      Secrets
+                    </Button>
                   </div>
                 </section>
 
@@ -2657,13 +2817,15 @@ function FlakeDashboardRouteView() {
                                 ? `Drift for ${selectedHostSummary?.host.name ?? "host"}`
                                 : activeView === "rollout"
                                   ? "Fleet rollout"
-                                  : activeView === "maintenance"
-                                    ? "Flake maintenance"
-                                    : activeView === "flake"
-                                      ? "flake.nix"
-                                      : selectedHostSummary
-                                        ? `Recent changes for ${selectedHostSummary.host.name}`
-                                        : "Recent changes"}
+                                  : activeView === "secrets"
+                                    ? "Project secrets"
+                                    : activeView === "maintenance"
+                                      ? "Flake maintenance"
+                                      : activeView === "flake"
+                                        ? "flake.nix"
+                                        : selectedHostSummary
+                                          ? `Recent changes for ${selectedHostSummary.host.name}`
+                                          : "Recent changes"}
                         </h2>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                           {activeView === "doc"
@@ -2684,15 +2846,20 @@ function FlakeDashboardRouteView() {
                                   ? selectedFleetDeployment
                                     ? `${formatDeploymentStatusLabel(selectedFleetDeployment.status)} rollout across ${selectedFleetDeployment.hostEntries.length} hosts.`
                                     : "Choose hosts, order them, then run a shared deploy-rs rollout from this page."
-                                  : activeView === "maintenance"
-                                    ? selectedFlakeMaintenance
-                                      ? `${formatDeploymentStatusLabel(selectedFlakeMaintenance.status)} nix flake update run with git review for this flake.`
-                                      : "Run nix flake update and review the resulting dependency changes from this page."
-                                    : activeView === "flake"
-                                      ? "Read-only source preview for the selected flake."
-                                      : selectedHostSummary
-                                        ? "Shows the latest host-specific and ambiguous changes that may affect this host."
-                                        : "Shows the latest flake-wide changes recorded by T3code."}
+                                  : activeView === "secrets"
+                                    ? describeProjectSecretsSummary(
+                                        projectSecretsHostInventories,
+                                        selectedProjectSecrets?.provider ?? null,
+                                      )
+                                    : activeView === "maintenance"
+                                      ? selectedFlakeMaintenance
+                                        ? `${formatDeploymentStatusLabel(selectedFlakeMaintenance.status)} nix flake update run with git review for this flake.`
+                                        : "Run nix flake update and review the resulting dependency changes from this page."
+                                      : activeView === "flake"
+                                        ? "Read-only source preview for the selected flake."
+                                        : selectedHostSummary
+                                          ? "Shows the latest host-specific and ambiguous changes that may affect this host."
+                                          : "Shows the latest flake-wide changes recorded by T3code."}
                         </p>
                         {selectedHostSummary ? (
                           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -2806,6 +2973,31 @@ function FlakeDashboardRouteView() {
                             <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                               {selectedFleetDeployment.hostEntries.length} hosts
                             </span>
+                          </>
+                        ) : null}
+                        {activeView === "secrets" && selectedProjectSecrets ? (
+                          <>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                selectedProjectSecrets.provider === "sops-nix"
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                  : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+                              )}
+                            >
+                              {formatSecretsProviderLabel(selectedProjectSecrets.provider)}
+                            </span>
+                            {totalProjectSecretCount > 0 ? (
+                              <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                {totalProjectSecretCount} secrets
+                              </span>
+                            ) : null}
+                            {totalProjectSecretFailures > 0 ? (
+                              <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+                                {totalProjectSecretFailures} issue
+                                {totalProjectSecretFailures === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
                           </>
                         ) : null}
                       </div>
@@ -4015,6 +4207,236 @@ function FlakeDashboardRouteView() {
                               </div>
                             )}
                           </div>
+                        </div>
+                      ) : activeView === "secrets" ? (
+                        <div className="space-y-4 p-4 sm:p-5">
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                  Provider
+                                </div>
+                                <div className="mt-0.5 text-base font-semibold text-foreground">
+                                  {formatSecretsProviderLabel(
+                                    selectedProjectSecrets?.provider ?? "none",
+                                  )}
+                                </div>
+                                <div className="mt-1 text-sm text-muted-foreground">
+                                  Secret values are never displayed or persisted. Only declarations,
+                                  encrypted source paths, and validation state are shown here.
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => selectDashboardView(null, "changes")}
+                                >
+                                  Changes
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => selectDashboardView(null, "rollout")}
+                                >
+                                  Rollout
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => selectDashboardView(null, "maintenance")}
+                                >
+                                  Maintenance
+                                </Button>
+                              </div>
+                            </div>
+
+                            {selectedProjectSecrets ? (
+                              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Declared secrets
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {totalProjectSecretCount}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Validation issues
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {totalProjectSecretFailures}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Updated
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatTimestamp(selectedProjectSecrets.updatedAt)}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {selectedProjectSecrets?.detectionSummary ? (
+                              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
+                                {selectedProjectSecrets.detectionSummary}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {projectSecretsQuery.isPending && !selectedProjectSecrets ? (
+                            <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                              <EmptyPanel
+                                title="Loading secrets"
+                                description="Resolving sops-nix declarations for this flake..."
+                                icon={<LoaderIcon className="size-5 animate-spin" />}
+                              />
+                            </div>
+                          ) : projectSecretsHostInventories.length > 0 ? (
+                            <div className="grid gap-4">
+                              {projectSecretsHostInventories.map((inventory) => (
+                                <div
+                                  key={`secret-inventory:${inventory.hostName}`}
+                                  className="rounded-xl border border-border/60 bg-card/50 p-4"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <h3 className="text-sm font-semibold text-foreground">
+                                        {inventory.hostName}
+                                      </h3>
+                                      <p className="text-xs text-muted-foreground">
+                                        {inventory.secretCount} declared secret
+                                        {inventory.secretCount === 1 ? "" : "s"} across{" "}
+                                        {inventory.sourceFileCount} encrypted source file
+                                        {inventory.sourceFileCount === 1 ? "" : "s"}.
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      {countFailingSecretChecks(inventory) > 0 ? (
+                                        <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+                                          {countFailingSecretChecks(inventory)} issue
+                                          {countFailingSecretChecks(inventory) === 1 ? "" : "s"}
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                                          Valid
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+                                    <div className="space-y-2">
+                                      {inventory.validationChecks.map((check) => (
+                                        <div
+                                          key={`${inventory.hostName}:${check.code}`}
+                                          className="rounded-xl border border-border/50 bg-background/50 p-3"
+                                        >
+                                          <div className="flex flex-wrap items-start justify-between gap-2">
+                                            <div>
+                                              <div className="text-sm font-medium text-foreground">
+                                                {check.label}
+                                              </div>
+                                              <div className="mt-1 text-xs text-muted-foreground">
+                                                {check.summary}
+                                              </div>
+                                            </div>
+                                            <span
+                                              className={cn(
+                                                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                                secretValidationResultClasses(check.result),
+                                              )}
+                                            >
+                                              {formatSecretValidationResultLabel(check.result)}
+                                            </span>
+                                          </div>
+                                          {check.detail ? (
+                                            <pre className="mt-3 overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[11px] text-foreground whitespace-pre-wrap">
+                                              {check.detail}
+                                            </pre>
+                                          ) : null}
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <h4 className="text-sm font-semibold text-foreground">
+                                            Encrypted sources
+                                          </h4>
+                                          <p className="text-xs text-muted-foreground">
+                                            Links open the encrypted source file. Secret values are
+                                            never decrypted here.
+                                          </p>
+                                        </div>
+                                        <KeyRoundIcon className="mt-0.5 size-4 text-muted-foreground" />
+                                      </div>
+
+                                      {inventory.secrets.length > 0 ? (
+                                        <div className="mt-4 grid gap-2">
+                                          {inventory.secrets.map((secret) => {
+                                            const openPath =
+                                              secret.workspaceRelativeEncryptedSourcePath;
+                                            const canOpen = openPath !== null;
+                                            return (
+                                              <div
+                                                key={`${inventory.hostName}:${secret.name}`}
+                                                className="rounded-xl border border-border/50 bg-background/60 px-3 py-3"
+                                              >
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                  <div className="min-w-0">
+                                                    <div className="text-sm font-medium text-foreground">
+                                                      {secret.name}
+                                                    </div>
+                                                    <div className="mt-1 break-all text-xs text-muted-foreground">
+                                                      {secret.workspaceRelativeEncryptedSourcePath ??
+                                                        secret.encryptedSourcePath ??
+                                                        "No encrypted source file declared"}
+                                                    </div>
+                                                  </div>
+                                                  {canOpen ? (
+                                                    <Button
+                                                      size="xs"
+                                                      variant="outline"
+                                                      onClick={() =>
+                                                        void handleOpenSecretSource(openPath)
+                                                      }
+                                                    >
+                                                      <FileTextIcon className="size-3" />
+                                                      Open source
+                                                    </Button>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <div className="mt-4 rounded-xl border border-border/50 bg-background/60 p-3 text-sm text-muted-foreground">
+                                          No secrets are declared for this host.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                              <EmptyPanel
+                                title="No sops-nix secrets detected"
+                                description={
+                                  selectedProjectSecrets?.detectionSummary ??
+                                  "This flake does not expose any sops-nix secret declarations yet."
+                                }
+                                icon={<LockKeyholeIcon className="size-5" />}
+                              />
+                            </div>
+                          )}
                         </div>
                       ) : activeView === "maintenance" ? (
                         <div className="space-y-4 p-4 sm:p-5">

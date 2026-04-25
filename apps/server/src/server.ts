@@ -65,6 +65,7 @@ import { FleetDeploymentServiceLive } from "./project/Layers/FleetDeploymentServ
 import { HostDriftServiceLive } from "./project/Layers/HostDriftService.ts";
 import { EphemeralWorkflowSecretVaultLive } from "./project/Layers/EphemeralWorkflowSecretVault.ts";
 import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
+import { ProjectSecretsServiceLive } from "./project/Layers/ProjectSecretsService.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
@@ -226,19 +227,24 @@ const DocumentationLayerLive = Layer.mergeAll(
   HostDocumentationServiceLive.pipe(Layer.provideMerge(DocumentationSupportLayerLive)),
 );
 
+const DeploymentSafetyLayerLive = DeploymentSafetyServiceLive.pipe(
+  Layer.provideMerge(ProjectSecretsServiceLive),
+);
+
 const HostDeploymentLayerLive = HostDeploymentServiceLive.pipe(
-  Layer.provideMerge(DeploymentSafetyServiceLive),
+  Layer.provideMerge(DeploymentSafetyLayerLive),
 );
 
 const FleetDeploymentLayerLive = FleetDeploymentServiceLive.pipe(
   Layer.provideMerge(HostDeploymentLayerLive),
-  Layer.provideMerge(DeploymentSafetyServiceLive),
+  Layer.provideMerge(DeploymentSafetyLayerLive),
 );
 
 const ProjectDashboardLayerLive = ProjectDashboardContentResolverLive.pipe(
   Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(HostDriftServiceLive),
   Layer.provideMerge(FlakeMaintenanceServiceLive),
+  Layer.provideMerge(ProjectSecretsServiceLive),
 );
 
 const GitLayerLive = Layer.empty.pipe(
