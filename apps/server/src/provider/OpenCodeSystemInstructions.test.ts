@@ -41,4 +41,22 @@ describe("OpenCodeSystemInstructions", () => {
       instructions.includes("Prefer the `question` tool for concise multiple-choice decisions"),
     );
   });
+
+  it("adds explicit host-scope guidance for host-scoped threads", () => {
+    const instructions = buildOpenCodeSystemInstructions({
+      interactionMode: "default",
+      providerContext: {
+        projectKind: "generic",
+        scopedHostName: "nexus",
+      },
+    });
+
+    assert.ok(instructions.includes("Host scope:"));
+    assert.ok(instructions.includes("This thread is scoped to host nexus."));
+    assert.ok(
+      instructions.includes(
+        "Unless the user explicitly broadens the request, treat nexus as the default host",
+      ),
+    );
+  });
 });

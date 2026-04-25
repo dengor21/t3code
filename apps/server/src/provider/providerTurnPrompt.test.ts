@@ -35,6 +35,8 @@ describe("providerTurnPrompt", () => {
       },
     });
 
+    assert.ok(preamble?.includes("Host scope:"));
+    assert.ok(preamble?.includes("This thread is scoped to host nexus."));
     assert.ok(preamble?.includes("This workspace is a Nix flake repository."));
     assert.ok(
       preamble?.includes(
@@ -69,5 +71,26 @@ describe("providerTurnPrompt", () => {
     assert.ok(prepared.input?.includes("implementing the approved host-removal plan for nexus."));
     assert.ok(prepared.input?.includes("User request:\nApply the approved removal plan"));
     assert.ok(!prepared.input?.includes("Keep the thread planning-only"));
+  });
+
+  it("builds a host-scope preamble for generic host-scoped threads", () => {
+    const preamble = buildProviderTurnPromptPreamble({
+      providerContext: {
+        projectKind: "generic",
+        scopedHostName: "router",
+      },
+    });
+
+    assert.equal(
+      preamble,
+      [
+        "Use the following repo context for this request:",
+        "",
+        "Host scope:",
+        "- This thread is scoped to host router.",
+        "- Unless the user explicitly broadens the request, treat router as the default host for investigation, planning, implementation, and answers.",
+        "- Before touching other hosts or shared cross-host configuration, call out that wider impact explicitly.",
+      ].join("\n"),
+    );
   });
 });

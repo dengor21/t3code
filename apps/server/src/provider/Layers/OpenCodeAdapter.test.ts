@@ -355,6 +355,8 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
       assert.ok(system.includes("OpenCode exposes `todowrite` and `todoread`"));
       assert.ok(system.includes('"status":"pending"'));
       assert.ok(system.includes("preserve unchanged `content` and `priority` fields"));
+      assert.ok(system.includes("Host scope:"));
+      assert.ok(system.includes("This thread is scoped to host nexus."));
       assert.ok(textPart.text.includes("This workspace is a Nix flake repository."));
       assert.ok(textPart.text.includes("planning creation of host nexus."));
       assert.ok(textPart.text.includes("User request:\nReview the host plan"));

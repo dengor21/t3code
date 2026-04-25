@@ -11,6 +11,8 @@ import {
   resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
 
+import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
+
 function toThreadWorkflow(workflow: ProviderTurnContext["workflow"]): ThreadWorkflow | undefined {
   if (!workflow) {
     return undefined;
@@ -49,9 +51,6 @@ function buildFlakeContextLines(providerContext: ProviderTurnContext): ReadonlyA
   const lines = ["- This workspace is a Nix flake repository."];
   if (providerContext.flake?.flakePath) {
     lines.push(`- Primary flake entrypoint: ${providerContext.flake.flakePath}.`);
-  }
-  if (providerContext.scopedHostName) {
-    lines.push(`- Primary host scope for this thread: ${providerContext.scopedHostName}.`);
   }
   if (providerContext.flake?.documentationPaths?.generalChanges) {
     lines.push(
@@ -130,6 +129,10 @@ export function buildProviderTurnPromptPreamble(input: {
   }
 
   const sections: Array<string> = [];
+  const hostScopeBlock = buildScopedHostInstructionBlock(input.providerContext);
+  if (hostScopeBlock) {
+    sections.push(hostScopeBlock);
+  }
   const flakeContextLines = buildFlakeContextLines(input.providerContext);
   if (flakeContextLines.length > 0) {
     sections.push(["Repository context:", ...flakeContextLines].join("\n"));

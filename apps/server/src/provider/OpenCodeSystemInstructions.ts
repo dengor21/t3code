@@ -1,3 +1,7 @@
+import type { ProviderTurnContext } from "@t3tools/contracts";
+
+import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
+
 const OPENCODE_SHARED_TOOL_RULES = [
   "Question tool rules:",
   "- OpenCode exposes a `question` tool. Do not call `request_user_input`.",
@@ -42,8 +46,13 @@ ${OPENCODE_SHARED_TOOL_RULES}`;
 
 export function buildOpenCodeSystemInstructions(input: {
   readonly interactionMode: "default" | "plan";
+  readonly providerContext?: ProviderTurnContext;
 }): string {
-  return input.interactionMode === "plan"
-    ? OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS
-    : OPENCODE_DEFAULT_MODE_SYSTEM_INSTRUCTIONS;
+  const base =
+    input.interactionMode === "plan"
+      ? OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS
+      : OPENCODE_DEFAULT_MODE_SYSTEM_INSTRUCTIONS;
+  const hostScopeInstructions = buildScopedHostInstructionBlock(input.providerContext);
+
+  return hostScopeInstructions ? `${base}\n\n${hostScopeInstructions}` : base;
 }

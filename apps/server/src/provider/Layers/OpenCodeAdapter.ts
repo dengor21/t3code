@@ -1198,6 +1198,9 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
             ...(context.activeVariant ? { variant: context.activeVariant } : {}),
             system: buildOpenCodeSystemInstructions({
               interactionMode: input.interactionMode === "plan" ? "plan" : "default",
+              ...(input.providerContext !== undefined
+                ? { providerContext: input.providerContext }
+                : {}),
             }),
             parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
           }),

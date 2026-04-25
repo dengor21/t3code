@@ -8,6 +8,8 @@ import {
   resolveHostCreationStages,
 } from "@t3tools/shared/hostWorkflow";
 
+import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
+
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
 You work in 3 phases, and you should *chat your way* to a great plan before finalizing it. A great plan is very detailed-intent- and implementation-wise-so that it can be handed to another engineer or agent to be implemented right away. It must be **decision complete**, where the implementer does not need to make any decisions.
@@ -223,9 +225,13 @@ export function buildCodexDeveloperInstructions(input: {
     input.interactionMode === "plan"
       ? CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS
       : CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS;
+  const hostScopeInstructions = buildScopedHostInstructionBlock(input.providerContext);
   const workflowInstructions = buildCodexWorkflowInstructions(input);
-  if (!workflowInstructions) {
+  if (!hostScopeInstructions && !workflowInstructions) {
     return base;
   }
-  return `${base}\n\n${workflowInstructions}`;
+
+  return [base, hostScopeInstructions, workflowInstructions]
+    .filter((section): section is string => typeof section === "string" && section.length > 0)
+    .join("\n\n");
 }

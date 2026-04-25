@@ -122,6 +122,36 @@ describe("buildTurnStartParams", () => {
     });
   });
 
+  it("embeds explicit host-scope developer instructions for host-scoped threads", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Implement it",
+        model: "gpt-5.3-codex",
+        interactionMode: "default",
+        providerContext: {
+          projectKind: "generic",
+          scopedHostName: "nexus",
+        },
+      }),
+    );
+
+    assert.ok(params.collaborationMode);
+    assert.equal(params.collaborationMode?.mode, "default");
+    const developerInstructions =
+      params.collaborationMode?.settings.developer_instructions ?? undefined;
+    assert.ok(developerInstructions);
+    assert.ok(
+      developerInstructions.includes("Host scope:\n- This thread is scoped to host nexus."),
+    );
+    assert.ok(
+      developerInstructions.includes(
+        "Unless the user explicitly broadens the request, treat nexus as the default host",
+      ),
+    );
+  });
+
   it("omits collaboration mode when interaction mode is absent", () => {
     const params = Effect.runSync(
       buildTurnStartParams({
