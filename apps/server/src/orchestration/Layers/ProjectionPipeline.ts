@@ -4,6 +4,7 @@ import {
   type OrchestrationEvent,
   ThreadId,
 } from "@t3tools/contracts";
+import { designerFromScopedHostName } from "@t3tools/shared/threadScope";
 import { Effect, FileSystem, Layer, Option, Path, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -578,7 +579,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       "applyThreadsProjection",
     )(function* (event, attachmentSideEffects) {
       switch (event.type) {
-        case "thread.created":
+        case "thread.created": {
+          const scopedHostName = event.payload.scopedHostName ?? null;
           yield* projectionThreadRepository.upsert({
             threadId: event.payload.threadId,
             projectId: event.payload.projectId,
@@ -588,8 +590,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
-            designer: null,
-            scopedHostName: event.payload.scopedHostName ?? null,
+            designer: designerFromScopedHostName(scopedHostName),
+            scopedHostName,
             workflow: event.payload.workflow ?? null,
             latestTurnId: null,
             createdAt: event.payload.createdAt,
@@ -608,6 +610,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             deletedAt: null,
           });
           return;
+        }
 
         case "thread.archived": {
           const existingRow = yield* projectionThreadRepository.getById({
@@ -693,18 +696,23 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         }
 
         case "thread.turn-start-requested": {
-          if (event.payload.designer === undefined) {
-            return;
-          }
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
           });
           if (Option.isNone(existingRow)) {
             return;
           }
+          const scopedDesigner = designerFromScopedHostName(
+            existingRow.value.scopedHostName ?? null,
+          );
+          const nextDesigner =
+            scopedDesigner ??
+            (event.payload.designer !== undefined
+              ? event.payload.designer
+              : existingRow.value.designer);
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
-            designer: event.payload.designer,
+            designer: nextDesigner,
             updatedAt: event.payload.createdAt,
           });
           return;

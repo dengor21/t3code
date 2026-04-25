@@ -17,6 +17,7 @@ describe("providerTurnPrompt", () => {
         scopedHostName: "nexus",
         flake: {
           flakePath: "flake.nix",
+          hostFlakeAttr: "nixosConfigurations.nexus",
           documentationPaths: {
             generalChanges: "docs/general-changes.md",
             hostDoc: "docs/hosts/nexus.md",
@@ -35,6 +36,12 @@ describe("providerTurnPrompt", () => {
       },
     });
 
+    assert.ok(preamble?.startsWith("Use the following HAL runtime context for this request."));
+    assert.ok(preamble?.includes('<hal_context version="1">'));
+    assert.ok(preamble?.includes("scope: host"));
+    assert.ok(preamble?.includes("host: nexus"));
+    assert.ok(preamble?.includes("scope_status: locked"));
+    assert.ok(preamble?.includes("host_flake_attr: nixosConfigurations.nexus"));
     assert.ok(preamble?.includes("Host scope:"));
     assert.ok(preamble?.includes("This thread is scoped to host nexus."));
     assert.ok(preamble?.includes("This workspace is a Nix flake repository."));
@@ -69,6 +76,7 @@ describe("providerTurnPrompt", () => {
     });
 
     assert.ok(prepared.input?.includes("implementing the approved host-removal plan for nexus."));
+    assert.ok(prepared.input?.includes('<hal_context version="1">'));
     assert.ok(prepared.input?.includes("User request:\nApply the approved removal plan"));
     assert.ok(!prepared.input?.includes("Keep the thread planning-only"));
   });
@@ -84,12 +92,22 @@ describe("providerTurnPrompt", () => {
     assert.equal(
       preamble,
       [
-        "Use the following repo context for this request:",
+        "Use the following HAL runtime context for this request. Treat it as authoritative for scope resolution.",
+        "",
+        '<hal_context version="1">',
+        "project_kind: generic",
+        "scope: host",
+        "host: router",
+        "scope_status: locked",
+        'default_reference_rule: When the user says "it", "this host", "the machine", or omits a host, use router.',
+        "cross_host_rule: Do not modify or deploy other hosts unless the user explicitly broadens scope and approves the wider impact.",
+        "</hal_context>",
         "",
         "Host scope:",
         "- This thread is scoped to host router.",
-        "- Unless the user explicitly broadens the request, treat router as the default host for investigation, planning, implementation, and answers.",
-        "- Before touching other hosts or shared cross-host configuration, call out that wider impact explicitly.",
+        "- The scoped host is the default for investigation, planning, implementation, and answers.",
+        "- Before asking which host is meant, use router. If tools are available, call hal_current_scope before asking the user.",
+        "- Before touching other hosts or shared cross-host configuration, call out the wider impact explicitly and require scope expansion or approval.",
       ].join("\n"),
     );
   });

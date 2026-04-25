@@ -2,6 +2,14 @@ import type { ProviderTurnContext } from "@t3tools/contracts";
 
 import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
 
+const OPENCODE_HAL_SCOPE_RULES = [
+  "HAL scope rules:",
+  '- HAL runtime scope is authoritative. If runtime context says the thread is scoped to a host, use that host for omitted references such as "it", "this host", "the machine", or "deploy it".',
+  "- Do not ask which host is meant unless the runtime context has no host scope.",
+  "- Before asking which host is meant, call `hal_current_scope` when that tool is available. If it returns kind=host, use that host.",
+  "- Before modifying or deploying a different host, or shared configuration that may affect multiple hosts, call out the wider impact and require explicit scope expansion or approval.",
+].join("\n");
+
 const OPENCODE_SHARED_TOOL_RULES = [
   "Question tool rules:",
   "- OpenCode exposes a `question` tool. Do not call `request_user_input`.",
@@ -32,6 +40,8 @@ Default mode rules:
 - Before asking the user anything, first resolve uncertainties through targeted non-mutating exploration.
 - Only ask a question when the answer cannot be discovered from the workspace and the ambiguity materially changes the work.
 
+${OPENCODE_HAL_SCOPE_RULES}
+
 ${OPENCODE_SHARED_TOOL_RULES}`;
 
 export const OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS = `You are running inside T3 Code through OpenCode in planning mode.
@@ -41,6 +51,8 @@ Plan mode rules:
 - Reduce ambiguity by exploring first, then ask only the questions that materially change the plan.
 - Prefer the \`question\` tool for concise multiple-choice decisions when discrete options make sense.
 - Finish with a single decision-complete <proposed_plan> block that is ready for implementation.
+
+${OPENCODE_HAL_SCOPE_RULES}
 
 ${OPENCODE_SHARED_TOOL_RULES}`;
 

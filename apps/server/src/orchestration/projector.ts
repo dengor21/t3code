@@ -10,6 +10,7 @@ import {
   OrchestrationSession,
   OrchestrationThread,
 } from "@t3tools/contracts";
+import { designerFromScopedHostName } from "@t3tools/shared/threadScope";
 import { Effect, Schema } from "effect";
 
 import { toProjectorDecodeError, type OrchestrationProjectorDecodeError } from "./Errors.ts";
@@ -279,6 +280,7 @@ export function projectEvent(
           event.type,
           "payload",
         );
+        const scopedHostName = payload.scopedHostName ?? null;
         const thread: OrchestrationThread = yield* decodeForEvent(
           OrchestrationThread,
           {
@@ -290,8 +292,8 @@ export function projectEvent(
             interactionMode: payload.interactionMode,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
-            designer: null,
-            scopedHostName: payload.scopedHostName ?? null,
+            designer: designerFromScopedHostName(scopedHostName),
+            scopedHostName,
             workflow: payload.workflow ?? null,
             changeTracking: {
               baselineHeadSha: null,
@@ -405,13 +407,21 @@ export function projectEvent(
         event.type,
         "payload",
       ).pipe(
-        Effect.map((payload) => ({
-          ...nextBase,
-          threads: updateThread(nextBase.threads, payload.threadId, {
-            ...(payload.designer !== undefined ? { designer: payload.designer } : {}),
-            updatedAt: event.occurredAt,
-          }),
-        })),
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          const scopedDesigner = designerFromScopedHostName(thread?.scopedHostName ?? null);
+          const nextDesigner =
+            scopedDesigner ??
+            (payload.designer !== undefined ? payload.designer : (thread?.designer ?? null));
+
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              ...(nextDesigner !== null ? { designer: nextDesigner } : {}),
+              updatedAt: event.occurredAt,
+            }),
+          };
+        }),
       );
 
     case "thread.message-sent":

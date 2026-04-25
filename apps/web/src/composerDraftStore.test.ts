@@ -535,6 +535,26 @@ describe("composerDraftStore project draft thread mapping", () => {
     });
   });
 
+  it("coerces a scoped host draft to the matching host designer", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setProjectDraftThreadId(projectRef, draftId, {
+      threadId,
+      scopedHostName: "nexus",
+      designer: {
+        kind: "project",
+      },
+    });
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)).toMatchObject({
+      scopedHostName: "nexus",
+      designer: {
+        kind: "host",
+        hostName: "nexus",
+      },
+    });
+  });
+
   it("clears only matching project draft mapping entries", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });

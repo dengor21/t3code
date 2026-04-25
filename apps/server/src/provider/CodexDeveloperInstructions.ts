@@ -10,6 +10,12 @@ import {
 
 import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
 
+const CODEX_HAL_SCOPE_TOOL_RULES = `HAL scope rules:
+- HAL runtime scope is authoritative. If runtime context says the thread is scoped to a host, use that host for omitted references such as "it", "this host", "the machine", or "deploy it".
+- Do not ask which host is meant unless the runtime context has no host scope.
+- Before asking which host is meant, call hal_current_scope when that tool is available. If it returns kind=host, use that host.
+- Before modifying or deploying a different host, or shared configuration that may affect multiple hosts, call out the wider impact and require explicit scope expansion or approval.`;
+
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
 You work in 3 phases, and you should *chat your way* to a great plan before finalizing it. A great plan is very detailed-intent- and implementation-wise-so that it can be handed to another engineer or agent to be implemented right away. It must be **decision complete**, where the implementer does not need to make any decisions.
@@ -223,8 +229,8 @@ export function buildCodexDeveloperInstructions(input: {
 }): string {
   const base =
     input.interactionMode === "plan"
-      ? CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS
-      : CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS;
+      ? `${CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}`
+      : `${CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}`;
   const hostScopeInstructions = buildScopedHostInstructionBlock(input.providerContext);
   const workflowInstructions = buildCodexWorkflowInstructions(input);
   if (!hostScopeInstructions && !workflowInstructions) {

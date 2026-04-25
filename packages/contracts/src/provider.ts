@@ -25,6 +25,7 @@ import {
   ProviderUserInputAnswers,
   RuntimeMode,
 } from "./orchestration.ts";
+import { NixDesignerScope } from "./nixDesigner.ts";
 
 export const McpServerDescriptor = Schema.Struct({
   id: TrimmedNonEmptyString,
@@ -56,6 +57,7 @@ export type ProviderFlakeDocumentationPaths = typeof ProviderFlakeDocumentationP
 export const ProviderFlakeContext = Schema.Struct({
   flakePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   hostNames: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  hostFlakeAttr: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   documentationPaths: Schema.optional(ProviderFlakeDocumentationPaths),
 });
 export type ProviderFlakeContext = typeof ProviderFlakeContext.Type;
@@ -89,6 +91,19 @@ export const ProviderTurnContext = Schema.Struct({
   workflow: Schema.optional(ProviderWorkflowContext),
 });
 export type ProviderTurnContext = typeof ProviderTurnContext.Type;
+
+export const ProviderScopeReceipt = Schema.Struct({
+  kind: Schema.Literals(["project", "host"]),
+  projectId: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
+  hostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  locked: Schema.Boolean,
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)),
+  mcpScope: Schema.optional(Schema.NullOr(NixDesignerScope)),
+  hostDocPath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  createdAt: IsoDateTime,
+});
+export type ProviderScopeReceipt = typeof ProviderScopeReceipt.Type;
 
 export const ProviderSession = Schema.Struct({
   provider: ProviderKind,

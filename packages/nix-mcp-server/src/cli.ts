@@ -8,6 +8,7 @@ import type { NixValidationResult } from "@t3tools/contracts";
 import {
   buildSearchIndex,
   findOptionDoc,
+  parseScopeLabel,
   parseNixDiagnostics,
   searchOptionDocs,
   searchPackageDocs,
@@ -39,6 +40,9 @@ const PROJECT_ROOT = process.env.T3_NIX_PROJECT_ROOT
   ? resolve(process.env.T3_NIX_PROJECT_ROOT)
   : process.cwd();
 const INDEX_DIR = process.env.T3_NIX_INDEX_DIR ? resolve(process.env.T3_NIX_INDEX_DIR) : null;
+const DESIGNER_SCOPE = parseScopeLabel(process.env.T3_NIX_DESIGNER_SCOPE ?? "project") ?? {
+  kind: "project" as const,
+};
 const VALIDATION_BUDGET_LIMIT = Number(process.env.T3_NIX_VALIDATION_BUDGET ?? "5");
 const VALIDATION_TIMEOUT_MS = Number(process.env.T3_NIX_VALIDATION_TIMEOUT_MS ?? "30000");
 
@@ -126,6 +130,34 @@ function ensurePathWithinWorkspace(candidatePath: string | undefined): string {
   return resolvedPath;
 }
 
+function slugHostName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "host";
+}
+
+function resolveCurrentScope() {
+  if (DESIGNER_SCOPE.kind === "host") {
+    return {
+      kind: "host" as const,
+      hostName: DESIGNER_SCOPE.hostName,
+      workspaceRoot: PROJECT_ROOT,
+      flakeAttr: `nixosConfigurations.${DESIGNER_SCOPE.hostName}`,
+      hostDocPath: `.t3code/docs/hosts/${slugHostName(DESIGNER_SCOPE.hostName)}.md`,
+      rule: "Use this host by default unless the user explicitly broadens scope.",
+    };
+  }
+
+  return {
+    kind: "project" as const,
+    workspaceRoot: PROJECT_ROOT,
+    rule: "No host is locked. Ask before choosing a host-specific write or deployment target.",
+  };
+}
+
 async function runCommand(
   command: string,
   args: ReadonlyArray<string>,
@@ -184,6 +216,14 @@ async function runValidationCommand(
 
 function getToolDefinitions() {
   return [
+    {
+      name: "hal_current_scope",
+      description: "Return the HAL runtime scope attached to this MCP session.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
     {
       name: "search_options",
       description: "Search indexed NixOS option documentation.",
@@ -257,6 +297,9 @@ function getToolDefinitions() {
 async function handleToolCall(toolCall: ToolCallRequest) {
   const args = toolCall.arguments ?? {};
   switch (toolCall.name) {
+    case "hal_current_scope":
+      return toolContent(resolveCurrentScope());
+
     case "search_options": {
       const index = await getIndex();
       const query = String(args.query ?? "").trim();

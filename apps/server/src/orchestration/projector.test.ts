@@ -106,6 +106,44 @@ describe("orchestration projector", () => {
     ]);
   });
 
+  it("derives a host designer when thread.created includes scopedHostName", async () => {
+    const now = new Date().toISOString();
+    const next = await Effect.runPromise(
+      projectEvent(
+        createEmptyReadModel(now),
+        makeEvent({
+          sequence: 1,
+          type: "thread.created",
+          aggregateKind: "thread",
+          aggregateId: "thread-1",
+          occurredAt: now,
+          commandId: "cmd-thread-create-scoped",
+          payload: {
+            threadId: "thread-1",
+            projectId: "project-1",
+            title: "demo",
+            modelSelection: {
+              provider: "codex",
+              model: "gpt-5-codex",
+            },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            scopedHostName: "nexus",
+            createdAt: now,
+            updatedAt: now,
+          },
+        }),
+      ),
+    );
+
+    expect(next.threads[0]?.scopedHostName).toBe("nexus");
+    expect(next.threads[0]?.designer).toEqual({
+      kind: "host",
+      hostName: "nexus",
+    });
+  });
+
   it("fails when event payload cannot be decoded by runtime schema", async () => {
     const now = new Date().toISOString();
     const model = createEmptyReadModel(now);

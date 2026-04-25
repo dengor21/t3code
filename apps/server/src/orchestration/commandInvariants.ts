@@ -7,9 +7,11 @@ import type {
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { designerFromScopedHostName, designerScopesEqual } from "@t3tools/shared/threadScope";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
+import { assertThreadScopeCoherent } from "./threadScope.ts";
 
 function invariantError(commandType: string, detail: string): OrchestrationCommandInvariantError {
   return new OrchestrationCommandInvariantError({
@@ -143,44 +145,90 @@ export function requireThreadAbsent(input: {
   );
 }
 
-function designerScopesEqual(
-  left: NixDesignerScope | null | undefined,
-  right: NixDesignerScope | null | undefined,
-): boolean {
-  if (left === right) return true;
-  if (left == null || right == null) return left == null && right == null;
-  if (left.kind !== right.kind) return false;
-  if (left.kind === "project") {
-    return true;
-  }
-  return right.kind === "host" && left.hostName === right.hostName;
-}
-
 export function requireImmutableThreadDesigner(input: {
   readonly thread: OrchestrationThread;
   readonly command: OrchestrationCommand;
   readonly requestedDesigner: NixDesignerScope | null | undefined;
 }): Effect.Effect<void, OrchestrationCommandInvariantError> {
   const currentDesigner = input.thread.designer ?? null;
+  const scopedDesigner = designerFromScopedHostName(input.thread.scopedHostName ?? null);
+  const effectiveCurrentDesigner =
+    scopedDesigner !== null && !designerScopesEqual(currentDesigner, scopedDesigner)
+      ? scopedDesigner
+      : currentDesigner;
 
   if (input.requestedDesigner === undefined) {
     return Effect.void;
   }
 
-  if (currentDesigner === null) {
+  if (effectiveCurrentDesigner === null) {
     return Effect.void;
   }
 
-  if (designerScopesEqual(currentDesigner, input.requestedDesigner)) {
+  if (designerScopesEqual(effectiveCurrentDesigner, input.requestedDesigner)) {
     return Effect.void;
   }
 
   return Effect.fail(
     invariantError(
       input.command.type,
-      `Thread '${input.thread.id}' already has immutable designer scope '${JSON.stringify(currentDesigner)}'.`,
+      `Thread '${input.thread.id}' already has immutable designer scope '${JSON.stringify(effectiveCurrentDesigner)}'.`,
     ),
   );
+}
+
+export function requireThreadScopeDesignerConsistency(input: {
+  readonly thread: OrchestrationThread;
+  readonly command: OrchestrationCommand;
+  readonly requestedDesigner: NixDesignerScope | null | undefined;
+}): Effect.Effect<void, OrchestrationCommandInvariantError> {
+  const scopedDesigner = designerFromScopedHostName(input.thread.scopedHostName ?? null);
+
+  try {
+    const coherenceInput = {
+      threadId: input.thread.id,
+      scopedHostName: input.thread.scopedHostName ?? null,
+      currentDesigner: input.thread.designer ?? null,
+      ...(input.requestedDesigner !== undefined
+        ? { requestedDesigner: input.requestedDesigner }
+        : {}),
+    };
+    assertThreadScopeCoherent(coherenceInput);
+  } catch (cause) {
+    return Effect.fail(
+      invariantError(
+        input.command.type,
+        cause instanceof Error ? cause.message : "Thread scope and designer are incoherent.",
+      ),
+    );
+  }
+
+  if (scopedDesigner === null) {
+    return Effect.void;
+  }
+
+  if (input.requestedDesigner?.kind === "project") {
+    return Effect.fail(
+      invariantError(
+        input.command.type,
+        `Thread '${input.thread.id}' is scoped to host '${scopedDesigner.hostName}' and cannot downgrade to project scope.`,
+      ),
+    );
+  }
+
+  if (
+    input.requestedDesigner?.kind === "host" &&
+    !designerScopesEqual(scopedDesigner, input.requestedDesigner)
+  ) {
+    return Effect.fail(
+      invariantError(
+        input.command.type,
+        `Thread '${input.thread.id}' is scoped to host '${scopedDesigner.hostName}' and cannot switch to host '${input.requestedDesigner.hostName}'.`,
+      ),
+    );
+  }
+
+  return Effect.void;
 }
 
 export function requireNonNegativeInteger(input: {

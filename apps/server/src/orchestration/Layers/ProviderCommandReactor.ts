@@ -3,8 +3,13 @@ import {
   CommandId,
   EventId,
   type ModelSelection,
+  type NixDesignerScope,
   type OrchestrationEvent,
+  type OrchestrationProject,
+  type OrchestrationThread,
   ProviderKind,
+  type ProviderScopeReceipt,
+  type ProviderTurnContext,
   type OrchestrationSession,
   ThreadId,
   type ProviderSession,
@@ -12,6 +17,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import { scopeToLabel } from "@t3tools/nix-knowledge";
 import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Stream } from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
@@ -26,6 +32,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { buildProviderTurnContext } from "../../provider/providerContext.ts";
 import { NixDesignerService } from "../../project/Services/NixDesignerService.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
+import { resolveThreadScope } from "../threadScope.ts";
 import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
@@ -78,6 +85,73 @@ const HANDLED_TURN_START_KEY_MAX = 10_000;
 const HANDLED_TURN_START_KEY_TTL = Duration.minutes(30);
 const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 const DEFAULT_THREAD_TITLE = "New thread";
+
+function resolveProviderScopeState(input: {
+  readonly project: OrchestrationProject | undefined;
+  readonly thread: OrchestrationThread;
+}): {
+  readonly providerContext?: ProviderTurnContext;
+  readonly resolvedScope: ReturnType<typeof resolveThreadScope> | null;
+  readonly designerScope: NixDesignerScope | null;
+  readonly mcpScope: NixDesignerScope | null;
+  readonly mcpScopeLabel: string | null;
+} {
+  const providerContext =
+    input.project !== undefined
+      ? buildProviderTurnContext({
+          project: input.project,
+          thread: input.thread,
+        })
+      : undefined;
+  const resolvedScope =
+    input.project !== undefined
+      ? resolveThreadScope({
+          project: input.project,
+          thread: input.thread,
+        })
+      : null;
+  const designerScope =
+    resolvedScope === null
+      ? null
+      : resolvedScope.kind === "host"
+        ? { kind: "host" as const, hostName: resolvedScope.hostName }
+        : { kind: "project" as const };
+  const mcpScope = providerContext?.projectKind === "nix-flake" ? designerScope : null;
+  return {
+    ...(providerContext !== undefined ? { providerContext } : {}),
+    resolvedScope,
+    designerScope,
+    mcpScope,
+    mcpScopeLabel: mcpScope ? scopeToLabel(mcpScope) : null,
+  };
+}
+
+function buildProviderScopeReceipt(input: {
+  readonly createdAt: string;
+  readonly resolvedScope: ReturnType<typeof resolveThreadScope> | null;
+  readonly designerScope: NixDesignerScope | null;
+  readonly mcpScope: NixDesignerScope | null;
+}): ProviderScopeReceipt | null {
+  if (input.resolvedScope === null) {
+    return null;
+  }
+
+  return {
+    kind: input.resolvedScope.kind,
+    projectId: input.resolvedScope.projectId,
+    workspaceRoot: input.resolvedScope.workspaceRoot,
+    ...(input.resolvedScope.kind === "host"
+      ? {
+          hostName: input.resolvedScope.hostName,
+          hostDocPath: input.resolvedScope.hostDocPath ?? null,
+        }
+      : {}),
+    locked: input.resolvedScope.locked,
+    designer: input.designerScope,
+    mcpScope: input.mcpScope,
+    createdAt: input.createdAt,
+  };
+}
 
 function canReplaceThreadTitle(currentTitle: string, titleSeed?: string): boolean {
   const trimmedCurrentTitle = currentTitle.trim();
@@ -173,6 +247,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const threadMcpScopeLabels = new Map<string, string | null>();
 
   const appendProviderFailureActivity = (input: {
     readonly threadId: ThreadId;
@@ -201,6 +276,31 @@ const make = Effect.gen(function* () {
           detail: input.detail,
           ...(input.requestId ? { requestId: input.requestId } : {}),
         },
+        turnId: input.turnId,
+        createdAt: input.createdAt,
+      },
+      createdAt: input.createdAt,
+    });
+
+  const appendProviderScopeReceiptActivity = (input: {
+    readonly threadId: ThreadId;
+    readonly turnId: TurnId;
+    readonly createdAt: string;
+    readonly receipt: ProviderScopeReceipt;
+  }) =>
+    orchestrationEngine.dispatch({
+      type: "thread.activity.append",
+      commandId: serverCommandId("provider-scope-receipt"),
+      threadId: input.threadId,
+      activity: {
+        id: EventId.make(crypto.randomUUID()),
+        tone: "info",
+        kind: "provider.scope.receipt",
+        summary:
+          input.receipt.kind === "host" && input.receipt.hostName
+            ? `Scope sent to agent: host ${input.receipt.hostName}`
+            : "Scope sent to agent: project",
+        payload: input.receipt,
         turnId: input.turnId,
         createdAt: input.createdAt,
       },
@@ -298,13 +398,17 @@ const make = Effect.gen(function* () {
       projects: readModel.projects,
     });
     const project = readModel.projects.find((entry) => entry.id === thread.projectId);
+    const scopeState = resolveProviderScopeState({
+      project,
+      thread,
+    });
     const mcpServers =
-      thread.designer && project
+      scopeState.mcpScope && project
         ? [
             yield* nixDesignerService.createDescriptor({
               projectId: project.id,
               workspaceRoot: project.workspaceRoot,
-              scope: thread.designer,
+              scope: scopeState.mcpScope,
             }),
           ]
         : undefined;
@@ -342,7 +446,11 @@ const make = Effect.gen(function* () {
           updatedAt: session.updatedAt,
         },
         createdAt,
-      });
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => threadMcpScopeLabels.set(threadId, scopeState.mcpScopeLabel)),
+        ),
+      );
 
     const activeSession = yield* resolveActiveSession(threadId);
     const existingSessionThreadId =
@@ -362,11 +470,14 @@ const make = Effect.gen(function* () {
         currentProvider === "claudeAgent" &&
         requestedModelSelection !== undefined &&
         !Equal.equals(previousModelSelection, requestedModelSelection);
+      const previousMcpScopeLabel = threadMcpScopeLabels.get(threadId) ?? null;
+      const shouldRestartForScopeChange = previousMcpScopeLabel !== scopeState.mcpScopeLabel;
 
       if (
         !runtimeModeChanged &&
         !shouldRestartForModelChange &&
-        !shouldRestartForModelSelectionChange
+        !shouldRestartForModelSelectionChange &&
+        !shouldRestartForScopeChange
       ) {
         return existingSessionThreadId;
       }
@@ -385,6 +496,9 @@ const make = Effect.gen(function* () {
         modelChanged,
         shouldRestartForModelChange,
         shouldRestartForModelSelectionChange,
+        previousMcpScopeLabel,
+        desiredMcpScopeLabel: scopeState.mcpScopeLabel,
+        shouldRestartForScopeChange,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession(
@@ -452,21 +566,29 @@ const make = Effect.gen(function* () {
             }
           : requestedModelSelection
         : input.modelSelection;
-    const providerContext =
-      project !== undefined
-        ? buildProviderTurnContext({
-            project,
-            thread,
-          })
-        : undefined;
+    const scopeState = resolveProviderScopeState({
+      project,
+      thread,
+    });
+    const scopeReceipt = buildProviderScopeReceipt({
+      createdAt: input.createdAt,
+      resolvedScope: scopeState.resolvedScope,
+      designerScope: scopeState.designerScope,
+      mcpScope: scopeState.mcpScope,
+    });
 
     return {
-      threadId: input.threadId,
-      ...(normalizedInput ? { input: normalizedInput } : {}),
-      ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
-      ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
-      ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
-      ...(providerContext !== undefined ? { providerContext } : {}),
+      sendTurnInput: {
+        threadId: input.threadId,
+        ...(normalizedInput ? { input: normalizedInput } : {}),
+        ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
+        ...(modelForTurn !== undefined ? { modelSelection: modelForTurn } : {}),
+        ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
+        ...(scopeState.providerContext !== undefined
+          ? { providerContext: scopeState.providerContext }
+          : {}),
+      },
+      scopeReceipt,
     };
   });
 
@@ -680,9 +802,20 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    yield* providerService
-      .sendTurn(sendTurnRequest.value)
-      .pipe(Effect.catchCause(recoverTurnStartFailure), Effect.forkScoped);
+    yield* providerService.sendTurn(sendTurnRequest.value.sendTurnInput).pipe(
+      Effect.tap((result) =>
+        sendTurnRequest.value.scopeReceipt !== null
+          ? appendProviderScopeReceiptActivity({
+              threadId: event.payload.threadId,
+              turnId: result.turnId,
+              createdAt: event.payload.createdAt,
+              receipt: sendTurnRequest.value.scopeReceipt,
+            })
+          : Effect.void,
+      ),
+      Effect.catchCause(recoverTurnStartFailure),
+      Effect.forkScoped,
+    );
   });
 
   const processTurnInterruptRequested = Effect.fn("processTurnInterruptRequested")(function* (
@@ -812,6 +945,7 @@ const make = Effect.gen(function* () {
     if (thread.session && thread.session.status !== "stopped") {
       yield* providerService.stopSession({ threadId: thread.id });
     }
+    yield* Effect.sync(() => threadMcpScopeLabels.delete(thread.id));
 
     yield* setThreadSession({
       threadId: thread.id,

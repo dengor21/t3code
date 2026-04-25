@@ -490,3 +490,15 @@ export function scopeToLabel(scope: NixDesignerScope | null | undefined): string
   }
   return `host:${scope.hostName}`;
 }
+
+export function parseScopeLabel(label: string | null | undefined): NixDesignerScope | null {
+  const normalized = label?.trim() ?? "";
+  if (normalized.length === 0 || normalized === "project") {
+    return { kind: "project" };
+  }
+  if (!normalized.startsWith("host:")) {
+    return null;
+  }
+  const hostName = normalized.slice("host:".length).trim();
+  return hostName.length > 0 ? { kind: "host", hostName } : null;
+}

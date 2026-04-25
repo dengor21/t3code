@@ -53,10 +53,8 @@ describe("OpenCodeSystemInstructions", () => {
 
     assert.ok(instructions.includes("Host scope:"));
     assert.ok(instructions.includes("This thread is scoped to host nexus."));
-    assert.ok(
-      instructions.includes(
-        "Unless the user explicitly broadens the request, treat nexus as the default host",
-      ),
-    );
+    assert.ok(instructions.includes("HAL scope rules:"));
+    assert.ok(instructions.includes("call `hal_current_scope`"));
+    assert.ok(instructions.includes("The scoped host is the default"));
   });
 });

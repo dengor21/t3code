@@ -328,6 +328,67 @@ describe("deriveMessagesTimelineRows", () => {
     expect(userRow?.revertTurnCount).toBe(1);
     expect(assistantRow?.assistantTurnDiffSummary).toBe(assistantTurnDiffSummary);
   });
+
+  it("keeps provider scope receipt work entries separate from adjacent work logs", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "scope-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "scope-entry",
+            createdAt: "2026-01-01T00:00:05Z",
+            label: "Scope sent to agent: host nexus",
+            tone: "info",
+            scopeReceipt: {
+              kind: "host",
+              projectId: "project-1",
+              workspaceRoot: "/srv/infra",
+              hostName: "nexus",
+              locked: true,
+              designer: {
+                kind: "host",
+                hostName: "nexus",
+              },
+              mcpScope: {
+                kind: "host",
+                hostName: "nexus",
+              },
+              hostDocPath: ".t3code/docs/hosts/nexus.md",
+              createdAt: "2026-01-01T00:00:05Z",
+            },
+          },
+        },
+        {
+          id: "tool-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:06Z",
+          entry: {
+            id: "tool-entry",
+            createdAt: "2026-01-01T00:00:06Z",
+            label: "Ran nix flake check",
+            tone: "tool",
+          },
+        },
+      ],
+      completionDividerBeforeEntryId: null,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const workRows = rows.filter(
+      (row): row is Extract<(typeof rows)[number], { kind: "work" }> => row.kind === "work",
+    );
+
+    expect(workRows).toHaveLength(2);
+    expect(workRows[0]?.groupedEntries).toHaveLength(1);
+    expect(workRows[0]?.groupedEntries[0]?.scopeReceipt?.hostName).toBe("nexus");
+    expect(workRows[1]?.groupedEntries).toHaveLength(1);
+    expect(workRows[1]?.groupedEntries[0]?.label).toBe("Ran nix flake check");
+  });
 });
 
 describe("computeStableMessagesTimelineRows", () => {

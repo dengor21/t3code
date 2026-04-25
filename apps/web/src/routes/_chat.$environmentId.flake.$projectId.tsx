@@ -29,6 +29,7 @@ import {
   normalizeHostCreationHostName,
   resolveHostCreationTarget,
 } from "@t3tools/shared/hostWorkflow";
+import { designerFromScopedHostName } from "@t3tools/shared/threadScope";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
@@ -911,6 +912,10 @@ function FlakeDashboardRouteView() {
     () => (nixDesignerEnabled ? ({ kind: "project" } as const) : null),
     [nixDesignerEnabled],
   );
+  const resolveThreadDesigner = useCallback(
+    (scopedHostName: string | null) => designerFromScopedHostName(scopedHostName) ?? designerScope,
+    [designerScope],
+  );
   const previousDashboardViewRef = useRef<FlakeDashboardView | undefined>(search.view);
 
   const resetDeployDialogOptions = useCallback(() => {
@@ -1334,11 +1339,11 @@ function FlakeDashboardRouteView() {
       return;
     }
     void handleNewThread(projectRef, {
-      ...(designerScope ? { designer: designerScope } : {}),
+      ...(resolveThreadDesigner(null) ? { designer: resolveThreadDesigner(null) } : {}),
       scopedHostName: null,
       workflow: null,
     });
-  }, [designerScope, handleNewThread, projectRef]);
+  }, [handleNewThread, projectRef, resolveThreadDesigner]);
 
   const handleStartHostThread = useCallback(
     (host: FlakeHost) => {
@@ -1346,12 +1351,12 @@ function FlakeDashboardRouteView() {
         return;
       }
       void handleNewThread(projectRef, {
-        ...(designerScope ? { designer: designerScope } : {}),
+        ...(resolveThreadDesigner(host.name) ? { designer: resolveThreadDesigner(host.name) } : {}),
         scopedHostName: host.name,
         workflow: null,
       });
     },
-    [designerScope, handleNewThread, projectRef],
+    [handleNewThread, projectRef, resolveThreadDesigner],
   );
 
   const handleRemoveHostThread = useCallback(
@@ -1360,7 +1365,7 @@ function FlakeDashboardRouteView() {
         return;
       }
       void handleNewThread(projectRef, {
-        ...(designerScope ? { designer: designerScope } : {}),
+        ...(resolveThreadDesigner(host.name) ? { designer: resolveThreadDesigner(host.name) } : {}),
         scopedHostName: host.name,
         interactionMode: "plan",
         workflow: {
@@ -1372,7 +1377,7 @@ function FlakeDashboardRouteView() {
         },
       });
     },
-    [designerScope, handleNewThread, projectRef],
+    [handleNewThread, projectRef, resolveThreadDesigner],
   );
 
   const existingHostNameSet = useMemo(() => {
@@ -1435,7 +1440,7 @@ function FlakeDashboardRouteView() {
     const hostName = normalizedCreateHostName;
     const target = resolveHostCreationTarget(createHostTarget, hostName);
     await handleNewThread(projectRef, {
-      ...(designerScope ? { designer: designerScope } : {}),
+      ...(resolveThreadDesigner(hostName) ? { designer: resolveThreadDesigner(hostName) } : {}),
       scopedHostName: hostName,
       interactionMode: "plan",
       workflow: {
@@ -1465,8 +1470,8 @@ function FlakeDashboardRouteView() {
     handleNewThread,
     normalizedCreateHostSourceSshTarget,
     normalizedCreateHostName,
-    designerScope,
     projectRef,
+    resolveThreadDesigner,
     resetCreateHostForm,
   ]);
 

@@ -1,9 +1,5 @@
 import type { NixDesignerScope, ThreadWorkflow } from "@t3tools/contracts";
-
-function normalizeScopedHostName(value: string | null | undefined): string | null {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
-}
+import { designerScopesEqual, normalizeHostName } from "@t3tools/shared/threadScope";
 
 function workflowsEqual(
   left: ThreadWorkflow | null | undefined,
@@ -41,22 +37,6 @@ function workflowsEqual(
   }
 }
 
-function designerScopesEqual(
-  left: NixDesignerScope | null | undefined,
-  right: NixDesignerScope | null | undefined,
-): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (!left || !right || left.kind !== right.kind) {
-    return false;
-  }
-  if (left.kind === "project") {
-    return true;
-  }
-  return right.kind === "host" && left.hostName === right.hostName;
-}
-
 export function shouldReuseDraftForThreadStart(input: {
   requestedDesigner?: NixDesignerScope | null;
   existingDesigner?: NixDesignerScope | null;
@@ -66,8 +46,8 @@ export function shouldReuseDraftForThreadStart(input: {
   existingWorkflow?: ThreadWorkflow | null;
   existingPrompt?: string | null;
 }): boolean {
-  const requestedScopedHostName = normalizeScopedHostName(input.requestedScopedHostName);
-  const existingScopedHostName = normalizeScopedHostName(input.existingScopedHostName);
+  const requestedScopedHostName = normalizeHostName(input.requestedScopedHostName);
+  const existingScopedHostName = normalizeHostName(input.existingScopedHostName);
   if (!designerScopesEqual(input.requestedDesigner ?? null, input.existingDesigner ?? null)) {
     return false;
   }

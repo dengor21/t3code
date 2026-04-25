@@ -25,6 +25,7 @@ import type {
 import { ProviderKind } from "@t3tools/contracts";
 import { Schema } from "effect";
 import { resolveModelSlugForProvider } from "@t3tools/shared/model";
+import { designerFromScopedHostName } from "@t3tools/shared/threadScope";
 import { create } from "zustand";
 import {
   type ChatMessage,
@@ -1383,6 +1384,7 @@ function applyEnvironmentOrchestrationEvent(
           interactionMode: event.payload.interactionMode,
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
+          designer: designerFromScopedHostName(event.payload.scopedHostName ?? null),
           scopedHostName: event.payload.scopedHostName ?? null,
           workflow: event.payload.workflow ?? null,
           changeTracking: null,
@@ -1454,6 +1456,7 @@ function applyEnvironmentOrchestrationEvent(
         ...(event.payload.modelSelection !== undefined
           ? { modelSelection: normalizeModelSelection(event.payload.modelSelection) }
           : {}),
+        ...(event.payload.designer !== undefined ? { designer: event.payload.designer } : {}),
         runtimeMode: event.payload.runtimeMode,
         interactionMode: event.payload.interactionMode,
         pendingSourceProposedPlan: event.payload.sourceProposedPlan,

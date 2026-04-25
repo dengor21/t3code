@@ -129,10 +129,18 @@ export function deriveMessagesTimelineRows(input: {
 
     if (timelineEntry.kind === "work") {
       const groupedEntries = [timelineEntry.entry];
+      const shouldKeepSeparate = timelineEntry.entry.scopeReceipt !== undefined;
       let cursor = index + 1;
       while (cursor < input.timelineEntries.length) {
         const nextEntry = input.timelineEntries[cursor];
-        if (!nextEntry || nextEntry.kind !== "work") break;
+        if (
+          shouldKeepSeparate ||
+          !nextEntry ||
+          nextEntry.kind !== "work" ||
+          nextEntry.entry.scopeReceipt !== undefined
+        ) {
+          break;
+        }
         groupedEntries.push(nextEntry.entry);
         cursor += 1;
       }

@@ -140,9 +140,53 @@ describe("buildProviderTurnContext", () => {
       scopedHostName: "bc250",
       flake: {
         flakePath: "flake.nix",
+        hostFlakeAttr: "nixosConfigurations.bc250",
         documentationPaths: {
           generalChanges: ".t3code/changes.md",
           hostDoc: ".t3code/docs/hosts/bc250.md",
+        },
+      },
+    });
+  });
+
+  it("derives scoped provider context from a host designer when scopedHostName is absent", () => {
+    expect(
+      buildProviderTurnContext({
+        project: {
+          ...baseProject,
+          flakeMetadata: {
+            host: null,
+            hosts: [
+              {
+                name: "nexus",
+                target: "root@nexus",
+                type: "nixos",
+              },
+            ],
+            source: "parsed-flake",
+            flakePath: "flake.nix",
+            diagnostics: [],
+          },
+        },
+        thread: {
+          ...baseThread,
+          designer: {
+            kind: "host",
+            hostName: "nexus",
+          },
+        },
+      }),
+    ).toEqual({
+      projectKind: "nix-flake",
+      workspaceRoot: "/workspace/flake",
+      scopedHostName: "nexus",
+      flake: {
+        flakePath: "flake.nix",
+        hostNames: ["nexus"],
+        hostFlakeAttr: "nixosConfigurations.nexus",
+        documentationPaths: {
+          generalChanges: ".t3code/changes.md",
+          hostDoc: ".t3code/docs/hosts/nexus.md",
         },
       },
     });

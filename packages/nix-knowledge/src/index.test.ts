@@ -6,6 +6,7 @@ import {
   findOptionDoc,
   normalizeNixOptionDocs,
   normalizeNixPackageDocs,
+  parseScopeLabel,
   parseNixDiagnostics,
   resolveLockedNixpkgsRevision,
   scopeToLabel,
@@ -227,6 +228,17 @@ describe("defaultIndexManifest", () => {
       lastError: null,
       staleReason: null,
     });
+    expect(scopeToLabel({ kind: "project" })).toBe("project");
+    expect(scopeToLabel({ kind: "host", hostName: "builder" })).toBe("host:builder");
+  });
+});
+
+describe("scope labels", () => {
+  it("parses and formats project and host scope labels", () => {
+    expect(parseScopeLabel("project")).toEqual({ kind: "project" });
+    expect(parseScopeLabel("host:builder")).toEqual({ kind: "host", hostName: "builder" });
+    expect(parseScopeLabel("")).toEqual({ kind: "project" });
+    expect(parseScopeLabel("invalid")).toBeNull();
     expect(scopeToLabel({ kind: "project" })).toBe("project");
     expect(scopeToLabel({ kind: "host", hostName: "builder" })).toBe("host:builder");
   });

@@ -186,4 +186,61 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("t3code/apps/web/src/session-logic.ts");
     expect(markup).not.toContain("C:/Users/mike/dev-stuff/t3code/apps/web/src/session-logic.ts");
   });
+
+  it("renders scope receipts and warns when the assistant asks which host in a locked thread", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            id: "entry-scope",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:20.000Z",
+            entry: {
+              id: "scope-receipt",
+              createdAt: "2026-03-17T19:12:20.000Z",
+              label: "Scope sent to agent: host nexus",
+              tone: "info",
+              scopeReceipt: {
+                kind: "host",
+                projectId: "project-1",
+                workspaceRoot: "/srv/infra",
+                hostName: "nexus",
+                locked: true,
+                designer: {
+                  kind: "host",
+                  hostName: "nexus",
+                },
+                mcpScope: {
+                  kind: "host",
+                  hostName: "nexus",
+                },
+                hostDocPath: ".t3code/docs/hosts/nexus.md",
+                createdAt: "2026-03-17T19:12:20.000Z",
+              },
+            },
+          },
+          {
+            id: "entry-assistant",
+            kind: "message",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            message: {
+              id: MessageId.make("message-assistant-scope"),
+              role: "assistant",
+              text: "Which host?",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              streaming: false,
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Scope sent to agent: host nexus");
+    expect(markup).toContain("Locked • /srv/infra");
+    expect(markup).toContain(
+      "This thread is already scoped to nexus. The assistant may have missed the scope.",
+    );
+  });
 });

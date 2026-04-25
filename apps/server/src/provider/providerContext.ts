@@ -12,6 +12,7 @@ import {
   resolveProjectHosts,
   slugHostName,
 } from "../orchestration/DocumentationUtils.ts";
+import { resolveThreadScope } from "../orchestration/threadScope.ts";
 
 function isFlakeProject(project: OrchestrationProject): boolean {
   const flakeMetadata = project.flakeMetadata ?? null;
@@ -26,7 +27,11 @@ export function buildProviderTurnContext(input: {
   readonly thread: OrchestrationThread;
 }): ProviderTurnContext {
   const flakeProject = isFlakeProject(input.project);
-  const scopedHostName = input.thread.scopedHostName ?? null;
+  const resolvedScope = resolveThreadScope({
+    project: input.project,
+    thread: input.thread,
+  });
+  const scopedHostName = resolvedScope.kind === "host" ? resolvedScope.hostName : null;
   const workflow =
     input.thread.workflow?.kind === "host-creation"
       ? {
@@ -81,10 +86,19 @@ export function buildProviderTurnContext(input: {
   const flakeContext: NonNullable<ProviderTurnContext["flake"]> = {
     flakePath: flakeMetadata?.flakePath ?? null,
     ...(hostNames.length > 0 ? { hostNames } : {}),
+    ...(resolvedScope.kind === "host" && resolvedScope.flakeAttr
+      ? { hostFlakeAttr: resolvedScope.flakeAttr }
+      : {}),
     documentationPaths: {
       generalChanges: GENERAL_CHANGELOG_PATH,
       ...(scopedHostName !== null
-        ? { hostDoc: `${HOST_DOCS_DIR}/${slugHostName(scopedHostName)}.md` }
+        ? {
+            hostDoc:
+              resolvedScope.kind === "host"
+                ? (resolvedScope.hostDocPath ??
+                  `${HOST_DOCS_DIR}/${slugHostName(scopedHostName)}.md`)
+                : `${HOST_DOCS_DIR}/${slugHostName(scopedHostName)}.md`,
+          }
         : {}),
     },
   };

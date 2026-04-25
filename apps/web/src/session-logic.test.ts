@@ -748,6 +748,54 @@ describe("deriveWorkLogEntries", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["first", "second"]);
   });
 
+  it("parses provider scope receipts into dedicated work log entries", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "scope-receipt",
+        kind: "provider.scope.receipt",
+        summary: "Scope sent to agent: host nexus",
+        tone: "info",
+        payload: {
+          kind: "host",
+          projectId: "project-1",
+          workspaceRoot: "/srv/infra",
+          hostName: "nexus",
+          locked: true,
+          designer: {
+            kind: "host",
+            hostName: "nexus",
+          },
+          mcpScope: {
+            kind: "host",
+            hostName: "nexus",
+          },
+          hostDocPath: ".t3code/docs/hosts/nexus.md",
+          createdAt: "2026-02-23T00:00:03.000Z",
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.label).toBe("Scope sent to agent: host nexus");
+    expect(entry?.scopeReceipt).toEqual({
+      kind: "host",
+      projectId: "project-1",
+      workspaceRoot: "/srv/infra",
+      hostName: "nexus",
+      locked: true,
+      designer: {
+        kind: "host",
+        hostName: "nexus",
+      },
+      mcpScope: {
+        kind: "host",
+        hostName: "nexus",
+      },
+      hostDocPath: ".t3code/docs/hosts/nexus.md",
+      createdAt: "2026-02-23T00:00:03.000Z",
+    });
+  });
+
   it("extracts command text for command tool activities", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

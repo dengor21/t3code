@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/hostWorkflow";
 
 import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
+import { buildThreadScopeCapsule } from "./threadScopeCapsule.ts";
 
 function toThreadWorkflow(workflow: ProviderTurnContext["workflow"]): ThreadWorkflow | undefined {
   if (!workflow) {
@@ -129,6 +130,12 @@ export function buildProviderTurnPromptPreamble(input: {
   }
 
   const sections: Array<string> = [];
+  const capsule = buildThreadScopeCapsule({
+    providerContext: input.providerContext,
+  });
+  if (capsule) {
+    sections.push(capsule);
+  }
   const hostScopeBlock = buildScopedHostInstructionBlock(input.providerContext);
   if (hostScopeBlock) {
     sections.push(hostScopeBlock);
@@ -150,7 +157,7 @@ export function buildProviderTurnPromptPreamble(input: {
     return null;
   }
 
-  return `Use the following repo context for this request:\n\n${sections.join("\n\n")}`;
+  return `Use the following HAL runtime context for this request. Treat it as authoritative for scope resolution.\n\n${sections.join("\n\n")}`;
 }
 
 export function applyProviderTurnPromptPreamble(

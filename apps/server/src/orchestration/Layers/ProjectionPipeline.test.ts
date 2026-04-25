@@ -2220,6 +2220,117 @@ engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
     }),
   );
 
+  it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-scope-normalize-")))(
+    "OrchestrationProjectionPipeline via engine dispatch",
+    (it) => {
+      it.effect(
+        "normalizes conflicting turn-start designers back to the scoped host during projection",
+        () =>
+          Effect.gen(function* () {
+            const projectionPipeline = yield* OrchestrationProjectionPipeline;
+            const eventStore = yield* OrchestrationEventStore;
+            const sql = yield* SqlClient.SqlClient;
+            const appendAndProject = (event: Parameters<typeof eventStore.append>[0]) =>
+              eventStore
+                .append(event)
+                .pipe(Effect.flatMap((savedEvent) => projectionPipeline.projectEvent(savedEvent)));
+
+            yield* appendAndProject({
+              type: "project.created",
+              eventId: EventId.make("evt-scope-normalize-1"),
+              aggregateKind: "project",
+              aggregateId: ProjectId.make("project-scope-normalize"),
+              occurredAt: "2026-02-26T15:00:00.000Z",
+              commandId: CommandId.make("cmd-scope-normalize-1"),
+              causationEventId: null,
+              correlationId: CorrelationId.make("cmd-scope-normalize-1"),
+              metadata: {},
+              payload: {
+                projectId: ProjectId.make("project-scope-normalize"),
+                title: "Project Scope Normalize",
+                workspaceRoot: "/tmp/project-scope-normalize",
+                defaultModelSelection: null,
+                scripts: [],
+                createdAt: "2026-02-26T15:00:00.000Z",
+                updatedAt: "2026-02-26T15:00:00.000Z",
+              },
+            });
+
+            yield* appendAndProject({
+              type: "thread.created",
+              eventId: EventId.make("evt-scope-normalize-2"),
+              aggregateKind: "thread",
+              aggregateId: ThreadId.make("thread-scope-normalize"),
+              occurredAt: "2026-02-26T15:00:01.000Z",
+              commandId: CommandId.make("cmd-scope-normalize-2"),
+              causationEventId: null,
+              correlationId: CorrelationId.make("cmd-scope-normalize-2"),
+              metadata: {},
+              payload: {
+                threadId: ThreadId.make("thread-scope-normalize"),
+                projectId: ProjectId.make("project-scope-normalize"),
+                title: "Thread Scope Normalize",
+                modelSelection: {
+                  provider: "codex",
+                  model: "gpt-5-codex",
+                },
+                interactionMode: "default",
+                runtimeMode: "approval-required",
+                branch: null,
+                worktreePath: null,
+                scopedHostName: "nexus",
+                createdAt: "2026-02-26T15:00:01.000Z",
+                updatedAt: "2026-02-26T15:00:01.000Z",
+              },
+            });
+
+            yield* appendAndProject({
+              type: "thread.turn-start-requested",
+              eventId: EventId.make("evt-scope-normalize-3"),
+              aggregateKind: "thread",
+              aggregateId: ThreadId.make("thread-scope-normalize"),
+              occurredAt: "2026-02-26T15:00:02.000Z",
+              commandId: CommandId.make("cmd-scope-normalize-3"),
+              causationEventId: null,
+              correlationId: CorrelationId.make("cmd-scope-normalize-3"),
+              metadata: {},
+              payload: {
+                threadId: ThreadId.make("thread-scope-normalize"),
+                messageId: MessageId.make("message-scope-normalize"),
+                runtimeMode: "approval-required",
+                designer: {
+                  kind: "host",
+                  hostName: "router",
+                },
+                createdAt: "2026-02-26T15:00:02.000Z",
+              },
+            });
+
+            const threadRows = yield* sql<{
+              readonly scopedHostName: string | null;
+              readonly designerJson: string | null;
+            }>`
+            SELECT
+              scoped_host_name AS "scopedHostName",
+              designer_json AS "designerJson"
+            FROM projection_threads
+            WHERE thread_id = 'thread-scope-normalize'
+          `;
+
+            assert.deepEqual(threadRows, [
+              {
+                scopedHostName: "nexus",
+                designerJson: JSON.stringify({
+                  kind: "host",
+                  hostName: "nexus",
+                }),
+              },
+            ]);
+          }),
+      );
+    },
+  );
+
   it.effect("projects persist updated scripts from project.meta.update", () =>
     Effect.gen(function* () {
       const engine = yield* OrchestrationEngineService;

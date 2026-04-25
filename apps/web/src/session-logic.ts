@@ -7,6 +7,7 @@ import {
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
+  type ProviderScopeReceipt,
   type ProviderKind,
   type ToolLifecycleItemType,
   type UserInputQuestion,
@@ -51,6 +52,7 @@ export interface WorkLogEntry {
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   nixDiagnostics?: ReadonlyArray<NixDiagnostic>;
+  scopeReceipt?: ProviderScopeReceipt;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -501,11 +503,49 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
   return typeof payload?.detail === "string" && payload.detail.startsWith("ExitPlanMode:");
 }
 
+function parseScopeReceipt(payload: unknown): ProviderScopeReceipt | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  if (
+    (record.kind !== "project" && record.kind !== "host") ||
+    typeof record.projectId !== "string" ||
+    typeof record.workspaceRoot !== "string" ||
+    typeof record.createdAt !== "string" ||
+    typeof record.locked !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    kind: record.kind,
+    projectId: record.projectId,
+    workspaceRoot: record.workspaceRoot,
+    ...(record.hostName === null || typeof record.hostName === "string"
+      ? { hostName: (record.hostName ?? null) as string | null }
+      : {}),
+    locked: record.locked,
+    ...(record.designer === null || typeof record.designer === "object"
+      ? { designer: (record.designer ?? null) as ProviderScopeReceipt["designer"] }
+      : {}),
+    ...(record.mcpScope === null || typeof record.mcpScope === "object"
+      ? { mcpScope: (record.mcpScope ?? null) as ProviderScopeReceipt["mcpScope"] }
+      : {}),
+    ...(record.hostDocPath === null || typeof record.hostDocPath === "string"
+      ? { hostDocPath: (record.hostDocPath ?? null) as string | null }
+      : {}),
+    createdAt: record.createdAt,
+  };
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
       ? (activity.payload as Record<string, unknown>)
       : null;
+  const scopeReceipt =
+    activity.kind === "provider.scope.receipt" ? parseScopeReceipt(payload) : null;
   const commandPreview = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
   const title = extractToolTitle(payload);
@@ -569,6 +609,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (nixDiagnostics.length > 0) {
     entry.nixDiagnostics = nixDiagnostics;
+  }
+  if (scopeReceipt !== null) {
+    entry.scopeReceipt = scopeReceipt;
   }
   if (toolCallId) {
     entry.toolCallId = toolCallId;

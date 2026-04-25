@@ -232,6 +232,7 @@ describe("nix MCP CLI", () => {
         (tool) => tool.name,
       ),
     ).toEqual([
+      "hal_current_scope",
       "search_options",
       "get_option",
       "search_packages",
@@ -239,6 +240,28 @@ describe("nix MCP CLI", () => {
       "flake_eval",
       "flake_show",
     ]);
+  });
+
+  it("returns the current locked host scope", async () => {
+    const { client, workspaceRoot } = await startCli({
+      T3_NIX_DESIGNER_SCOPE: "host:nexus",
+    });
+
+    await client.request("initialize");
+
+    const response = await client.request("tools/call", {
+      name: "hal_current_scope",
+      arguments: {},
+    });
+    expect(response.error).toBeUndefined();
+    expect((response.result as { structuredContent: unknown }).structuredContent).toEqual({
+      kind: "host",
+      hostName: "nexus",
+      workspaceRoot,
+      flakeAttr: "nixosConfigurations.nexus",
+      hostDocPath: ".t3code/docs/hosts/nexus.md",
+      rule: "Use this host by default unless the user explicitly broadens scope.",
+    });
   });
 
   it("serves indexed option and package lookups", async () => {

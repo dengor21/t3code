@@ -257,6 +257,18 @@ describe("ProviderCommandReactor", () => {
         }),
       ),
     );
+    const createDescriptor = vi.fn<NixDesignerServiceShape["createDescriptor"]>((input) =>
+      Effect.succeed({
+        id: "t3-nix-designer",
+        transport: "stdio" as const,
+        command: "node",
+        args: ["mock-nix-mcp.js"],
+        env: {
+          T3_NIX_DESIGNER_SCOPE:
+            input.scope.kind === "host" ? `host:${input.scope.hostName}` : "project",
+        },
+      }),
+    );
 
     const unsupported = () => Effect.die(new Error("Unsupported provider call in test")) as never;
     const service: ProviderServiceShape = {
@@ -289,13 +301,7 @@ describe("ProviderCommandReactor", () => {
       getStatus: () => Effect.succeed(missingNixDesignerStatus),
       ensureIndex: () => Effect.succeed(missingNixDesignerStatus),
       rebuildIndex: () => Effect.succeed(missingNixDesignerStatus),
-      createDescriptor: () =>
-        Effect.succeed({
-          id: "t3-nix-designer",
-          transport: "stdio" as const,
-          command: "node",
-          args: ["mock-nix-mcp.js"],
-        }),
+      createDescriptor,
     } satisfies NixDesignerServiceShape);
     const layer = ProviderCommandReactorLive.pipe(
       Layer.provideMerge(orchestrationLayer),
@@ -373,6 +379,7 @@ describe("ProviderCommandReactor", () => {
       refreshStatus,
       generateBranchName,
       generateThreadTitle,
+      createDescriptor,
       stateDir,
       drain,
     };
@@ -450,6 +457,14 @@ describe("ProviderCommandReactor", () => {
     );
 
     await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.createDescriptor).toHaveBeenCalledWith({
+      projectId: "project-1",
+      workspaceRoot,
+      scope: {
+        kind: "host",
+        hostName: "nexus",
+      },
+    });
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.make("thread-1"),
       providerContext: {
@@ -457,11 +472,27 @@ describe("ProviderCommandReactor", () => {
         workspaceRoot,
         scopedHostName: "nexus",
         flake: {
+          hostFlakeAttr: "nixosConfigurations.nexus",
           documentationPaths: {
             generalChanges: ".t3code/changes.md",
             hostDoc: ".t3code/docs/hosts/nexus.md",
           },
         },
+      },
+    });
+
+    const readModel = await Effect.runPromise(harness.engine.getReadModel());
+    const scopeReceipt = readModel.threads
+      .find((entry) => entry.id === ThreadId.make("thread-1"))
+      ?.activities.find((activity) => activity.kind === "provider.scope.receipt");
+    expect(scopeReceipt?.summary).toBe("Scope sent to agent: host nexus");
+    expect(scopeReceipt?.payload).toMatchObject({
+      kind: "host",
+      hostName: "nexus",
+      locked: true,
+      mcpScope: {
+        kind: "host",
+        hostName: "nexus",
       },
     });
   });

@@ -16,8 +16,10 @@ import {
   requireThreadAbsent,
   requireImmutableThreadDesigner,
   requireThreadNotArchived,
+  requireThreadScopeDesignerConsistency,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
+import { resolveEffectiveDesigner } from "./threadScope.ts";
 
 const nowIso = () => new Date().toISOString();
 const defaultMetadata: Omit<OrchestrationEvent, "sequence" | "type" | "payload"> = {
@@ -385,10 +387,28 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      const effectiveDesigner = yield* Effect.try({
+        try: () =>
+          resolveEffectiveDesigner({
+            thread: targetThread,
+            ...(command.designer !== undefined ? { requestedDesigner: command.designer } : {}),
+          }),
+        catch: (cause) =>
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail:
+              cause instanceof Error ? cause.message : "Thread scope and designer are incoherent.",
+          }),
+      });
+      yield* requireThreadScopeDesignerConsistency({
+        thread: targetThread,
+        command,
+        requestedDesigner: effectiveDesigner,
+      });
       yield* requireImmutableThreadDesigner({
         thread: targetThread,
         command,
-        requestedDesigner: command.designer,
+        requestedDesigner: effectiveDesigner,
       });
       const sourceProposedPlan = command.sourceProposedPlan;
       const sourceThread = sourceProposedPlan
@@ -450,7 +470,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             ? { modelSelection: command.modelSelection }
             : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
-          ...(command.designer !== undefined ? { designer: command.designer } : {}),
+          ...(effectiveDesigner !== null ? { designer: effectiveDesigner } : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),

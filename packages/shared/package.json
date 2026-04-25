@@ -80,6 +80,10 @@
       "types": "./src/hostWorkflow.ts",
       "import": "./src/hostWorkflow.ts"
     },
+    "./threadScope": {
+      "types": "./src/threadScope.ts",
+      "import": "./src/threadScope.ts"
+    },
     "./runtimeHome": {
       "types": "./src/runtimeHome.ts",
       "import": "./src/runtimeHome.ts"

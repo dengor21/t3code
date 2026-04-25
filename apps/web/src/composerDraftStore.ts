@@ -31,6 +31,11 @@ import * as Schema from "effect/Schema";
 import * as Equal from "effect/Equal";
 import { DeepMutable } from "effect/Types";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  designerFromScopedHostName,
+  designerScopesEqual,
+  normalizeHostName,
+} from "@t3tools/shared/threadScope";
 import { useMemo } from "react";
 import { getLocalStorageItem } from "./hooks/useLocalStorage";
 import { resolveAppModelSelection } from "./modelSelection";
@@ -1109,22 +1114,6 @@ function draftThreadWorkflowsEqual(
   }
 }
 
-function draftThreadDesignerScopesEqual(
-  left: NixDesignerScope | null | undefined,
-  right: NixDesignerScope | null | undefined,
-): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (!left || !right || left.kind !== right.kind) {
-    return false;
-  }
-  if (left.kind === "project") {
-    return true;
-  }
-  return right.kind === "host" && left.hostName === right.hostName;
-}
-
 function normalizeDraftThreadWorkflow(value: unknown): ThreadWorkflow | null {
   if (value === null || value === undefined) {
     return null;
@@ -1145,6 +1134,13 @@ function normalizeDraftThreadDesigner(value: unknown): NixDesignerScope | null {
   } catch {
     return null;
   }
+}
+
+function resolveDraftThreadDesigner(input: {
+  readonly designer: NixDesignerScope | null | undefined;
+  readonly scopedHostName: string | null | undefined;
+}): NixDesignerScope | null {
+  return designerFromScopedHostName(input.scopedHostName ?? null) ?? input.designer ?? null;
 }
 
 function createDraftThreadState(
@@ -1181,6 +1177,12 @@ function createDraftThreadState(
         ? null
         : (existingThread?.branch ?? null)
       : (options.branch ?? null);
+  const nextScopedHostName =
+    options?.scopedHostName === undefined
+      ? projectChanged
+        ? null
+        : normalizeHostName(existingThread?.scopedHostName ?? null)
+      : normalizeHostName(options.scopedHostName ?? null);
   return {
     threadId,
     environmentId: projectRef.environmentId,
@@ -1192,18 +1194,16 @@ function createDraftThreadState(
       options?.interactionMode ?? existingThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
-    designer:
-      options?.designer === undefined
-        ? projectChanged
-          ? null
-          : (existingThread?.designer ?? null)
-        : (options.designer ?? null),
-    scopedHostName:
-      options?.scopedHostName === undefined
-        ? projectChanged
-          ? null
-          : (existingThread?.scopedHostName ?? null)
-        : (options.scopedHostName ?? null),
+    designer: resolveDraftThreadDesigner({
+      designer:
+        options?.designer === undefined
+          ? projectChanged
+            ? null
+            : (existingThread?.designer ?? null)
+          : (options.designer ?? null),
+      scopedHostName: nextScopedHostName,
+    }),
+    scopedHostName: nextScopedHostName,
     workflow:
       options?.workflow === undefined
         ? projectChanged
@@ -1247,7 +1247,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.interactionMode === right.interactionMode &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
-    draftThreadDesignerScopesEqual(left.designer, right.designer) &&
+    designerScopesEqual(left.designer, right.designer) &&
     left.scopedHostName === right.scopedHostName &&
     draftThreadWorkflowsEqual(left.workflow, right.workflow) &&
     left.envMode === right.envMode &&
@@ -1391,12 +1391,21 @@ function normalizePersistedDraftThreads(
             : DEFAULT_INTERACTION_MODE,
         branch: typeof branch === "string" ? branch : null,
         worktreePath: normalizedWorktreePath,
-        designer: normalizeDraftThreadDesigner(candidateDraftThread.designer),
         scopedHostName:
-          typeof candidateDraftThread.scopedHostName === "string" &&
-          candidateDraftThread.scopedHostName.length > 0
-            ? candidateDraftThread.scopedHostName
+          typeof candidateDraftThread.scopedHostName === "string" ||
+          candidateDraftThread.scopedHostName === null ||
+          candidateDraftThread.scopedHostName === undefined
+            ? normalizeHostName(candidateDraftThread.scopedHostName)
             : null,
+        designer: resolveDraftThreadDesigner({
+          designer: normalizeDraftThreadDesigner(candidateDraftThread.designer),
+          scopedHostName:
+            typeof candidateDraftThread.scopedHostName === "string" ||
+            candidateDraftThread.scopedHostName === null ||
+            candidateDraftThread.scopedHostName === undefined
+              ? normalizeHostName(candidateDraftThread.scopedHostName)
+              : null,
+        }),
         workflow: normalizeDraftThreadWorkflow(candidateDraftThread.workflow),
         envMode: normalizeDraftThreadEnvMode(candidateDraftThread.envMode, normalizedWorktreePath),
         promotedTo,
@@ -2137,6 +2146,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                   ? null
                   : existing.branch
                 : (options.branch ?? null);
+            const nextScopedHostName =
+              options.scopedHostName === undefined
+                ? projectChanged
+                  ? null
+                  : normalizeHostName(existing.scopedHostName ?? null)
+                : normalizeHostName(options.scopedHostName ?? null);
             const nextDraftThread: DraftThreadState = {
               threadId: existing.threadId,
               environmentId: nextProjectRef.environmentId,
@@ -2150,18 +2165,16 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               interactionMode: options.interactionMode ?? existing.interactionMode,
               branch: nextBranch,
               worktreePath: nextWorktreePath,
-              designer:
-                options.designer === undefined
-                  ? projectChanged
-                    ? null
-                    : (existing.designer ?? null)
-                  : (options.designer ?? null),
-              scopedHostName:
-                options.scopedHostName === undefined
-                  ? projectChanged
-                    ? null
-                    : (existing.scopedHostName ?? null)
-                  : (options.scopedHostName ?? null),
+              designer: resolveDraftThreadDesigner({
+                designer:
+                  options.designer === undefined
+                    ? projectChanged
+                      ? null
+                      : (existing.designer ?? null)
+                    : (options.designer ?? null),
+                scopedHostName: nextScopedHostName,
+              }),
+              scopedHostName: nextScopedHostName,
               workflow:
                 options.workflow === undefined
                   ? projectChanged
@@ -2186,7 +2199,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.interactionMode === existing.interactionMode &&
               nextDraftThread.branch === existing.branch &&
               nextDraftThread.worktreePath === existing.worktreePath &&
-              draftThreadDesignerScopesEqual(nextDraftThread.designer, existing.designer) &&
+              designerScopesEqual(nextDraftThread.designer, existing.designer) &&
               nextDraftThread.scopedHostName === existing.scopedHostName &&
               draftThreadWorkflowsEqual(nextDraftThread.workflow, existing.workflow) &&
               nextDraftThread.envMode === existing.envMode &&

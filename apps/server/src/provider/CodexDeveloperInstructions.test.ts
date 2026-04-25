@@ -16,15 +16,9 @@ describe("CodexDeveloperInstructions", () => {
 
     assert.ok(instructions.includes("Host scope:"));
     assert.ok(instructions.includes("This thread is scoped to host nexus."));
-    assert.ok(
-      instructions.includes(
-        "Unless the user explicitly broadens the request, treat nexus as the default host",
-      ),
-    );
-    assert.ok(
-      instructions.includes(
-        "Before touching other hosts or shared cross-host configuration, call out that wider impact explicitly.",
-      ),
-    );
+    assert.ok(instructions.includes("HAL runtime scope is authoritative"));
+    assert.ok(instructions.includes("call hal_current_scope"));
+    assert.ok(instructions.includes("The scoped host is the default"));
+    assert.ok(instructions.includes("require scope expansion or approval"));
   });
 });

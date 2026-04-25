@@ -16,6 +16,7 @@ import {
   requireNonNegativeInteger,
   requireThread,
   requireThreadAbsent,
+  requireThreadScopeDesignerConsistency,
 } from "./commandInvariants.ts";
 
 const now = new Date().toISOString();
@@ -64,6 +65,9 @@ const readModel: OrchestrationReadModel = {
       runtimeMode: "full-access",
       branch: null,
       worktreePath: null,
+      designer: null,
+      scopedHostName: null,
+      workflow: null,
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
@@ -87,6 +91,9 @@ const readModel: OrchestrationReadModel = {
       runtimeMode: "full-access",
       branch: null,
       worktreePath: null,
+      designer: null,
+      scopedHostName: null,
+      workflow: null,
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
@@ -214,5 +221,20 @@ describe("commandInvariants", () => {
         }),
       ),
     ).rejects.toThrow("greater than or equal to 0");
+  });
+
+  it("rejects a designer that conflicts with scopedHostName", async () => {
+    await expect(
+      Effect.runPromise(
+        requireThreadScopeDesignerConsistency({
+          thread: {
+            ...readModel.threads[0]!,
+            scopedHostName: "nexus",
+          },
+          command: messageSendCommand,
+          requestedDesigner: { kind: "project" },
+        }),
+      ),
+    ).rejects.toThrow("cannot use designer");
   });
 });

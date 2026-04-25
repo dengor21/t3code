@@ -1,6 +1,7 @@
 import {
   type EnvironmentId,
   type MessageId,
+  type ProviderScopeReceipt,
   type ThreadWorkflow,
   type TurnId,
 } from "@t3tools/contracts";
@@ -33,6 +34,7 @@ import {
   EyeIcon,
   GlobeIcon,
   HammerIcon,
+  LockKeyholeIcon,
   type LucideIcon,
   SquarePenIcon,
   TerminalIcon,
@@ -95,6 +97,7 @@ interface TimelineRowSharedState {
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
   activeThreadEnvironmentId: EnvironmentId;
+  latestLockedScopeReceipt: ProviderScopeReceipt | null;
   onRevertUserMessage: (messageId: MessageId) => void;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -163,6 +166,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onStartWorkflow,
   onIsAtEndChange,
 }: MessagesTimelineProps) {
+  const latestLockedScopeReceipt = useMemo(() => {
+    let latest: ProviderScopeReceipt | null = null;
+    for (const entry of timelineEntries) {
+      if (entry.kind !== "work") {
+        continue;
+      }
+      const receipt = entry.entry.scopeReceipt ?? null;
+      if (receipt?.kind === "host" && receipt.locked) {
+        latest = receipt;
+      }
+    }
+    return latest;
+  }, [timelineEntries]);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -224,6 +240,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       activeThreadEnvironmentId,
+      latestLockedScopeReceipt,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -240,6 +257,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       resolvedTheme,
       workspaceRoot,
       activeThreadEnvironmentId,
+      latestLockedScopeReceipt,
       onRevertUserMessage,
       onImageExpand,
       onOpenTurnDiff,
@@ -365,6 +383,18 @@ type TimelineMessage = Extract<TimelineEntry, { kind: "message" }>["message"];
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 type TimelineRow = MessagesTimelineRow;
 
+function messageLooksLikeMissedHostScope(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (normalized.length === 0 || normalized.length > 120) {
+    return false;
+  }
+  return (
+    normalized === "which host?" ||
+    normalized.startsWith("which host ") ||
+    normalized.includes("which host should")
+  );
+}
+
 function TimelineRowContent({ row }: { row: TimelineRow }) {
   const ctx = use(TimelineRowCtx);
 
@@ -464,6 +494,12 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
         row.message.role === "assistant" &&
         (() => {
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+          const lockedScopeHostName =
+            ctx.latestLockedScopeReceipt?.kind === "host"
+              ? (ctx.latestLockedScopeReceipt.hostName ?? null)
+              : null;
+          const showScopeDiagnostic =
+            lockedScopeHostName !== null && messageLooksLikeMissedHostScope(messageText);
           const assistantTurnStillInProgress =
             ctx.activeTurnInProgress &&
             ctx.activeTurnId !== null &&
@@ -491,6 +527,12 @@ function TimelineRowContent({ row }: { row: TimelineRow }) {
                   cwd={ctx.markdownCwd}
                   isStreaming={Boolean(row.message.streaming)}
                 />
+                {showScopeDiagnostic ? (
+                  <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                    This thread is already scoped to {lockedScopeHostName}. The assistant may have
+                    missed the scope.
+                  </div>
+                ) : null}
                 <AssistantChangedFilesSection
                   turnSummary={row.assistantTurnDiffSummary}
                   routeThreadKey={ctx.routeThreadKey}
@@ -1094,7 +1136,12 @@ const NixDiagnosticsInlineList = memo(function NixDiagnosticsInlineList(props: {
   );
 });
 
+function formatScopeLabel(receipt: ProviderScopeReceipt): string {
+  return receipt.kind === "host" && receipt.hostName ? `host ${receipt.hostName}` : "project";
+}
+
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
+  if (workEntry.scopeReceipt) return LockKeyholeIcon;
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
@@ -1134,11 +1181,72 @@ function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
   return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
 }
 
+const ScopeReceiptRow = memo(function ScopeReceiptRow(props: { receipt: ProviderScopeReceipt }) {
+  const [expanded, setExpanded] = useState(false);
+  const { receipt } = props;
+
+  return (
+    <div className="rounded-lg border border-border/55 bg-background/60 px-3 py-2">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 text-left"
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/70">
+            <LockKeyholeIcon className="size-3" />
+          </span>
+          <div>
+            <p className="text-xs font-medium text-foreground/85">
+              Scope sent to agent: {formatScopeLabel(receipt)}
+            </p>
+            <p className="text-[11px] text-muted-foreground/65">
+              {receipt.locked ? "Locked" : "Unlocked"} • {receipt.workspaceRoot}
+            </p>
+          </div>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/55">
+          {expanded ? "Hide" : "Details"}
+        </span>
+      </button>
+      {expanded ? (
+        <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+          <div>Project: {receipt.projectId}</div>
+          <div>Workspace: {receipt.workspaceRoot}</div>
+          {receipt.hostName ? <div>Host: {receipt.hostName}</div> : null}
+          <div>
+            Nix designer scope:{" "}
+            {receipt.designer
+              ? receipt.designer.kind === "host"
+                ? `host ${receipt.designer.hostName}`
+                : "project"
+              : "none"}
+          </div>
+          <div>
+            MCP scope:{" "}
+            {receipt.mcpScope
+              ? receipt.mcpScope.kind === "host"
+                ? `host ${receipt.mcpScope.hostName}`
+                : "project"
+              : "none"}
+          </div>
+          {receipt.hostDocPath ? <div>Host doc: {receipt.hostDocPath}</div> : null}
+          <div>Mode: {receipt.locked ? "locked" : "unlocked"}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry;
   workspaceRoot: string | undefined;
 }) {
   const { workEntry, workspaceRoot } = props;
+  if (workEntry.scopeReceipt) {
+    return <ScopeReceiptRow receipt={workEntry.scopeReceipt} />;
+  }
+
   const iconConfig = workToneIcon(workEntry.tone);
   const EntryIcon = workEntryIcon(workEntry);
   const heading = toolWorkEntryHeading(workEntry);
