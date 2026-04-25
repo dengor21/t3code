@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark, .dark *));
+@custom-variant hal (&:is(.hal, .hal *));
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
@@ -147,6 +148,44 @@
     --sidebar-primary: oklch(0.62 0.2 335);
     --sidebar-primary-foreground: var(--color-white);
   }
+
+  /* HAL 9000 — black panel, glowing red eye, amber pupil. */
+  @variant hal {
+    color-scheme: dark;
+    --background: #0a0507;
+    --app-chrome-background: var(--background);
+    --foreground: #fceee9;
+    --card: #190e10;
+    --card-foreground: #fceee9;
+    --popover: #1c1012;
+    --popover-foreground: #fceee9;
+    --primary: oklch(0.62 0.26 25);
+    --primary-foreground: #fff5ec;
+    --secondary: --alpha(#ff5040 / 10%);
+    --secondary-foreground: #ffd9d0;
+    --muted: --alpha(#ff5040 / 7%);
+    --muted-foreground: #d6a098;
+    --accent: --alpha(#ff8a3a / 18%);
+    --accent-foreground: #ffe1bf;
+    --destructive: oklch(0.66 0.27 25);
+    --border: --alpha(#ff5040 / 18%);
+    --input: --alpha(#ff5040 / 20%);
+    --ring: oklch(0.62 0.26 25);
+    --destructive-foreground: oklch(0.82 0.2 25);
+    --info: oklch(0.78 0.17 60);
+    --info-foreground: oklch(0.88 0.15 65);
+    --success: oklch(0.78 0.18 75);
+    --success-foreground: oklch(0.9 0.16 80);
+    --warning: oklch(0.86 0.18 80);
+    --warning-foreground: oklch(0.92 0.16 85);
+    --sidebar: #0d0608;
+    --sidebar-foreground: #fceee9;
+    --sidebar-border: --alpha(#ff5040 / 14%);
+    --sidebar-accent: --alpha(#ff5040 / 16%);
+    --sidebar-accent-foreground: #ffe1bf;
+    --sidebar-primary: oklch(0.62 0.26 25);
+    --sidebar-primary-foreground: #fff5ec;
+  }
 }
 
 body {
@@ -189,6 +228,14 @@ body::before {
 
 .dark body::before {
   opacity: 1;
+}
+
+.hal body::before {
+  opacity: 1;
+  background:
+    radial-gradient(circle 220px at 50% 14%, #ff1a0a55 0%, #c8000022 35%, transparent 70%),
+    radial-gradient(ellipse 600px 320px at 50% 14%, #ff3a1a14 0%, transparent 70%),
+    radial-gradient(ellipse at 50% 105%, #1a000018 0%, transparent 60%);
 }
 
 body::after {
@@ -244,6 +291,14 @@ code {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(200, 144, 192, 0.18);
+}
+
+.hal ::-webkit-scrollbar-thumb {
+  background: rgba(255, 42, 26, 0.18);
+}
+
+.hal ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 42, 26, 0.32);
 }
 
 .turn-chip-strip {
