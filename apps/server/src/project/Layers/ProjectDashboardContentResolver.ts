@@ -24,6 +24,7 @@ import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
 import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import { ProjectSecretsService } from "../Services/ProjectSecretsService.ts";
+import { NixDesignerService } from "../Services/NixDesignerService.ts";
 import {
   ProjectDashboardContentResolver,
   type ProjectDashboardContentResolverShape,
@@ -73,6 +74,7 @@ const make = Effect.gen(function* () {
   const hostDriftService = yield* HostDriftService;
   const flakeMaintenanceService = yield* FlakeMaintenanceService;
   const projectSecretsService = yield* ProjectSecretsService;
+  const nixDesignerService = yield* NixDesignerService;
 
   const resolveWithinWorkspace = (workspaceRoot: string, relativePath: string) =>
     workspacePaths
@@ -196,6 +198,16 @@ const make = Effect.gen(function* () {
         .pipe(
           Effect.mapError((cause) => toDashboardError("Failed to resolve project secrets.", cause)),
         );
+      const nixDesigner = yield* nixDesignerService
+        .getStatus({
+          projectId: input.projectId,
+          workspaceRoot: project.workspaceRoot,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            toDashboardError("Failed to resolve Nix designer status.", cause),
+          ),
+        );
       const requestedHostName = normalizeHostName(input.hostName);
       const selectedHost =
         requestedHostName === null
@@ -288,6 +300,7 @@ const make = Effect.gen(function* () {
           language: "nix",
           contents: flakeSource.contents,
         },
+        nixDesigner,
         generalChanges,
         hostChanges,
         hostDoc:

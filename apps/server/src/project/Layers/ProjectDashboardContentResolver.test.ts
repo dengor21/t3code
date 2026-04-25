@@ -25,9 +25,22 @@ import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
 import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import { ProjectSecretsService } from "../Services/ProjectSecretsService.ts";
+import {
+  NixDesignerService,
+  type NixDesignerServiceShape,
+} from "../Services/NixDesignerService.ts";
 import { ProjectDashboardContentResolverLive } from "./ProjectDashboardContentResolver.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
+const missingNixDesignerStatus = {
+  status: "missing" as const,
+  revision: null,
+  builtAt: null,
+  optionCount: 0,
+  packageCount: 0,
+  lastError: null,
+  staleReason: null,
+};
 
 function writeFile(targetPath: string, contents: string) {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
@@ -190,8 +203,15 @@ Current-state documentation for bc250.
     },
   ) {
     const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
+    const nixDesignerServiceLayer = Layer.succeed(NixDesignerService, {
+      getStatus: () => Effect.succeed(missingNixDesignerStatus),
+      ensureIndex: () => Effect.succeed(missingNixDesignerStatus),
+      rebuildIndex: () => Effect.succeed(missingNixDesignerStatus),
+      createDescriptor: () => Effect.die("unused"),
+    } satisfies NixDesignerServiceShape);
     return ProjectDashboardContentResolverLive.pipe(
       Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
+      Layer.provideMerge(nixDesignerServiceLayer),
       Layer.provideMerge(
         DocumentationStatusResolverLive.pipe(
           Layer.provideMerge(hostDocumentationGenerationRegistryLayer),

@@ -14,6 +14,7 @@ import {
   requireThread,
   requireThreadArchived,
   requireThreadAbsent,
+  requireImmutableThreadDesigner,
   requireThreadNotArchived,
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
@@ -384,6 +385,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      yield* requireImmutableThreadDesigner({
+        thread: targetThread,
+        command,
+        requestedDesigner: command.designer,
+      });
       const sourceProposedPlan = command.sourceProposedPlan;
       const sourceThread = sourceProposedPlan
         ? yield* requireThread({
@@ -444,6 +450,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
             ? { modelSelection: command.modelSelection }
             : {}),
           ...(command.titleSeed !== undefined ? { titleSeed: command.titleSeed } : {}),
+          ...(command.designer !== undefined ? { designer: command.designer } : {}),
           runtimeMode: targetThread.runtimeMode,
           interactionMode: targetThread.interactionMode,
           ...(sourceProposedPlan !== undefined ? { sourceProposedPlan } : {}),

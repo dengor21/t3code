@@ -84,6 +84,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         interactionMode: "default",
         branch: null,
         worktreePath: null,
+        designer: null,
         scopedHostName: null,
         workflow: null,
         latestTurnId: null,

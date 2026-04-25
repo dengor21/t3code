@@ -2,6 +2,7 @@ import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime";
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  type NixDesignerScope,
   type ScopedProjectRef,
   type ThreadWorkflow,
 } from "@t3tools/contracts";
@@ -43,6 +44,7 @@ function useNewThreadState() {
         branch?: string | null;
         worktreePath?: string | null;
         envMode?: DraftThreadEnvMode;
+        designer?: NixDesignerScope | null;
         scopedHostName?: string | null;
         workflow?: ThreadWorkflow | null;
         interactionMode?: "default" | "plan";
@@ -71,6 +73,7 @@ function useNewThreadState() {
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
+      const hasDesignerOption = options?.designer !== undefined;
       const hasScopedHostOption = options?.scopedHostName !== undefined;
       const hasWorkflowOption = options?.workflow !== undefined;
       const hasInteractionModeOption = options?.interactionMode !== undefined;
@@ -94,8 +97,10 @@ function useNewThreadState() {
       const shouldReuseStoredDraft =
         storedDraftThread !== null &&
         shouldReuseDraftForThreadStart({
+          requestedDesigner: options?.designer ?? null,
           requestedScopedHostName: options?.scopedHostName ?? null,
           requestedWorkflow: options?.workflow ?? null,
+          existingDesigner: storedDraftThread.designer ?? null,
           existingScopedHostName: storedDraftThread.scopedHostName ?? null,
           existingWorkflow: storedDraftThread.workflow ?? null,
           existingPrompt: getComposerDraft(storedDraftThread.draftId)?.prompt ?? "",
@@ -106,6 +111,7 @@ function useNewThreadState() {
             hasBranchOption ||
             hasWorktreePathOption ||
             hasEnvModeOption ||
+            hasDesignerOption ||
             hasScopedHostOption ||
             hasWorkflowOption ||
             hasInteractionModeOption
@@ -114,6 +120,7 @@ function useNewThreadState() {
               ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
               ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+              ...(hasDesignerOption ? { designer: options?.designer ?? null } : {}),
               ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
               ...(hasWorkflowOption ? { workflow: options?.workflow ?? null } : {}),
               ...(hasInteractionModeOption ? { interactionMode: options?.interactionMode } : {}),
@@ -142,8 +149,10 @@ function useNewThreadState() {
         latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
         latestActiveDraftThread.promotedTo == null &&
         shouldReuseDraftForThreadStart({
+          requestedDesigner: options?.designer ?? null,
           requestedScopedHostName: options?.scopedHostName ?? null,
           requestedWorkflow: options?.workflow ?? null,
+          existingDesigner: latestActiveDraftThread.designer ?? null,
           existingScopedHostName: latestActiveDraftThread.scopedHostName ?? null,
           existingWorkflow: latestActiveDraftThread.workflow ?? null,
           existingPrompt: getComposerDraft(currentRouteTarget.draftId)?.prompt ?? "",
@@ -153,6 +162,7 @@ function useNewThreadState() {
           hasBranchOption ||
           hasWorktreePathOption ||
           hasEnvModeOption ||
+          hasDesignerOption ||
           hasScopedHostOption ||
           hasWorkflowOption ||
           hasInteractionModeOption
@@ -161,6 +171,7 @@ function useNewThreadState() {
             ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
             ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
             ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+            ...(hasDesignerOption ? { designer: options?.designer ?? null } : {}),
             ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
             ...(hasWorkflowOption ? { workflow: options?.workflow ?? null } : {}),
             ...(hasInteractionModeOption ? { interactionMode: options?.interactionMode } : {}),
@@ -174,6 +185,7 @@ function useNewThreadState() {
           ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
           ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
+          ...(hasDesignerOption ? { designer: options?.designer ?? null } : {}),
           ...(hasScopedHostOption ? { scopedHostName: options?.scopedHostName ?? null } : {}),
           ...(hasWorkflowOption ? { workflow: options?.workflow ?? null } : {}),
           ...(hasInteractionModeOption ? { interactionMode: options?.interactionMode } : {}),
@@ -192,6 +204,7 @@ function useNewThreadState() {
           branch: options?.branch ?? null,
           worktreePath: options?.worktreePath ?? null,
           envMode: options?.envMode ?? "local",
+          designer: options?.designer ?? null,
           scopedHostName: options?.scopedHostName ?? null,
           workflow: options?.workflow ?? null,
           runtimeMode: DEFAULT_RUNTIME_MODE,

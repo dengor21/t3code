@@ -85,6 +85,8 @@ import type {
   ProjectGenerateHostDocumentationInput,
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentInput,
+  ProjectRebuildNixDesignerIndexInput,
+  ProjectRebuildNixDesignerIndexResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -313,6 +315,9 @@ export interface EnvironmentApi {
     getDashboardContent: (
       input: ProjectGetDashboardContentInput,
     ) => Promise<ProjectDashboardContentResult>;
+    rebuildNixDesignerIndex: (
+      input: ProjectRebuildNixDesignerIndexInput,
+    ) => Promise<ProjectRebuildNixDesignerIndexResult>;
     getSecretsSummary: (input: ProjectSecretsGetInput) => Promise<ProjectSecretsSummary>;
     generateHostDocumentation: (
       input: ProjectGenerateHostDocumentationInput,

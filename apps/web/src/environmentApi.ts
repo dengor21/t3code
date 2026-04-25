@@ -20,6 +20,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       searchEntries: rpcClient.projects.searchEntries,
       writeFile: rpcClient.projects.writeFile,
       getDashboardContent: rpcClient.projects.getDashboardContent,
+      rebuildNixDesignerIndex: rpcClient.projects.rebuildNixDesignerIndex,
       getSecretsSummary: rpcClient.projects.getSecretsSummary,
       generateHostDocumentation: rpcClient.projects.generateHostDocumentation,
     },

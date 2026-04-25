@@ -9,6 +9,7 @@
 import {
   IsoDateTime,
   ModelSelection,
+  NixDesignerScope,
   NonNegativeInt,
   ProjectId,
   ProviderInteractionMode,
@@ -33,6 +34,7 @@ export const ProjectionThread = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
+  designer: Schema.NullOr(NixDesignerScope),
   scopedHostName: Schema.NullOr(Schema.String),
   workflow: Schema.NullOr(ThreadWorkflow),
   latestTurnId: Schema.NullOr(TurnId),

@@ -5,6 +5,7 @@ import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./en
 import { FlakeMaintenanceSummary } from "./flakeMaintenance.ts";
 import { HostDeploymentSummary } from "./hostDeployment.ts";
 import { HostDriftSummary } from "./hostDrift.ts";
+import { NixIndexStatus } from "./nixDesigner.ts";
 import { ProjectSecretsSummary } from "./projectSecrets.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
@@ -192,16 +193,33 @@ export const ProjectDashboardHostDoc = Schema.Struct({
 });
 export type ProjectDashboardHostDoc = typeof ProjectDashboardHostDoc.Type;
 
+export const ProjectDashboardNixDesigner = Schema.Struct({
+  status: NixIndexStatus,
+  revision: Schema.NullOr(TrimmedNonEmptyString),
+  builtAt: Schema.NullOr(IsoDateTime),
+  optionCount: Schema.Number,
+  packageCount: Schema.Number,
+  lastError: Schema.NullOr(TrimmedNonEmptyString),
+  staleReason: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type ProjectDashboardNixDesigner = typeof ProjectDashboardNixDesigner.Type;
+
 export const ProjectGetDashboardContentInput = Schema.Struct({
   projectId: ProjectId,
   hostName: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProjectGetDashboardContentInput = typeof ProjectGetDashboardContentInput.Type;
 
+export const ProjectRebuildNixDesignerIndexInput = Schema.Struct({
+  projectId: ProjectId,
+});
+export type ProjectRebuildNixDesignerIndexInput = typeof ProjectRebuildNixDesignerIndexInput.Type;
+
 export const ProjectDashboardContentResult = Schema.Struct({
   mode: Schema.Literals(["flake", "host"]),
   selectedHostName: Schema.NullOr(TrimmedNonEmptyString),
   flakeSource: ProjectDashboardFlakeSource,
+  nixDesigner: ProjectDashboardNixDesigner,
   generalChanges: Schema.Array(ProjectDashboardChangeEntry),
   hostChanges: Schema.Array(ProjectDashboardChangeEntry),
   hostDoc: Schema.NullOr(ProjectDashboardHostDoc),
@@ -215,6 +233,17 @@ export type ProjectDashboardContentResult = typeof ProjectDashboardContentResult
 
 export class ProjectGetDashboardContentError extends Schema.TaggedErrorClass<ProjectGetDashboardContentError>()(
   "ProjectGetDashboardContentError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}
+
+export const ProjectRebuildNixDesignerIndexResult = ProjectDashboardNixDesigner;
+export type ProjectRebuildNixDesignerIndexResult = typeof ProjectRebuildNixDesignerIndexResult.Type;
+
+export class ProjectRebuildNixDesignerIndexError extends Schema.TaggedErrorClass<ProjectRebuildNixDesignerIndexError>()(
+  "ProjectRebuildNixDesignerIndexError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect),

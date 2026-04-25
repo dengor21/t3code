@@ -122,6 +122,9 @@ import {
   ProjectGenerateHostDocumentationResult,
   ProjectGetDashboardContentError,
   ProjectGetDashboardContentInput,
+  ProjectRebuildNixDesignerIndexError,
+  ProjectRebuildNixDesignerIndexInput,
+  ProjectRebuildNixDesignerIndexResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -164,6 +167,7 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
+  projectsRebuildNixDesignerIndex: "projects.rebuildNixDesignerIndex",
   projectsGetSecretsSummary: "projects.getSecretsSummary",
   fleetDeploymentsStart: "fleetDeployments.start",
   fleetDeploymentsGet: "fleetDeployments.get",
@@ -294,6 +298,15 @@ export const WsProjectsGetDashboardContentRpc = Rpc.make(WS_METHODS.projectsGetD
   success: ProjectDashboardContentResult,
   error: ProjectGetDashboardContentError,
 });
+
+export const WsProjectsRebuildNixDesignerIndexRpc = Rpc.make(
+  WS_METHODS.projectsRebuildNixDesignerIndex,
+  {
+    payload: ProjectRebuildNixDesignerIndexInput,
+    success: ProjectRebuildNixDesignerIndexResult,
+    error: ProjectRebuildNixDesignerIndexError,
+  },
+);
 
 export const WsProjectsGetSecretsSummaryRpc = Rpc.make(WS_METHODS.projectsGetSecretsSummary, {
   payload: ProjectSecretsGetInput,
@@ -702,6 +715,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
+  WsProjectsRebuildNixDesignerIndexRpc,
   WsProjectsGetSecretsSummaryRpc,
   WsFleetDeploymentsStartRpc,
   WsFleetDeploymentsGetRpc,

@@ -47,6 +47,7 @@ import Migration0031 from "./Migrations/031_HostImports.ts";
 import Migration0032 from "./Migrations/032_FleetDeployments.ts";
 import Migration0033 from "./Migrations/033_HostDeploymentSafetyReports.ts";
 import Migration0034 from "./Migrations/034_HostDriftRuns.ts";
+import Migration0035 from "./Migrations/035_ProjectionThreadsDesigner.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -93,6 +94,7 @@ export const migrationEntries = [
   [32, "FleetDeployments", Migration0032],
   [33, "HostDeploymentSafetyReports", Migration0033],
   [34, "HostDriftRuns", Migration0034],
+  [35, "ProjectionThreadsDesigner", Migration0035],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

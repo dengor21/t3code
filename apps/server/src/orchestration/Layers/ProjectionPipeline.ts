@@ -588,6 +588,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
+            designer: null,
             scopedHostName: event.payload.scopedHostName ?? null,
             workflow: event.payload.workflow ?? null,
             latestTurnId: null,
@@ -687,6 +688,24 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...existingRow.value,
             interactionMode: event.payload.interactionMode,
             updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.turn-start-requested": {
+          if (event.payload.designer === undefined) {
+            return;
+          }
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            designer: event.payload.designer,
+            updatedAt: event.payload.createdAt,
           });
           return;
         }

@@ -15,16 +15,14 @@ export const makeOrchestrationReactor = Effect.gen(function* () {
   const providerRuntimeIngestion = yield* ProviderRuntimeIngestionService;
   const providerCommandReactor = yield* ProviderCommandReactor;
   const checkpointReactor = yield* CheckpointReactor;
+  const threadDeletionReactor = yield* ThreadDeletionReactor;
   const documentationReactor = yield* DocumentationReactor;
   const threadChangeLifecycleReactor = yield* ThreadChangeLifecycleReactor;
-  const threadDeletionReactor = yield* ThreadDeletionReactor;
 
   const start: OrchestrationReactorShape["start"] = Effect.fn("start")(function* () {
     yield* providerRuntimeIngestion.start();
     yield* providerCommandReactor.start();
     yield* checkpointReactor.start();
-    yield* documentationReactor.start();
-    yield* threadChangeLifecycleReactor.start();
     yield* threadDeletionReactor.start();
     yield* documentationReactor.start();
     yield* threadChangeLifecycleReactor.start();

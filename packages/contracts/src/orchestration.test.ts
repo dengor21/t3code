@@ -9,6 +9,8 @@ import {
   OrchestrationEvent,
   OrchestrationGetTurnDiffInput,
   OrchestrationLatestTurn,
+  OrchestrationThread,
+  OrchestrationThreadShell,
   ProjectCreatedPayload,
   ProjectMetaUpdatedPayload,
   OrchestrationProposedPlan,
@@ -37,6 +39,8 @@ const decodeThreadCreatedPayload = Schema.decodeUnknownEffect(ThreadCreatedPaylo
 const decodeOrchestrationCommand = Schema.decodeUnknownEffect(OrchestrationCommand);
 const decodeOrchestrationEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 const decodeThreadMetaUpdatedPayload = Schema.decodeUnknownEffect(ThreadMetaUpdatedPayload);
+const decodeOrchestrationThread = Schema.decodeUnknownEffect(OrchestrationThread);
+const decodeOrchestrationThreadShell = Schema.decodeUnknownEffect(OrchestrationThreadShell);
 
 it.effect("parses turn diff input when fromTurnCount <= toTurnCount", () =>
   Effect.gen(function* () {
@@ -459,6 +463,31 @@ it.effect("accepts a title seed in thread.turn.start", () =>
   }),
 );
 
+it.effect("accepts designer scope in thread.turn.start", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-designer",
+      threadId: "thread-2",
+      message: {
+        messageId: "msg-designer",
+        role: "user",
+        text: "check this flake",
+        attachments: [],
+      },
+      designer: {
+        kind: "host",
+        hostName: "nexus",
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.designer, {
+      kind: "host",
+      hostName: "nexus",
+    });
+  }),
+);
+
 it.effect("accepts a source proposed plan reference in thread.turn.start", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadTurnStartCommand({
@@ -527,6 +556,80 @@ it.effect("decodes thread.turn-start-requested title seed when present", () =>
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.titleSeed, "Investigate reconnect failures");
+  }),
+);
+
+it.effect("decodes thread.turn-start-requested designer scope when present", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartRequestedPayload({
+      threadId: "thread-2",
+      messageId: "msg-2",
+      designer: {
+        kind: "project",
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(parsed.designer, {
+      kind: "project",
+    });
+  }),
+);
+
+it.effect("defaults thread designer scope to null for historical rows", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeOrchestrationThread({
+      id: "thread-1",
+      projectId: "project-1",
+      title: "Thread title",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4",
+      },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      latestTurn: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      deletedAt: null,
+      messages: [],
+      activities: [],
+      checkpoints: [],
+      session: null,
+    });
+    assert.strictEqual(parsed.designer, null);
+  }),
+);
+
+it.effect("decodes thread shell designer scope when present", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeOrchestrationThreadShell({
+      id: "thread-1",
+      projectId: "project-1",
+      title: "Thread title",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4",
+      },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      designer: {
+        kind: "project",
+      },
+      latestTurn: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
+      session: null,
+      latestUserMessageAt: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+    });
+    assert.deepStrictEqual(parsed.designer, { kind: "project" });
   }),
 );
 

@@ -1,6 +1,17 @@
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { buildDeployRsCommand, buildDeployRsInvocation } from "./project.ts";
+import {
+  buildDeployRsCommand,
+  buildDeployRsInvocation,
+  ProjectDashboardContentResult,
+  ProjectRebuildNixDesignerIndexResult,
+} from "./project.ts";
+
+const decodeProjectDashboardContentResult = Schema.decodeUnknownSync(ProjectDashboardContentResult);
+const decodeProjectRebuildNixDesignerIndexResult = Schema.decodeUnknownSync(
+  ProjectRebuildNixDesignerIndexResult,
+);
 
 describe("buildDeployRsCommand", () => {
   it("builds the default remote-build command", () => {
@@ -66,5 +77,50 @@ describe("buildDeployRsCommand", () => {
         ".#nexus",
       ],
     });
+  });
+
+  it("decodes dashboard content with nix designer status", () => {
+    const parsed = decodeProjectDashboardContentResult({
+      mode: "flake",
+      selectedHostName: null,
+      flakeSource: {
+        path: "flake.nix",
+        language: "nix",
+        contents: "{ }",
+      },
+      nixDesigner: {
+        status: "ready",
+        revision: "4bd9165a9165d7b5e33ae57f3eecbcb28fb231c9",
+        builtAt: "2026-01-01T00:00:00.000Z",
+        optionCount: 123,
+        packageCount: 456,
+        lastError: null,
+        staleReason: null,
+      },
+      generalChanges: [],
+      hostChanges: [],
+      hostDoc: null,
+      hostSummaries: [],
+      latestMaintenance: null,
+      secrets: null,
+    });
+
+    expect(parsed.nixDesigner.status).toBe("ready");
+    expect(parsed.nixDesigner.optionCount).toBe(123);
+  });
+
+  it("decodes nix designer rebuild results", () => {
+    const parsed = decodeProjectRebuildNixDesignerIndexResult({
+      status: "stale",
+      revision: "4bd9165a9165d7b5e33ae57f3eecbcb28fb231c9",
+      builtAt: null,
+      optionCount: 0,
+      packageCount: 0,
+      lastError: null,
+      staleReason: "revision-changed",
+    });
+
+    expect(parsed.status).toBe("stale");
+    expect(parsed.staleReason).toBe("revision-changed");
   });
 });

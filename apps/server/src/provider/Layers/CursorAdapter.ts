@@ -481,6 +481,16 @@ function makeCursorAdapter(options?: CursorAdapterLiveOptions) {
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(input.mcpServers && input.mcpServers.length > 0
+              ? {
+                  mcpServers: input.mcpServers.map((server) => ({
+                    name: server.id,
+                    command: server.command,
+                    args: server.args ?? [],
+                    env: server.env ?? {},
+                  })),
+                }
+              : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(

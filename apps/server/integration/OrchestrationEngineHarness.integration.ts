@@ -47,6 +47,10 @@ import { ProviderService } from "../src/provider/Services/ProviderService.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
 import { CheckpointReactorLive } from "../src/orchestration/Layers/CheckpointReactor.ts";
 import { RepositoryIdentityResolverLive } from "../src/project/Layers/RepositoryIdentityResolver.ts";
+import {
+  NixDesignerService,
+  type NixDesignerServiceShape,
+} from "../src/project/Services/NixDesignerService.ts";
 import { OrchestrationEngineLive } from "../src/orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../src/orchestration/Layers/ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "../src/orchestration/Layers/ProjectionSnapshotQuery.ts";
@@ -77,6 +81,16 @@ import {
 import { deriveServerPaths, ServerConfig } from "../src/config.ts";
 import { WorkspaceEntriesLive } from "../src/workspace/Layers/WorkspaceEntries.ts";
 import { WorkspacePathsLive } from "../src/workspace/Layers/WorkspacePaths.ts";
+
+const missingNixDesignerStatus = {
+  status: "missing" as const,
+  revision: null,
+  builtAt: null,
+  optionCount: 0,
+  packageCount: 0,
+  lastError: null,
+  staleReason: null,
+};
 
 function runGit(cwd: string, args: ReadonlyArray<string>) {
   return execFileSync("git", args, {
@@ -382,9 +396,22 @@ export const makeOrchestrationIntegrationHarness = (
       ),
     );
     const hostDocumentationGenerationRegistryLayer = HostDocumentationGenerationRegistryLive;
+    const nixDesignerServiceLayer = Layer.succeed(NixDesignerService, {
+      getStatus: () => Effect.succeed(missingNixDesignerStatus),
+      ensureIndex: () => Effect.succeed(missingNixDesignerStatus),
+      rebuildIndex: () => Effect.succeed(missingNixDesignerStatus),
+      createDescriptor: () =>
+        Effect.succeed({
+          id: "t3-nix-designer",
+          transport: "stdio" as const,
+          command: "node",
+          args: ["mock-nix-mcp.js"],
+        }),
+    } satisfies NixDesignerServiceShape);
     const layer = Layer.empty.pipe(
       Layer.provideMerge(runtimeServicesLayer),
       Layer.provideMerge(orchestrationReactorLayer),
+      Layer.provideMerge(nixDesignerServiceLayer),
       Layer.provide(persistenceLayer),
       Layer.provideMerge(hostDocumentationGenerationRegistryLayer),
       Layer.provideMerge(

@@ -1,6 +1,7 @@
 import type {
   EnvironmentId,
   MessageId,
+  NixDesignerScope,
   OrchestrationCheckpointSummary,
   OrchestrationEvent,
   OrchestrationLatestTurn,
@@ -249,6 +250,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    designer: thread.designer ?? null,
     scopedHostName: thread.scopedHostName ?? null,
     workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
@@ -281,6 +283,7 @@ function mapThreadShell(
     updatedAt: thread.updatedAt,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    designer: thread.designer ?? null,
     scopedHostName: thread.scopedHostName ?? null,
     workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
@@ -303,6 +306,7 @@ function mapThreadShell(
     latestTurn: thread.latestTurn,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    designer: thread.designer ?? null,
     scopedHostName: thread.scopedHostName ?? null,
     workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
@@ -335,6 +339,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     updatedAt: thread.updatedAt,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    designer: thread.designer ?? null,
     scopedHostName: thread.scopedHostName ?? null,
     workflow: thread.workflow ?? null,
     changeTracking: thread.changeTracking ?? null,
@@ -450,6 +455,19 @@ function threadWorkflowsEqual(
   }
 }
 
+function threadDesignerScopesEqual(
+  left: NixDesignerScope | null | undefined,
+  right: NixDesignerScope | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return left == null && right == null;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "project") {
+    return true;
+  }
+  return right.kind === "host" && left.hostName === right.hostName;
+}
+
 function latestUserMessageTimestamp(messages: ReadonlyArray<ChatMessage>): string | null {
   return (
     messages
@@ -490,6 +508,7 @@ function sidebarThreadSummariesEqual(
     latestTurnsEqual(left.latestTurn, right.latestTurn) &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
+    threadDesignerScopesEqual(left.designer, right.designer) &&
     left.scopedHostName === right.scopedHostName &&
     threadWorkflowsEqual(left.workflow, right.workflow) &&
     threadChangeTrackingEqual(left.changeTracking, right.changeTracking) &&
@@ -517,6 +536,7 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.updatedAt === right.updatedAt &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
+    threadDesignerScopesEqual(left.designer, right.designer) &&
     left.scopedHostName === right.scopedHostName &&
     threadWorkflowsEqual(left.workflow, right.workflow) &&
     threadChangeTrackingEqual(left.changeTracking, right.changeTracking)

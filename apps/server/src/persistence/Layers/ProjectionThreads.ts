@@ -1,6 +1,7 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
 import { Effect, Layer, Schema, Struct } from "effect";
+import { ModelSelection, NixDesignerScope, ThreadWorkflow } from "@t3tools/contracts";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -11,11 +12,11 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection, ThreadWorkflow } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    designer: Schema.NullOr(Schema.fromJsonString(NixDesignerScope)),
     workflow: Schema.NullOr(Schema.fromJsonString(ThreadWorkflow)),
   }),
 );
@@ -37,6 +38,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           interaction_mode,
           branch,
           worktree_path,
+          designer_json,
           scoped_host_name,
           workflow_json,
           latest_turn_id,
@@ -64,6 +66,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.interactionMode},
           ${row.branch},
           ${row.worktreePath},
+          ${row.designer === null ? null : JSON.stringify(row.designer)},
           ${row.scopedHostName},
           ${row.workflow === null ? null : JSON.stringify(row.workflow)},
           ${row.latestTurnId},
@@ -91,6 +94,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           interaction_mode = excluded.interaction_mode,
           branch = excluded.branch,
           worktree_path = excluded.worktree_path,
+          designer_json = excluded.designer_json,
           scoped_host_name = excluded.scoped_host_name,
           workflow_json = excluded.workflow_json,
           latest_turn_id = excluded.latest_turn_id,
@@ -125,6 +129,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          designer_json AS "designer",
           scoped_host_name AS "scopedHostName",
           workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",
@@ -161,6 +166,7 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          designer_json AS "designer",
           scoped_host_name AS "scopedHostName",
           workflow_json AS "workflow",
           latest_turn_id AS "latestTurnId",

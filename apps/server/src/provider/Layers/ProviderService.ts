@@ -10,6 +10,7 @@
  * @module ProviderServiceLive
  */
 import {
+  McpServerDescriptor,
   ModelSelection,
   NonNegativeInt,
   ThreadId,
@@ -102,6 +103,7 @@ function toRuntimePayloadFromSession(
   session: ProviderSession,
   extra?: {
     readonly modelSelection?: unknown;
+    readonly mcpServers?: ReadonlyArray<McpServerDescriptor>;
     readonly lastRuntimeEvent?: string;
     readonly lastRuntimeEventAt?: string;
   },
@@ -112,6 +114,7 @@ function toRuntimePayloadFromSession(
     activeTurnId: session.activeTurnId ?? null,
     lastError: session.lastError ?? null,
     ...(extra?.modelSelection !== undefined ? { modelSelection: extra.modelSelection } : {}),
+    ...(extra?.mcpServers !== undefined ? { mcpServers: extra.mcpServers } : {}),
     ...(extra?.lastRuntimeEvent !== undefined ? { lastRuntimeEvent: extra.lastRuntimeEvent } : {}),
     ...(extra?.lastRuntimeEventAt !== undefined
       ? { lastRuntimeEventAt: extra.lastRuntimeEventAt }
@@ -139,6 +142,16 @@ function readPersistedCwd(
   if (typeof rawCwd !== "string") return undefined;
   const trimmed = rawCwd.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readPersistedMcpServers(
+  runtimePayload: ProviderRuntimeBinding["runtimePayload"],
+): ReadonlyArray<McpServerDescriptor> | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  const raw = "mcpServers" in runtimePayload ? runtimePayload.mcpServers : undefined;
+  return Schema.is(Schema.Array(McpServerDescriptor))(raw) ? raw : undefined;
 }
 
 const makeProviderService = Effect.fn("makeProviderService")(function* (
@@ -174,6 +187,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     threadId: ThreadId,
     extra?: {
       readonly modelSelection?: unknown;
+      readonly mcpServers?: ReadonlyArray<McpServerDescriptor>;
       readonly lastRuntimeEvent?: string;
       readonly lastRuntimeEventAt?: string;
     },
@@ -238,12 +252,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
 
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
       const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
+      const persistedMcpServers = readPersistedMcpServers(input.binding.runtimePayload);
 
       const resumed = yield* adapter.startSession({
         threadId: input.binding.threadId,
         provider: input.binding.provider,
         ...(persistedCwd ? { cwd: persistedCwd } : {}),
         ...(persistedModelSelection ? { modelSelection: persistedModelSelection } : {}),
+        ...(persistedMcpServers ? { mcpServers: persistedMcpServers } : {}),
         ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
         runtimeMode: input.binding.runtimeMode ?? "full-access",
       });
@@ -369,14 +385,20 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           );
         }
         const persistedBinding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+        const persistedMcpServers =
+          persistedBinding?.provider === input.provider
+            ? readPersistedMcpServers(persistedBinding.runtimePayload)
+            : undefined;
         const effectiveResumeCursor =
           input.resumeCursor ??
           (persistedBinding?.provider === input.provider
             ? persistedBinding.resumeCursor
             : undefined);
+        const effectiveMcpServers = input.mcpServers ?? persistedMcpServers;
         const adapter = yield* registry.getByProvider(input.provider);
         const session = yield* adapter.startSession({
           ...input,
+          ...(effectiveMcpServers !== undefined ? { mcpServers: effectiveMcpServers } : {}),
           ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
         });
 
@@ -393,6 +415,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         });
         yield* upsertSessionBinding(session, threadId, {
           modelSelection: input.modelSelection,
+          ...(effectiveMcpServers !== undefined ? { mcpServers: effectiveMcpServers } : {}),
         });
         yield* analytics.record("provider.session.started", {
           provider: session.provider,

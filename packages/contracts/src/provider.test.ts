@@ -88,6 +88,45 @@ describe("ProviderSessionStartInput", () => {
       expect(parsed.modelSelection.options?.fastMode).toBe(true);
     }
   });
+
+  it("accepts MCP server descriptors and remains backward compatible when omitted", () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "codex",
+      cwd: "/tmp/workspace",
+      runtimeMode: "full-access",
+      mcpServers: [
+        {
+          id: "nix-designer",
+          transport: "stdio",
+          command: "bun",
+          args: ["run", "nix-mcp-server"],
+          env: {
+            T3_NIX_INDEX_DIR: "/tmp/index",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.mcpServers).toEqual([
+      {
+        id: "nix-designer",
+        transport: "stdio",
+        command: "bun",
+        args: ["run", "nix-mcp-server"],
+        env: {
+          T3_NIX_INDEX_DIR: "/tmp/index",
+        },
+      },
+    ]);
+
+    const withoutMcpServers = decodeProviderSessionStartInput({
+      threadId: "thread-1",
+      provider: "codex",
+      runtimeMode: "full-access",
+    });
+    expect(withoutMcpServers.mcpServers).toBeUndefined();
+  });
 });
 
 describe("ProviderSendTurnInput", () => {

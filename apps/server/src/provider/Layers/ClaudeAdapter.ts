@@ -2843,6 +2843,13 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
         ...(fastMode ? { fastMode: true } : {}),
       };
+      const mcpServers = input.mcpServers?.map((server) => ({
+        name: server.id,
+        type: server.transport,
+        command: server.command,
+        args: server.args ?? [],
+        env: server.env ?? {},
+      }));
 
       const queryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -2867,6 +2874,11 @@ const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         canUseTool,
         env: process.env,
         ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
+        ...(mcpServers && mcpServers.length > 0
+          ? {
+              mcpServers: mcpServers as unknown as NonNullable<ClaudeQueryOptions["mcpServers"]>,
+            }
+          : {}),
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };
 

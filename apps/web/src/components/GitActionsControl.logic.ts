@@ -166,6 +166,9 @@ export function resolveQuickAction(
   const isAhead = gitStatus.aheadCount > 0;
   const isBehind = gitStatus.behindCount > 0;
   const isDiverged = isAhead && isBehind;
+  const hasOpenPr = gitStatus.pr?.state === "open";
+  const canPushWithoutUpstream = hasOriginRemote && !gitStatus.hasUpstream;
+  const canPush = gitStatus.hasUpstream || canPushWithoutUpstream;
 
   if (!hasBranch) {
     return {
@@ -177,15 +180,105 @@ export function resolveQuickAction(
   }
 
   if (hasChanges) {
-    return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
+    if (!canPush) {
+      return { label: "Commit", disabled: false, kind: "run_action", action: "commit" };
+    }
+    if (_isDefaultBranch || hasOpenPr) {
+      return {
+        label: "Commit & push",
+        disabled: false,
+        kind: "run_action",
+        action: "commit_push",
+      };
+    }
+    return {
+      label: "Commit, push & PR",
+      disabled: false,
+      kind: "run_action",
+      action: "commit_push_pr",
+    };
   }
 
   if (isDiverged) {
     return {
-      label: "Commit",
+      label: "Sync branch",
       disabled: true,
       kind: "show_hint",
       hint: "Branch has diverged from upstream. Rebase/merge first.",
+    };
+  }
+
+  if (isBehind) {
+    return {
+      label: "Pull",
+      disabled: false,
+      kind: "run_pull",
+    };
+  }
+
+  if (hasOpenPr) {
+    if (isAhead && canPush) {
+      return {
+        label: "Push",
+        disabled: false,
+        kind: "run_action",
+        action: "push",
+      };
+    }
+    return {
+      label: "View PR",
+      disabled: false,
+      kind: "open_pr",
+    };
+  }
+
+  if (!gitStatus.hasUpstream) {
+    if (!hasOriginRemote) {
+      return {
+        label: "Push",
+        disabled: true,
+        kind: "show_hint",
+        hint: 'Add an "origin" remote before pushing or creating a PR.',
+      };
+    }
+    if (!isAhead) {
+      return {
+        label: "Push",
+        disabled: true,
+        kind: "show_hint",
+        hint: "No local commits to push.",
+      };
+    }
+    if (_isDefaultBranch) {
+      return {
+        label: "Push",
+        disabled: false,
+        kind: "run_action",
+        action: "commit_push",
+      };
+    }
+    return {
+      label: "Push & create PR",
+      disabled: false,
+      kind: "run_action",
+      action: "create_pr",
+    };
+  }
+
+  if (isAhead) {
+    if (_isDefaultBranch) {
+      return {
+        label: "Push",
+        disabled: false,
+        kind: "run_action",
+        action: "commit_push",
+      };
+    }
+    return {
+      label: "Push & create PR",
+      disabled: false,
+      kind: "run_action",
+      action: "create_pr",
     };
   }
 
@@ -193,11 +286,7 @@ export function resolveQuickAction(
     label: "Commit",
     disabled: true,
     kind: "show_hint",
-    hint: isBehind
-      ? "Pull or rebase before committing new changes."
-      : !gitStatus.hasUpstream && !hasOriginRemote
-        ? 'Add an "origin" remote before pushing follow-up commits.'
-        : "No changes to commit yet.",
+    hint: "No changes to commit yet.",
   };
 }
 

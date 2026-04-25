@@ -65,6 +65,7 @@ import { FleetDeploymentServiceLive } from "./project/Layers/FleetDeploymentServ
 import { HostDriftServiceLive } from "./project/Layers/HostDriftService.ts";
 import { EphemeralWorkflowSecretVaultLive } from "./project/Layers/EphemeralWorkflowSecretVault.ts";
 import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
+import { NixDesignerServiceLive } from "./project/Layers/NixDesignerService.ts";
 import { ProjectSecretsServiceLive } from "./project/Layers/ProjectSecretsService.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
@@ -241,6 +242,7 @@ const FleetDeploymentLayerLive = FleetDeploymentServiceLive.pipe(
 );
 
 const ProjectDashboardLayerLive = ProjectDashboardContentResolverLive.pipe(
+  Layer.provideMerge(NixDesignerServiceLive),
   Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(HostDriftServiceLive),
   Layer.provideMerge(FlakeMaintenanceServiceLive),
@@ -319,6 +321,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
 );
 
 const RuntimeProjectServicesLive = Layer.empty.pipe(
+  Layer.provideMerge(NixDesignerServiceLive),
   Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(FleetDeploymentLayerLive),
   Layer.provideMerge(HostDriftServiceLive),

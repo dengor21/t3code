@@ -119,6 +119,10 @@ import {
   type ProjectDashboardContentResolverShape,
 } from "./project/Services/ProjectDashboardContentResolver.ts";
 import {
+  NixDesignerService,
+  type NixDesignerServiceShape,
+} from "./project/Services/NixDesignerService.ts";
+import {
   ProjectSecretsService,
   type ProjectSecretsServiceShape,
 } from "./project/Services/ProjectSecretsService.ts";
@@ -431,6 +435,7 @@ const makeDefaultOrchestrationThreadShell = (
     interactionMode: "default",
     branch: null,
     worktreePath: null,
+    designer: null,
     latestTurn: null,
     createdAt: now,
     updatedAt: now,
@@ -579,6 +584,7 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
+    nixDesignerService?: Partial<NixDesignerServiceShape>;
     projectSecretsService?: Partial<ProjectSecretsServiceShape>;
     deploymentSafetyService?: Partial<DeploymentSafetyServiceShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
@@ -829,6 +835,15 @@ const buildAppUnderTest = (options?: {
                 language: "nix",
                 contents: "",
               },
+              nixDesigner: {
+                status: "missing",
+                revision: null,
+                builtAt: null,
+                optionCount: 0,
+                packageCount: 0,
+                lastError: null,
+                staleReason: null,
+              },
               generalChanges: [],
               hostChanges: [],
               hostDoc: null,
@@ -837,6 +852,48 @@ const buildAppUnderTest = (options?: {
               secrets: null,
             }),
           ...options?.layers?.projectDashboardContentResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(NixDesignerService)({
+          getStatus: () =>
+            Effect.succeed({
+              status: "missing",
+              revision: null,
+              builtAt: null,
+              optionCount: 0,
+              packageCount: 0,
+              lastError: null,
+              staleReason: null,
+            }),
+          ensureIndex: () =>
+            Effect.succeed({
+              status: "ready",
+              revision: "test-revision",
+              builtAt: new Date(0).toISOString(),
+              optionCount: 0,
+              packageCount: 0,
+              lastError: null,
+              staleReason: null,
+            }),
+          rebuildIndex: () =>
+            Effect.succeed({
+              status: "ready",
+              revision: "test-revision",
+              builtAt: new Date(0).toISOString(),
+              optionCount: 0,
+              packageCount: 0,
+              lastError: null,
+              staleReason: null,
+            }),
+          createDescriptor: () =>
+            Effect.succeed({
+              id: "t3-nix-designer",
+              transport: "stdio",
+              command: process.execPath,
+              args: ["/tmp/nix-designer-mcp.js"],
+            }),
+          ...options?.layers?.nixDesignerService,
         }),
       ),
       Layer.provide(

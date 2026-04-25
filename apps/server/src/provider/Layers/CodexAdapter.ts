@@ -7,7 +7,12 @@
  *
  * @module CodexAdapterLive
  */
+import { cp, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
+  type McpServerDescriptor,
   type CanonicalItemType,
   type CanonicalRequestType,
   type ProviderEvent,
@@ -38,6 +43,7 @@ import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.t
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { expandHomePath } from "../../pathExpansion.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -49,6 +55,64 @@ import {
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "codex" as const;
+
+function escapeTomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function buildCodexMcpServerConfig(mcpServers: ReadonlyArray<McpServerDescriptor>): string {
+  return mcpServers
+    .map((server) => {
+      const lines = [
+        `[mcp_servers.${escapeTomlString(server.id)}]`,
+        `command = ${escapeTomlString(server.command)}`,
+      ];
+      if ((server.args?.length ?? 0) > 0) {
+        lines.push(
+          `args = [${(server.args ?? []).map((value) => escapeTomlString(value)).join(", ")}]`,
+        );
+      }
+      if (server.cwd) {
+        lines.push(`cwd = ${escapeTomlString(server.cwd)}`);
+      }
+      if (server.env && Object.keys(server.env).length > 0) {
+        lines.push(
+          `env = { ${Object.entries(server.env)
+            .map(([name, value]) => `${name} = ${escapeTomlString(value)}`)
+            .join(", ")} }`,
+        );
+      }
+      return lines.join("\n");
+    })
+    .join("\n\n");
+}
+
+async function mirrorHomeEntries(baseHomePath: string, overlayPath: string): Promise<void> {
+  try {
+    const entries = await readdir(baseHomePath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === "config.toml") {
+        continue;
+      }
+      const source = join(baseHomePath, entry.name);
+      const destination = join(overlayPath, entry.name);
+      try {
+        await symlink(
+          source,
+          destination,
+          entry.isDirectory() ? (process.platform === "win32" ? "junction" : "dir") : "file",
+        );
+      } catch {
+        await cp(source, destination, {
+          recursive: true,
+          force: true,
+        });
+      }
+    }
+  } catch {
+    // Missing base CODEX_HOME is fine; the overlay can still be bootstrapped.
+  }
+}
 
 export interface CodexAdapterLiveOptions {
   readonly makeRuntime?: (
@@ -1360,11 +1424,59 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               }),
           ),
         );
+        const sessionScope = yield* Scope.make("sequential");
+        let sessionScopeTransferred = false;
+        yield* Effect.addFinalizer(() =>
+          sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
+        );
+        const baseCodexHomePath = codexSettings.homePath
+          ? expandHomePath(codexSettings.homePath)
+          : process.env.CODEX_HOME
+            ? expandHomePath(process.env.CODEX_HOME)
+            : join(homedir(), ".codex");
+        const mcpServers = input.mcpServers ?? [];
+        const effectiveHomePath =
+          mcpServers.length > 0
+            ? yield* Effect.tryPromise({
+                try: async () => {
+                  const overlayPath = await mkdtemp(join(tmpdir(), "t3-codex-home-"));
+                  await mirrorHomeEntries(baseCodexHomePath, overlayPath);
+                  const baseConfig = await readFile(
+                    join(baseCodexHomePath, "config.toml"),
+                    "utf8",
+                  ).catch(() => "");
+                  const overlayConfig = [
+                    baseConfig.trimEnd(),
+                    buildCodexMcpServerConfig(mcpServers),
+                  ]
+                    .filter((value) => value.trim().length > 0)
+                    .join("\n\n");
+                  await writeFile(join(overlayPath, "config.toml"), `${overlayConfig}\n`);
+                  return overlayPath;
+                },
+                catch: (cause) =>
+                  new ProviderAdapterProcessError({
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    detail: "Failed to prepare CODEX_HOME overlay for MCP servers.",
+                    cause,
+                  }),
+              }).pipe(
+                Effect.tap((overlayPath) =>
+                  Scope.addFinalizer(
+                    sessionScope,
+                    Effect.promise(() => rm(overlayPath, { recursive: true, force: true })).pipe(
+                      Effect.ignore,
+                    ),
+                  ),
+                ),
+              )
+            : baseCodexHomePath;
         const runtimeInput: CodexSessionRuntimeOptions = {
           threadId: input.threadId,
           cwd: input.cwd ?? process.cwd(),
           binaryPath: codexSettings.binaryPath,
-          ...(codexSettings.homePath ? { homePath: codexSettings.homePath } : {}),
+          ...(effectiveHomePath ? { homePath: effectiveHomePath } : {}),
           ...(Schema.is(CodexResumeCursorSchema)(input.resumeCursor)
             ? { resumeCursor: input.resumeCursor }
             : {}),
@@ -1376,11 +1488,6 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ? { serviceTier: "fast" }
             : {}),
         };
-        const sessionScope = yield* Scope.make("sequential");
-        let sessionScopeTransferred = false;
-        yield* Effect.addFinalizer(() =>
-          sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
-        );
         const createRuntime = options?.makeRuntime ?? makeCodexSessionRuntime;
         const runtime = yield* createRuntime(runtimeInput).pipe(
           Effect.provideService(Scope.Scope, sessionScope),

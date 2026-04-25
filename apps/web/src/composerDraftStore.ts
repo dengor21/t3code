@@ -7,6 +7,7 @@ import {
   CodexReasoningEffort,
   type EnvironmentId,
   ModelSelection,
+  NixDesignerScope,
   ProjectId,
   ProviderInteractionMode,
   ProviderKind,
@@ -166,6 +167,7 @@ const PersistedDraftThreadState = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   envMode: DraftThreadEnvModeSchema,
+  designer: Schema.optionalKey(Schema.NullOr(NixDesignerScope)),
   scopedHostName: Schema.optionalKey(Schema.NullOr(Schema.String)),
   workflow: Schema.optionalKey(Schema.NullOr(ThreadWorkflow)),
   promotedTo: Schema.optionalKey(
@@ -228,6 +230,7 @@ export interface DraftSessionState {
   branch: string | null;
   worktreePath: string | null;
   envMode: DraftThreadEnvMode;
+  designer?: NixDesignerScope | null;
   scopedHostName?: string | null;
   workflow?: ThreadWorkflow | null;
   promotedTo?: ScopedThreadRef | null;
@@ -289,6 +292,7 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
+      designer?: NixDesignerScope | null;
       scopedHostName?: string | null;
       workflow?: ThreadWorkflow | null;
       createdAt?: string;
@@ -305,6 +309,7 @@ interface ComposerDraftStoreState {
       threadId?: ThreadId;
       branch?: string | null;
       worktreePath?: string | null;
+      designer?: NixDesignerScope | null;
       scopedHostName?: string | null;
       workflow?: ThreadWorkflow | null;
       createdAt?: string;
@@ -319,6 +324,7 @@ interface ComposerDraftStoreState {
     options: {
       branch?: string | null;
       worktreePath?: string | null;
+      designer?: NixDesignerScope | null;
       scopedHostName?: string | null;
       workflow?: ThreadWorkflow | null;
       projectRef?: ScopedProjectRef;
@@ -1103,12 +1109,39 @@ function draftThreadWorkflowsEqual(
   }
 }
 
+function draftThreadDesignerScopesEqual(
+  left: NixDesignerScope | null | undefined,
+  right: NixDesignerScope | null | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === "project") {
+    return true;
+  }
+  return right.kind === "host" && left.hostName === right.hostName;
+}
+
 function normalizeDraftThreadWorkflow(value: unknown): ThreadWorkflow | null {
   if (value === null || value === undefined) {
     return null;
   }
   try {
     return Schema.decodeUnknownSync(ThreadWorkflow)(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDraftThreadDesigner(value: unknown): NixDesignerScope | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  try {
+    return Schema.decodeUnknownSync(NixDesignerScope)(value);
   } catch {
     return null;
   }
@@ -1123,6 +1156,7 @@ function createDraftThreadState(
     threadId?: ThreadId;
     branch?: string | null;
     worktreePath?: string | null;
+    designer?: NixDesignerScope | null;
     scopedHostName?: string | null;
     workflow?: ThreadWorkflow | null;
     createdAt?: string;
@@ -1158,6 +1192,12 @@ function createDraftThreadState(
       options?.interactionMode ?? existingThread?.interactionMode ?? DEFAULT_INTERACTION_MODE,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
+    designer:
+      options?.designer === undefined
+        ? projectChanged
+          ? null
+          : (existingThread?.designer ?? null)
+        : (options.designer ?? null),
     scopedHostName:
       options?.scopedHostName === undefined
         ? projectChanged
@@ -1207,6 +1247,7 @@ function draftThreadsEqual(left: DraftThreadState | undefined, right: DraftThrea
     left.interactionMode === right.interactionMode &&
     left.branch === right.branch &&
     left.worktreePath === right.worktreePath &&
+    draftThreadDesignerScopesEqual(left.designer, right.designer) &&
     left.scopedHostName === right.scopedHostName &&
     draftThreadWorkflowsEqual(left.workflow, right.workflow) &&
     left.envMode === right.envMode &&
@@ -1350,6 +1391,7 @@ function normalizePersistedDraftThreads(
             : DEFAULT_INTERACTION_MODE,
         branch: typeof branch === "string" ? branch : null,
         worktreePath: normalizedWorktreePath,
+        designer: normalizeDraftThreadDesigner(candidateDraftThread.designer),
         scopedHostName:
           typeof candidateDraftThread.scopedHostName === "string" &&
           candidateDraftThread.scopedHostName.length > 0
@@ -1906,6 +1948,7 @@ function toHydratedDraftThreadState(
     interactionMode: persistedDraftThread.interactionMode,
     branch: persistedDraftThread.branch,
     worktreePath: persistedDraftThread.worktreePath,
+    designer: persistedDraftThread.designer ?? null,
     scopedHostName: persistedDraftThread.scopedHostName ?? null,
     workflow: persistedDraftThread.workflow ?? null,
     envMode: persistedDraftThread.envMode,
@@ -2107,6 +2150,12 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               interactionMode: options.interactionMode ?? existing.interactionMode,
               branch: nextBranch,
               worktreePath: nextWorktreePath,
+              designer:
+                options.designer === undefined
+                  ? projectChanged
+                    ? null
+                    : (existing.designer ?? null)
+                  : (options.designer ?? null),
               scopedHostName:
                 options.scopedHostName === undefined
                   ? projectChanged
@@ -2137,6 +2186,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               nextDraftThread.interactionMode === existing.interactionMode &&
               nextDraftThread.branch === existing.branch &&
               nextDraftThread.worktreePath === existing.worktreePath &&
+              draftThreadDesignerScopesEqual(nextDraftThread.designer, existing.designer) &&
               nextDraftThread.scopedHostName === existing.scopedHostName &&
               draftThreadWorkflowsEqual(nextDraftThread.workflow, existing.workflow) &&
               nextDraftThread.envMode === existing.envMode &&

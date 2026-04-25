@@ -32,6 +32,10 @@ import {
   type GitStatusBroadcasterShape,
 } from "../../git/Services/GitStatusBroadcaster.ts";
 import { TextGeneration, type TextGenerationShape } from "../../git/Services/TextGeneration.ts";
+import {
+  NixDesignerService,
+  type NixDesignerServiceShape,
+} from "../../project/Services/NixDesignerService.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
@@ -49,6 +53,15 @@ const asTurnId = (value: string): TurnId => TurnId.make(value);
 
 const deriveServerPathsSync = (baseDir: string, devUrl: URL | undefined) =>
   Effect.runSync(deriveServerPaths(baseDir, devUrl).pipe(Effect.provide(NodeServices.layer)));
+const missingNixDesignerStatus = {
+  status: "missing" as const,
+  revision: null,
+  builtAt: null,
+  optionCount: 0,
+  packageCount: 0,
+  lastError: null,
+  staleReason: null,
+};
 
 async function waitFor(
   predicate: () => boolean | Promise<boolean>,
@@ -272,8 +285,21 @@ describe("ProviderCommandReactor", () => {
       Layer.provide(RepositoryIdentityResolverLive),
       Layer.provide(SqlitePersistenceMemory),
     );
+    const nixDesignerServiceLayer = Layer.succeed(NixDesignerService, {
+      getStatus: () => Effect.succeed(missingNixDesignerStatus),
+      ensureIndex: () => Effect.succeed(missingNixDesignerStatus),
+      rebuildIndex: () => Effect.succeed(missingNixDesignerStatus),
+      createDescriptor: () =>
+        Effect.succeed({
+          id: "t3-nix-designer",
+          transport: "stdio" as const,
+          command: "node",
+          args: ["mock-nix-mcp.js"],
+        }),
+    } satisfies NixDesignerServiceShape);
     const layer = ProviderCommandReactorLive.pipe(
       Layer.provideMerge(orchestrationLayer),
+      Layer.provideMerge(nixDesignerServiceLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(Layer.succeed(GitCore, { renameBranch } as unknown as GitCoreShape)),
       Layer.provideMerge(

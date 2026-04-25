@@ -18,10 +18,12 @@ import {
   type HostDriftSummary,
   type HostDeploymentStatus,
   type HostDocumentationStatus,
+  type NixIndexStatus,
   type ProjectDashboardChangeEntry,
   type SecretValidationCheck,
   type SecretsProviderKind,
 } from "@t3tools/contracts";
+import { scopedProjectKey } from "@t3tools/client-runtime";
 import {
   isValidHostCreationHostName,
   normalizeHostCreationHostName,
@@ -86,6 +88,7 @@ import {
   projectDashboardContentQueryOptions,
   projectSecretsSummaryQueryOptions,
   projectQueryKeys,
+  setProjectDashboardNixDesignerQueryData,
 } from "../lib/projectReactQuery";
 import { ensureLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
@@ -95,6 +98,7 @@ import {
 } from "./flakeDashboardHostMenu";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
+import { useUiStateStore } from "../uiStateStore";
 import {
   buildFlakeRouteParams,
   buildThreadRouteParams,
@@ -211,6 +215,60 @@ function documentationStatusClasses(status: HostDocumentationStatus | null | und
     default:
       return "border-border/70 bg-background/70 text-muted-foreground";
   }
+}
+
+function formatNixDesignerStatusLabel(status: NixIndexStatus | null | undefined): string {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "building":
+      return "Building";
+    case "stale":
+      return "Stale";
+    case "error":
+      return "Error";
+    case "missing":
+    default:
+      return "Missing";
+  }
+}
+
+function nixDesignerStatusClasses(status: NixIndexStatus | null | undefined): string {
+  switch (status) {
+    case "ready":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "building":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "stale":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "error":
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    case "missing":
+    default:
+      return "border-border/70 bg-background/70 text-muted-foreground";
+  }
+}
+
+function describeNixDesignerRebuildFailure(input: {
+  status: NixIndexStatus | null | undefined;
+  lastError: string | null | undefined;
+  staleReason: string | null | undefined;
+}): string {
+  if (input.lastError) {
+    return input.lastError;
+  }
+  if (input.status === "stale" && input.staleReason) {
+    return `The index is still stale: ${input.staleReason}.`;
+  }
+  if (input.status === "missing") {
+    return "The index files were not created.";
+  }
+  return "The index build did not complete successfully.";
+}
+
+function formatShortRevision(revision: string | null | undefined): string | null {
+  const trimmed = revision?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed.slice(0, 12) : null;
 }
 
 function deploymentReasonLabel(
@@ -785,6 +843,7 @@ function FlakeDashboardRouteView() {
   const projectRef = Route.useParams({
     select: (params) => resolveFlakeRouteRef(params),
   });
+  const projectUiKey = projectRef ? scopedProjectKey(projectRef) : null;
   const search = Route.useSearch();
   const bootstrapComplete = useStore(
     (store) => selectEnvironmentState(store, projectRef?.environmentId ?? null).bootstrapComplete,
@@ -794,6 +853,12 @@ function FlakeDashboardRouteView() {
       selectEnvironmentState(store, projectRef?.environmentId ?? null).projectIds.length > 0,
   );
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
+  const nixDesignerEnabled = useUiStateStore((store) =>
+    projectUiKey ? (store.nixDesignerEnabledByProjectKey[projectUiKey] ?? false) : false,
+  );
+  const setProjectNixDesignerEnabled = useUiStateStore(
+    (store) => store.setProjectNixDesignerEnabled,
+  );
   const { handleNewThread } = useNewThreadHandler();
   const [pendingDocGenerationsByHost, setPendingDocGenerationsByHost] = useState<
     Record<string, PendingHostDocGeneration>
@@ -808,6 +873,7 @@ function FlakeDashboardRouteView() {
   const [createHostType, setCreateHostType] = useState("");
   const [deployDialogHostName, setDeployDialogHostName] = useState<string | null>(null);
   const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
+  const [nixDesignerRebuildPending, setNixDesignerRebuildPending] = useState(false);
   const [maintenancePending, setMaintenancePending] = useState(false);
   const [deployOnServer, setDeployOnServer] = useState(false);
   const [deployActivationStrategy, setDeployActivationStrategy] = useState<"switch" | "boot">(
@@ -841,6 +907,10 @@ function FlakeDashboardRouteView() {
   });
   const routeEnvironmentId = projectRef?.environmentId ?? null;
   const routeProjectId = project?.id ?? null;
+  const designerScope = useMemo(
+    () => (nixDesignerEnabled ? ({ kind: "project" } as const) : null),
+    [nixDesignerEnabled],
+  );
   const previousDashboardViewRef = useRef<FlakeDashboardView | undefined>(search.view);
 
   const resetDeployDialogOptions = useCallback(() => {
@@ -1264,10 +1334,11 @@ function FlakeDashboardRouteView() {
       return;
     }
     void handleNewThread(projectRef, {
+      ...(designerScope ? { designer: designerScope } : {}),
       scopedHostName: null,
       workflow: null,
     });
-  }, [handleNewThread, projectRef]);
+  }, [designerScope, handleNewThread, projectRef]);
 
   const handleStartHostThread = useCallback(
     (host: FlakeHost) => {
@@ -1275,11 +1346,12 @@ function FlakeDashboardRouteView() {
         return;
       }
       void handleNewThread(projectRef, {
+        ...(designerScope ? { designer: designerScope } : {}),
         scopedHostName: host.name,
         workflow: null,
       });
     },
-    [handleNewThread, projectRef],
+    [designerScope, handleNewThread, projectRef],
   );
 
   const handleRemoveHostThread = useCallback(
@@ -1288,6 +1360,7 @@ function FlakeDashboardRouteView() {
         return;
       }
       void handleNewThread(projectRef, {
+        ...(designerScope ? { designer: designerScope } : {}),
         scopedHostName: host.name,
         interactionMode: "plan",
         workflow: {
@@ -1299,7 +1372,7 @@ function FlakeDashboardRouteView() {
         },
       });
     },
-    [handleNewThread, projectRef],
+    [designerScope, handleNewThread, projectRef],
   );
 
   const existingHostNameSet = useMemo(() => {
@@ -1362,6 +1435,7 @@ function FlakeDashboardRouteView() {
     const hostName = normalizedCreateHostName;
     const target = resolveHostCreationTarget(createHostTarget, hostName);
     await handleNewThread(projectRef, {
+      ...(designerScope ? { designer: designerScope } : {}),
       scopedHostName: hostName,
       interactionMode: "plan",
       workflow: {
@@ -1391,6 +1465,7 @@ function FlakeDashboardRouteView() {
     handleNewThread,
     normalizedCreateHostSourceSshTarget,
     normalizedCreateHostName,
+    designerScope,
     projectRef,
     resetCreateHostForm,
   ]);
@@ -1437,6 +1512,55 @@ function FlakeDashboardRouteView() {
       }),
     ]);
   }, [project, projectRef, queryClient]);
+
+  const handleRebuildNixDesigner = useCallback(async () => {
+    if (!projectRef || !project || nixDesignerRebuildPending) {
+      return;
+    }
+
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setNixDesignerRebuildPending(true);
+    try {
+      const result = await api.projects.rebuildNixDesignerIndex({
+        projectId: project.id,
+      });
+      setProjectDashboardNixDesignerQueryData(queryClient, {
+        environmentId: projectRef.environmentId,
+        projectId: project.id,
+        nixDesigner: result,
+      });
+      await invalidateDashboardQueries();
+      if (result.status !== "ready") {
+        toastManager.add({
+          type: "error",
+          title: "Failed to rebuild Nix Designer index",
+          description: describeNixDesignerRebuildFailure(result),
+        });
+        return;
+      }
+      toastManager.add({
+        type: "success",
+        title: "Rebuilt Nix Designer index",
+        description: `Indexed nixpkgs ${formatShortRevision(result.revision) ?? result.revision}.`,
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to rebuild Nix Designer index",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setNixDesignerRebuildPending(false);
+    }
+  }, [invalidateDashboardQueries, nixDesignerRebuildPending, project, projectRef, queryClient]);
 
   const invalidateHostDeploymentQueries = useCallback(() => {
     if (!projectRef || !project) {
@@ -1718,6 +1842,8 @@ function FlakeDashboardRouteView() {
           ),
     [selectedProjectSecrets],
   );
+  const nixDesigner = dashboardQuery.data?.nixDesigner ?? null;
+  const nixDesignerRevision = formatShortRevision(nixDesigner?.revision);
   const totalProjectSecretCount = useMemo(
     () => projectSecretsHostInventories.reduce((sum, inventory) => sum + inventory.secretCount, 0),
     [projectSecretsHostInventories],
@@ -2533,6 +2659,69 @@ function FlakeDashboardRouteView() {
                       <LockKeyholeIcon className="size-3.5" />
                       Secrets
                     </Button>
+                  </div>
+                  <div className="mt-4 rounded-xl border border-border/50 bg-background/50 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <label className="flex min-w-0 items-start gap-3">
+                        <Checkbox
+                          checked={nixDesignerEnabled}
+                          onCheckedChange={(checked) => {
+                            if (!projectUiKey) {
+                              return;
+                            }
+                            setProjectNixDesignerEnabled(projectUiKey, checked === true);
+                          }}
+                          aria-label="Enable Nix Designer MCP for new flake threads"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-foreground">
+                            Nix Designer MCP
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            New dashboard threads attach the project-scoped Nix MCP server when
+                            enabled.
+                          </span>
+                        </span>
+                      </label>
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                          nixDesignerStatusClasses(nixDesigner?.status),
+                        )}
+                      >
+                        {formatNixDesignerStatusLabel(nixDesigner?.status)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      {nixDesignerRevision ? (
+                        <span className="rounded-md border border-border/60 px-2 py-1">
+                          rev {nixDesignerRevision}
+                        </span>
+                      ) : null}
+                      {nixDesigner?.optionCount ? (
+                        <span className="rounded-md border border-border/60 px-2 py-1">
+                          {nixDesigner.optionCount.toLocaleString()} options
+                        </span>
+                      ) : null}
+                      {nixDesigner?.packageCount ? (
+                        <span className="rounded-md border border-border/60 px-2 py-1">
+                          {nixDesigner.packageCount.toLocaleString()} packages
+                        </span>
+                      ) : null}
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={nixDesignerRebuildPending}
+                        onClick={() => void handleRebuildNixDesigner()}
+                      >
+                        {nixDesignerRebuildPending ? (
+                          <RefreshCcwIcon className="size-3 animate-spin" />
+                        ) : (
+                          <RefreshCcwIcon className="size-3" />
+                        )}
+                        Rebuild index
+                      </Button>
+                    </div>
                   </div>
                 </section>
 
@@ -4695,7 +4884,89 @@ function FlakeDashboardRouteView() {
                         </div>
                       ) : activeView === "flake" ? (
                         dashboardQuery.data ? (
-                          <div className="max-h-[78vh] overflow-y-auto p-4 sm:p-5">
+                          <div className="max-h-[78vh] space-y-4 overflow-y-auto p-4 sm:p-5">
+                            <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <h3 className="text-sm font-semibold text-foreground">
+                                    Nix Designer index
+                                  </h3>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Project-scoped option and package index used by designer
+                                    threads.
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span
+                                    className={cn(
+                                      "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                      nixDesignerStatusClasses(nixDesigner?.status),
+                                    )}
+                                  >
+                                    {formatNixDesignerStatusLabel(nixDesigner?.status)}
+                                  </span>
+                                  <Button
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={nixDesignerRebuildPending}
+                                    onClick={() => void handleRebuildNixDesigner()}
+                                  >
+                                    {nixDesignerRebuildPending ? (
+                                      <RefreshCcwIcon className="size-3 animate-spin" />
+                                    ) : (
+                                      <RefreshCcwIcon className="size-3" />
+                                    )}
+                                    Rebuild
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-lg border border-border/50 bg-card/40 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Revision
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {nixDesignerRevision ?? "Unavailable"}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-border/50 bg-card/40 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Built
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {nixDesigner?.builtAt
+                                      ? formatTimestamp(nixDesigner.builtAt)
+                                      : "Never"}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-border/50 bg-card/40 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Options
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {(nixDesigner?.optionCount ?? 0).toLocaleString()}
+                                  </div>
+                                </div>
+                                <div className="rounded-lg border border-border/50 bg-card/40 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Packages
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {(nixDesigner?.packageCount ?? 0).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                              {nixDesigner?.staleReason ? (
+                                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+                                  {nixDesigner.staleReason}
+                                </div>
+                              ) : null}
+                              {nixDesigner?.lastError ? (
+                                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                  {nixDesigner.lastError}
+                                </div>
+                              ) : null}
+                            </div>
                             <ChatMarkdown text={flakeSourceMarkdown} cwd={project.cwd} />
                           </div>
                         ) : (

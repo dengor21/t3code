@@ -20,6 +20,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
     projectExpandedById: {},
     projectOrder: [],
+    nixDesignerEnabledByProjectKey: {},
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     ...overrides,

@@ -881,6 +881,9 @@ it.layer(TestLayer)("git integration", (it) => {
           ) {
             return ok();
           }
+          if (input.operation === "GitCore.statusDetails.head") {
+            return ok("0123456789abcdef0123456789abcdef01234567\0Test commit\n");
+          }
           if (input.operation === "GitCore.statusDetails.defaultRef") {
             return ok("refs/remotes/origin/main\n");
           }
@@ -956,6 +959,9 @@ it.layer(TestLayer)("git integration", (it) => {
               input.operation === "GitCore.statusDetails.stagedNumstat"
             ) {
               return ok();
+            }
+            if (input.operation === "GitCore.statusDetails.head") {
+              return ok("0123456789abcdef0123456789abcdef01234567\0Test commit\n");
             }
             if (input.operation === "GitCore.statusDetails.defaultRef") {
               return ok("refs/remotes/origin/main\n");
@@ -1698,6 +1704,7 @@ it.layer(TestLayer)("git integration", (it) => {
           hasOriginRemote: false,
           isDefaultBranch: false,
           branch: null,
+          head: null,
           upstreamRef: null,
           hasWorkingTreeChanges: false,
           workingTree: {

@@ -19,12 +19,14 @@ export interface PersistedUiState {
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
+  nixDesignerEnabledByProjectKey?: Record<string, boolean>;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
 }
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
+  nixDesignerEnabledByProjectKey: Record<string, boolean>;
 }
 
 export interface UiThreadState {
@@ -50,6 +52,7 @@ export interface SyncThreadInput {
 const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
+  nixDesignerEnabledByProjectKey: {},
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
 };
@@ -88,6 +91,9 @@ function readPersistedState(): UiState {
     hydratePersistedProjectState(parsed);
     return {
       ...initialState,
+      nixDesignerEnabledByProjectKey: sanitizePersistedBooleanRecord(
+        parsed.nixDesignerEnabledByProjectKey,
+      ),
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
@@ -123,6 +129,20 @@ function sanitizePersistedThreadChangedFilesExpanded(
   }
 
   return nextState;
+}
+
+function sanitizePersistedBooleanRecord(
+  value: PersistedUiState["nixDesignerEnabledByProjectKey"],
+): Record<string, boolean> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key, enabled]) => key.length > 0 && typeof enabled === "boolean" && enabled,
+    ),
+  );
 }
 
 export function hydratePersistedProjectState(parsed: PersistedUiState): void {
@@ -165,6 +185,9 @@ export function persistState(state: UiState): void {
       const cwd = currentProjectCwdById.get(projectId);
       return cwd ? [cwd] : [];
     });
+    const nixDesignerEnabledByProjectKey = Object.fromEntries(
+      Object.entries(state.nixDesignerEnabledByProjectKey).filter(([, enabled]) => enabled),
+    );
     const threadChangedFilesExpandedById = Object.fromEntries(
       Object.entries(state.threadChangedFilesExpandedById).flatMap(([threadId, turns]) => {
         const nextTurns = Object.fromEntries(
@@ -179,6 +202,7 @@ export function persistState(state: UiState): void {
         collapsedProjectCwds,
         expandedProjectCwds,
         projectOrderCwds,
+        nixDesignerEnabledByProjectKey,
         threadChangedFilesExpandedById,
       } satisfies PersistedUiState),
     );
@@ -556,6 +580,36 @@ export function setProjectExpanded(state: UiState, projectId: string, expanded: 
   };
 }
 
+export function setProjectNixDesignerEnabled(
+  state: UiState,
+  projectKey: string,
+  enabled: boolean,
+): UiState {
+  if ((state.nixDesignerEnabledByProjectKey[projectKey] ?? false) === enabled) {
+    return state;
+  }
+
+  if (!enabled) {
+    if (!(projectKey in state.nixDesignerEnabledByProjectKey)) {
+      return state;
+    }
+    const nextNixDesignerEnabledByProjectKey = { ...state.nixDesignerEnabledByProjectKey };
+    delete nextNixDesignerEnabledByProjectKey[projectKey];
+    return {
+      ...state,
+      nixDesignerEnabledByProjectKey: nextNixDesignerEnabledByProjectKey,
+    };
+  }
+
+  return {
+    ...state,
+    nixDesignerEnabledByProjectKey: {
+      ...state.nixDesignerEnabledByProjectKey,
+      [projectKey]: true,
+    },
+  };
+}
+
 export function reorderProjects(
   state: UiState,
   draggedProjectIds: readonly string[],
@@ -608,6 +662,7 @@ interface UiStateStore extends UiState {
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
+  setProjectNixDesignerEnabled: (projectKey: string, enabled: boolean) => void;
   reorderProjects: (
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
@@ -628,6 +683,8 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
+  setProjectNixDesignerEnabled: (projectKey, enabled) =>
+    set((state) => setProjectNixDesignerEnabled(state, projectKey, enabled)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>
     set((state) => reorderProjects(state, draggedProjectIds, targetProjectIds)),
 }));

@@ -62,6 +62,7 @@ import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/
 import { GitCoreLive } from "./git/Layers/GitCore.ts";
 import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration.ts";
 import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
+import { NixDesignerServiceLive } from "./project/Layers/NixDesignerService.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { getAutoBootstrapDefaultModelSelection } from "./serverRuntimeStartup.ts";
 import {
@@ -511,6 +512,7 @@ const ProjectCliRuntimeBaseLive = Layer.mergeAll(
   ),
   RoutingTextGenerationLive,
   DeployRsResolverLive,
+  NixDesignerServiceLive,
   DocumentationStatusResolverLive.pipe(
     Layer.provideMerge(projectCliHostDocumentationGenerationRegistryLayer),
   ),

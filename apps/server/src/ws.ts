@@ -19,6 +19,7 @@ import {
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
   FilesystemBrowseError,
+  ProjectRebuildNixDesignerIndexError,
   ThreadId,
   type TerminalEvent,
   WS_METHODS,
@@ -55,6 +56,7 @@ import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
+import { NixDesignerService } from "./project/Services/NixDesignerService.ts";
 import { ProjectSecretsService } from "./project/Services/ProjectSecretsService.ts";
 import { DeploymentSafetyService } from "./project/Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
@@ -171,6 +173,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const projectDashboardContentResolver = yield* ProjectDashboardContentResolver;
+      const nixDesignerService = yield* NixDesignerService;
       const projectSecretsService = yield* ProjectSecretsService;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
@@ -873,6 +876,49 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               ...(input.hostName ? { hostName: input.hostName } : {}),
             }),
             { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsRebuildNixDesignerIndex]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsRebuildNixDesignerIndex,
+            Effect.gen(function* () {
+              const project = yield* projectionSnapshotQuery
+                .getProjectShellById(input.projectId)
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProjectRebuildNixDesignerIndexError({
+                        message: cause.message,
+                        cause,
+                      }),
+                  ),
+                  Effect.flatMap(
+                    Option.match({
+                      onNone: () =>
+                        Effect.fail(
+                          new ProjectRebuildNixDesignerIndexError({
+                            message: `Project '${input.projectId}' was not found.`,
+                          }),
+                        ),
+                      onSome: (value) => Effect.succeed(value),
+                    }),
+                  ),
+                );
+              return yield* nixDesignerService
+                .rebuildIndex({
+                  projectId: input.projectId,
+                  workspaceRoot: project.workspaceRoot,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProjectRebuildNixDesignerIndexError({
+                        message: cause.message,
+                        cause,
+                      }),
+                  ),
+                );
+            }),
+            { "rpc.aggregate": "workspace", "workspace.project_id": input.projectId },
           ),
         [WS_METHODS.projectsGetSecretsSummary]: (input) =>
           observeRpcEffect(

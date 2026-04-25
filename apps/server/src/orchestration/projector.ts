@@ -31,6 +31,7 @@ import {
   ThreadUnarchivedPayload,
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
+  ThreadTurnStartRequestedPayload,
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
 
@@ -289,7 +290,8 @@ export function projectEvent(
             interactionMode: payload.interactionMode,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
-            scopedHostName: payload.scopedHostName,
+            designer: null,
+            scopedHostName: payload.scopedHostName ?? null,
             workflow: payload.workflow ?? null,
             changeTracking: {
               baselineHeadSha: null,
@@ -302,6 +304,7 @@ export function projectEvent(
             archivedAt: null,
             deletedAt: null,
             messages: [],
+            proposedPlans: [],
             activities: [],
             checkpoints: [],
             session: null,
@@ -391,6 +394,22 @@ export function projectEvent(
           threads: updateThread(nextBase.threads, payload.threadId, {
             interactionMode: payload.interactionMode,
             updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.turn-start-requested":
+      return decodeForEvent(
+        ThreadTurnStartRequestedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            ...(payload.designer !== undefined ? { designer: payload.designer } : {}),
+            updatedAt: event.occurredAt,
           }),
         })),
       );

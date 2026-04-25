@@ -2801,6 +2801,7 @@ export default function ChatView(props: ChatViewProps) {
         },
         modelSelection: ctxSelectedModelSelection,
         titleSeed: title,
+        ...(activeThread.designer ? { designer: activeThread.designer } : {}),
         runtimeMode,
         interactionMode,
         ...(bootstrap ? { bootstrap } : {}),
@@ -2989,6 +2990,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: activeThread.title,
+          ...(activeThread.designer ? { designer: activeThread.designer } : {}),
           runtimeMode,
           interactionMode,
           ...(bootstrap ? { bootstrap } : {}),
@@ -3370,6 +3372,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: activeThread.title,
+          ...(activeThread.designer ? { designer: activeThread.designer } : {}),
           runtimeMode,
           interactionMode: nextInteractionMode,
           ...(nextInteractionMode === "default" && activeProposedPlan
@@ -3497,6 +3500,7 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: nextThreadTitle,
+          ...(activeThread.designer ? { designer: activeThread.designer } : {}),
           runtimeMode,
           interactionMode: "default",
           sourceProposedPlan: {

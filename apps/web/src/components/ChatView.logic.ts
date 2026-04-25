@@ -50,6 +50,7 @@ export function buildLocalDraftThread(
     latestTurn: null,
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
+    designer: draftThread.designer ?? null,
     scopedHostName: draftThread.scopedHostName ?? null,
     workflow: draftThread.workflow ?? null,
     turnDiffSummaries: [],

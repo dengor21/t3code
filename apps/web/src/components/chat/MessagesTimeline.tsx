@@ -73,6 +73,8 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { openInPreferredEditor } from "../../editorPreferences";
+import { ensureLocalApi } from "../../localApi";
 
 // ---------------------------------------------------------------------------
 // Context — shared state consumed by every row component via useContext.
@@ -972,6 +974,126 @@ function workEntryRawCommand(
   return rawCommand === workEntry.command.trim() ? null : rawCommand;
 }
 
+function resolveDiagnosticTargetPath(
+  filePath: string,
+  workspaceRoot: string | undefined,
+): string | null {
+  const trimmedPath = filePath.trim();
+  if (trimmedPath.length === 0) {
+    return null;
+  }
+  if (
+    trimmedPath.startsWith("/") ||
+    /^[A-Za-z]:[\\/]/.test(trimmedPath) ||
+    trimmedPath.startsWith("\\\\")
+  ) {
+    return trimmedPath;
+  }
+  if (!workspaceRoot) {
+    return null;
+  }
+  const normalizedRoot = workspaceRoot.replace(/[\\/]+$/, "");
+  const normalizedPath = trimmedPath.replace(/^[./\\]+/, "");
+  return `${normalizedRoot}/${normalizedPath}`;
+}
+
+function formatDiagnosticLocationLabel(
+  filePath: string,
+  line: number | undefined,
+  column: number | undefined,
+  workspaceRoot: string | undefined,
+): string {
+  const location = formatWorkspaceRelativePath(filePath, workspaceRoot);
+  if (line === undefined) {
+    return location;
+  }
+  return `${location}:${line}${column !== undefined ? `:${column}` : ""}`;
+}
+
+const MAX_VISIBLE_NIX_DIAGNOSTICS = 5;
+
+const NixDiagnosticsInlineList = memo(function NixDiagnosticsInlineList(props: {
+  diagnostics: NonNullable<TimelineWorkEntry["nixDiagnostics"]>;
+  workspaceRoot: string | undefined;
+}) {
+  const { diagnostics, workspaceRoot } = props;
+  const visibleDiagnostics = diagnostics.slice(0, MAX_VISIBLE_NIX_DIAGNOSTICS);
+  const hiddenCount = diagnostics.length - visibleDiagnostics.length;
+
+  return (
+    <div className="mt-2 space-y-1.5 rounded-lg border border-border/70 bg-background/45 p-2.5">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground/65">
+        Diagnostics ({diagnostics.length})
+      </div>
+      {visibleDiagnostics.map((diagnostic) => {
+        const targetPath = diagnostic.filePath
+          ? resolveDiagnosticTargetPath(diagnostic.filePath, workspaceRoot)
+          : null;
+        const locationLabel = diagnostic.filePath
+          ? formatDiagnosticLocationLabel(
+              diagnostic.filePath,
+              diagnostic.line ?? undefined,
+              diagnostic.column ?? undefined,
+              workspaceRoot,
+            )
+          : null;
+        return (
+          <div
+            key={[
+              diagnostic.severity,
+              diagnostic.filePath ?? "",
+              diagnostic.line ?? "",
+              diagnostic.column ?? "",
+              diagnostic.message,
+            ].join(":")}
+            className="rounded-md border border-border/50 bg-card/40 px-2.5 py-2"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em]",
+                  diagnostic.severity === "error"
+                    ? "border-destructive/30 bg-destructive/10 text-destructive"
+                    : diagnostic.severity === "warning"
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      : "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+                )}
+              >
+                {diagnostic.severity}
+              </span>
+              {locationLabel ? (
+                targetPath ? (
+                  <button
+                    type="button"
+                    className="text-left text-[11px] font-medium text-foreground/85 underline-offset-2 hover:underline"
+                    onClick={() => {
+                      void openInPreferredEditor(ensureLocalApi(), targetPath).catch(
+                        () => undefined,
+                      );
+                    }}
+                  >
+                    {locationLabel}
+                  </button>
+                ) : (
+                  <span className="text-[11px] font-medium text-foreground/85">
+                    {locationLabel}
+                  </span>
+                )
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{diagnostic.message}</p>
+          </div>
+        );
+      })}
+      {hiddenCount > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {hiddenCount} more diagnostic{hiddenCount === 1 ? "" : "s"} omitted.
+        </p>
+      ) : null}
+    </div>
+  );
+});
+
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.requestKind === "command") return TerminalIcon;
   if (workEntry.requestKind === "file-read") return EyeIcon;
@@ -1127,6 +1249,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
               +{(workEntry.changedFiles?.length ?? 0) - 4}
             </span>
           )}
+        </div>
+      )}
+      {(workEntry.nixDiagnostics?.length ?? 0) > 0 && (
+        <div className="pl-6">
+          <NixDiagnosticsInlineList
+            diagnostics={workEntry.nixDiagnostics ?? []}
+            workspaceRoot={workspaceRoot}
+          />
         </div>
       )}
     </div>

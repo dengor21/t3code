@@ -34,6 +34,7 @@ const baseThread: OrchestrationThread = {
   interactionMode: "default",
   branch: null,
   worktreePath: null,
+  designer: null,
   scopedHostName: null,
   workflow: null,
   changeTracking: null,

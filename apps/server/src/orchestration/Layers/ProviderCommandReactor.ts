@@ -24,6 +24,7 @@ import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { buildProviderTurnContext } from "../../provider/providerContext.ts";
+import { NixDesignerService } from "../../project/Services/NixDesignerService.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import {
   ProviderCommandReactor,
@@ -257,6 +258,7 @@ const make = Effect.gen(function* () {
     const readModel = yield* orchestrationEngine.getReadModel();
     return readModel.threads.find((entry) => entry.id === threadId);
   });
+  const nixDesignerService = yield* NixDesignerService;
 
   const ensureSessionForThread = Effect.fn("ensureSessionForThread")(function* (
     threadId: ThreadId,
@@ -295,6 +297,17 @@ const make = Effect.gen(function* () {
       thread,
       projects: readModel.projects,
     });
+    const project = readModel.projects.find((entry) => entry.id === thread.projectId);
+    const mcpServers =
+      thread.designer && project
+        ? [
+            yield* nixDesignerService.createDescriptor({
+              projectId: project.id,
+              workspaceRoot: project.workspaceRoot,
+              scope: thread.designer,
+            }),
+          ]
+        : undefined;
 
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService
@@ -310,6 +323,7 @@ const make = Effect.gen(function* () {
         ...(preferredProvider ? { provider: preferredProvider } : {}),
         ...(effectiveCwd ? { cwd: effectiveCwd } : {}),
         modelSelection: desiredModelSelection,
+        ...(mcpServers !== undefined ? { mcpServers } : {}),
         ...(input?.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
         runtimeMode: desiredRuntimeMode,
       });

@@ -20,6 +20,7 @@ import {
   TrimmedNonEmptyString,
   TurnId,
 } from "./baseSchemas.ts";
+import { NixDesignerScope } from "./nixDesigner.ts";
 
 export const ORCHESTRATION_WS_METHODS = {
   dispatchCommand: "orchestration.dispatchCommand",
@@ -371,6 +372,9 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -426,6 +430,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -627,6 +634,7 @@ export const ThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
@@ -648,6 +656,7 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   }),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)),
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   bootstrap: Schema.optional(ThreadTurnStartBootstrap),
@@ -977,6 +986,9 @@ export const ThreadTurnStartRequestedPayload = Schema.Struct({
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
+  designer: Schema.optional(Schema.NullOr(NixDesignerScope)).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),

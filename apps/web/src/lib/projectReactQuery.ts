@@ -1,10 +1,12 @@
 import type {
   EnvironmentId,
+  ProjectDashboardContentResult,
+  ProjectDashboardNixDesigner,
   ProjectId,
   ProjectSearchEntriesResult,
   ThreadId,
 } from "@t3tools/contracts";
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { ensureEnvironmentApi } from "~/environmentApi";
 
 export const projectQueryKeys = {
@@ -110,6 +112,22 @@ export const projectQueryKeys = {
     limit: number,
   ) => ["projects", "search-entries", environmentId ?? null, cwd, query, limit] as const,
 };
+
+export function setProjectDashboardNixDesignerQueryData(
+  queryClient: QueryClient,
+  input: {
+    environmentId: EnvironmentId | null;
+    projectId: ProjectId | null;
+    nixDesigner: ProjectDashboardNixDesigner;
+  },
+) {
+  return queryClient.setQueriesData<ProjectDashboardContentResult>(
+    {
+      queryKey: projectQueryKeys.dashboardContentPrefix(input.environmentId, input.projectId),
+    },
+    (current) => (current ? { ...current, nixDesigner: input.nixDesigner } : current),
+  );
+}
 
 const DEFAULT_SEARCH_ENTRIES_LIMIT = 80;
 const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;

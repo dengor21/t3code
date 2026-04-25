@@ -26,6 +26,16 @@ import {
   RuntimeMode,
 } from "./orchestration.ts";
 
+export const McpServerDescriptor = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  transport: Schema.Literal("stdio"),
+  command: TrimmedNonEmptyString,
+  args: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+  env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  cwd: Schema.optional(TrimmedNonEmptyString),
+});
+export type McpServerDescriptor = typeof McpServerDescriptor.Type;
+
 const ProviderSessionStatus = Schema.Literals([
   "connecting",
   "ready",
@@ -100,6 +110,7 @@ export const ProviderSessionStartInput = Schema.Struct({
   provider: Schema.optional(ProviderKind),
   cwd: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),
+  mcpServers: Schema.optional(Schema.Array(McpServerDescriptor)),
   resumeCursor: Schema.optional(Schema.Unknown),
   approvalPolicy: Schema.optional(ProviderApprovalPolicy),
   sandboxMode: Schema.optional(ProviderSandboxMode),

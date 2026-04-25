@@ -3,6 +3,7 @@ import * as Arr from "effect/Array";
 import {
   ApprovalRequestId,
   isToolLifecycleItemType,
+  type NixDiagnostic,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
   type OrchestrationProposedPlanId,
@@ -49,6 +50,7 @@ export interface WorkLogEntry {
   toolTitle?: string;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
+  nixDiagnostics?: ReadonlyArray<NixDiagnostic>;
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -528,6 +530,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? stripTrailingExitCode(payload.detail).output
       : null
     : extractToolDetail(payload, title ?? activity.summary);
+  const nixDiagnostics = extractNixDiagnostics(payload);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -563,6 +566,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (requestKind) {
     entry.requestKind = requestKind;
+  }
+  if (nixDiagnostics.length > 0) {
+    entry.nixDiagnostics = nixDiagnostics;
   }
   if (toolCallId) {
     entry.toolCallId = toolCallId;
@@ -619,6 +625,7 @@ function mergeDerivedWorkLogEntries(
   next: DerivedWorkLogEntry,
 ): DerivedWorkLogEntry {
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
+  const nixDiagnostics = mergeNixDiagnostics(previous.nixDiagnostics, next.nixDiagnostics);
   const detail = next.detail ?? previous.detail;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
@@ -634,6 +641,7 @@ function mergeDerivedWorkLogEntries(
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
+    ...(nixDiagnostics.length > 0 ? { nixDiagnostics } : {}),
     ...(toolTitle ? { toolTitle } : {}),
     ...(itemType ? { itemType } : {}),
     ...(requestKind ? { requestKind } : {}),
@@ -651,6 +659,32 @@ function mergeChangedFiles(
     return [];
   }
   return [...new Set(merged)];
+}
+
+function mergeNixDiagnostics(
+  previous: ReadonlyArray<NixDiagnostic> | undefined,
+  next: ReadonlyArray<NixDiagnostic> | undefined,
+): NixDiagnostic[] {
+  const merged = [...(previous ?? []), ...(next ?? [])];
+  if (merged.length === 0) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  return merged.filter((diagnostic) => {
+    const key = [
+      diagnostic.severity,
+      diagnostic.filePath ?? "",
+      diagnostic.line ?? "",
+      diagnostic.column ?? "",
+      diagnostic.message,
+    ].join("\u001f");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
@@ -699,6 +733,11 @@ function asTrimmedString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asPositiveInteger(value: unknown): number | null {
+  const number = asNumber(value);
+  return number !== null && number >= 1 ? Math.floor(number) : null;
 }
 
 function trimMatchingOuterQuotes(value: string): string {
@@ -754,6 +793,79 @@ function splitExecutableAndRest(value: string): { executable: string; rest: stri
     executable: trimmed.slice(0, firstWhitespace),
     rest: trimmed.slice(firstWhitespace).trim(),
   };
+}
+
+function parseNixDiagnostic(value: unknown): NixDiagnostic | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const message = asTrimmedString(record.message);
+  if (!message) {
+    return null;
+  }
+
+  const severity =
+    record.severity === "error" || record.severity === "warning" || record.severity === "info"
+      ? record.severity
+      : "error";
+  const filePath = asTrimmedString(record.filePath);
+  const line = asPositiveInteger(record.line);
+  const column = asPositiveInteger(record.column);
+
+  return {
+    severity,
+    message,
+    ...(filePath ? { filePath } : {}),
+    ...(line !== null ? { line } : {}),
+    ...(column !== null ? { column } : {}),
+  };
+}
+
+function extractNixDiagnostics(
+  payload: Record<string, unknown> | null,
+): ReadonlyArray<NixDiagnostic> {
+  const searchQueue: unknown[] = [payload];
+  const diagnostics: NixDiagnostic[] = [];
+  const seen = new Set<string>();
+
+  while (searchQueue.length > 0) {
+    const nextValue = searchQueue.shift();
+    const record = asRecord(nextValue);
+    if (!record) {
+      continue;
+    }
+
+    if (Array.isArray(record.diagnostics)) {
+      for (const entry of record.diagnostics) {
+        const diagnostic = parseNixDiagnostic(entry);
+        if (!diagnostic) {
+          continue;
+        }
+        const key = [
+          diagnostic.severity,
+          diagnostic.filePath ?? "",
+          diagnostic.line ?? "",
+          diagnostic.column ?? "",
+          diagnostic.message,
+        ].join("\u001f");
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    for (const nestedKey of ["structuredContent", "result", "rawOutput", "data"]) {
+      if (nestedKey in record) {
+        searchQueue.push(record[nestedKey]);
+      }
+    }
+  }
+
+  return diagnostics;
 }
 
 const SHELL_WRAPPER_SPECS = [

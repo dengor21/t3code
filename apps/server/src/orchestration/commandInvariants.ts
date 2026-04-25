@@ -1,4 +1,5 @@
 import type {
+  NixDesignerScope,
   OrchestrationCommand,
   OrchestrationProject,
   OrchestrationReadModel,
@@ -138,6 +139,46 @@ export function requireThreadAbsent(input: {
     invariantError(
       input.command.type,
       `Thread '${input.threadId}' already exists and cannot be created twice.`,
+    ),
+  );
+}
+
+function designerScopesEqual(
+  left: NixDesignerScope | null | undefined,
+  right: NixDesignerScope | null | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left == null || right == null) return left == null && right == null;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "project") {
+    return true;
+  }
+  return right.kind === "host" && left.hostName === right.hostName;
+}
+
+export function requireImmutableThreadDesigner(input: {
+  readonly thread: OrchestrationThread;
+  readonly command: OrchestrationCommand;
+  readonly requestedDesigner: NixDesignerScope | null | undefined;
+}): Effect.Effect<void, OrchestrationCommandInvariantError> {
+  const currentDesigner = input.thread.designer ?? null;
+
+  if (input.requestedDesigner === undefined) {
+    return Effect.void;
+  }
+
+  if (currentDesigner === null) {
+    return Effect.void;
+  }
+
+  if (designerScopesEqual(currentDesigner, input.requestedDesigner)) {
+    return Effect.void;
+  }
+
+  return Effect.fail(
+    invariantError(
+      input.command.type,
+      `Thread '${input.thread.id}' already has immutable designer scope '${JSON.stringify(currentDesigner)}'.`,
     ),
   );
 }

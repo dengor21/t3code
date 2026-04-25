@@ -295,7 +295,9 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
+          designer: null,
           scopedHostName: null,
+          workflow: null,
           changeTracking: {
             baselineHeadSha: null,
             lastCommit: null,
@@ -417,7 +419,9 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           runtimeMode: "full-access",
           branch: null,
           worktreePath: null,
+          designer: null,
           scopedHostName: null,
+          workflow: null,
           changeTracking: {
             baselineHeadSha: null,
             lastCommit: null,

@@ -15,6 +15,7 @@ import type {
   MessageId,
   ProviderKind,
   CheckpointRef,
+  NixDesignerScope,
   ProviderInteractionMode,
   RuntimeMode,
   ThreadWorkflow,
@@ -118,6 +119,7 @@ export interface Thread {
   pendingSourceProposedPlan?: OrchestrationLatestTurn["sourceProposedPlan"];
   branch: string | null;
   worktreePath: string | null;
+  designer?: NixDesignerScope | null;
   scopedHostName?: string | null;
   workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
@@ -140,6 +142,7 @@ export interface ThreadShell {
   updatedAt?: string | undefined;
   branch: string | null;
   worktreePath: string | null;
+  designer?: NixDesignerScope | null;
   scopedHostName?: string | null;
   workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
@@ -163,6 +166,7 @@ export interface SidebarThreadSummary {
   latestTurn: OrchestrationLatestTurn | null;
   branch: string | null;
   worktreePath: string | null;
+  designer?: NixDesignerScope | null;
   scopedHostName?: string | null;
   workflow?: ThreadWorkflow | null;
   changeTracking?: ThreadChangeTracking | null;
