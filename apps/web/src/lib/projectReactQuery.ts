@@ -65,6 +65,14 @@ export const projectQueryKeys = {
     ["projects", "fleet-deployment", environmentId ?? null, projectId ?? null] as const,
   fleetDeployment: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
     ["projects", "fleet-deployment", environmentId ?? null, projectId ?? null] as const,
+  hostDriftPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "host-drift", environmentId ?? null, projectId ?? null] as const,
+  hostDrift: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    hostName: string | null,
+  ) =>
+    ["projects", "host-drift", environmentId ?? null, projectId ?? null, hostName ?? null] as const,
   hostImportPrefix: (
     environmentId: EnvironmentId | null,
     projectId: ProjectId | null,
@@ -107,6 +115,7 @@ const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
 const DEFAULT_FLEET_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_PREVIEW_STALE_TIME = Number.POSITIVE_INFINITY;
+const DEFAULT_HOST_DRIFT_STALE_TIME = 2_000;
 const DEFAULT_HOST_IMPORT_STALE_TIME = 2_000;
 const DEFAULT_FLAKE_MAINTENANCE_STALE_TIME = 2_000;
 const EMPTY_SEARCH_ENTRIES_RESULT: ProjectSearchEntriesResult = {
@@ -282,6 +291,36 @@ export function fleetDeploymentQueryOptions(input: {
     },
     enabled: (input.enabled ?? true) && input.environmentId !== null && input.projectId !== null,
     staleTime: input.staleTime ?? DEFAULT_FLEET_DEPLOYMENT_STALE_TIME,
+    placeholderData: (previous) => previous ?? null,
+  });
+}
+
+export function hostDriftQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  hostName?: string | null;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  const normalizedHostName = input.hostName?.trim() ? input.hostName.trim() : null;
+  return queryOptions({
+    queryKey: projectQueryKeys.hostDrift(input.environmentId, input.projectId, normalizedHostName),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId || !normalizedHostName) {
+        throw new Error("Host drift is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.hostDrift.get({
+        projectId: input.projectId,
+        hostName: normalizedHostName,
+      });
+    },
+    enabled:
+      (input.enabled ?? true) &&
+      input.environmentId !== null &&
+      input.projectId !== null &&
+      normalizedHostName !== null,
+    staleTime: input.staleTime ?? DEFAULT_HOST_DRIFT_STALE_TIME,
     placeholderData: (previous) => previous ?? null,
   });
 }

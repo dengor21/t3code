@@ -9,6 +9,12 @@ import {
   type FlakeMaintenanceStatus,
   type GitStatusResult,
   type HostCreationWorkflowBootstrapMode,
+  type HostDriftAuthPhase,
+  type HostDriftCategory,
+  type HostDriftCategoryResult,
+  type HostDriftReconcileIntent,
+  type HostDriftStatus,
+  type HostDriftSummary,
   type HostDeploymentStatus,
   type HostDocumentationStatus,
   type ProjectDashboardChangeEntry,
@@ -42,6 +48,7 @@ import ChatMarkdown from "../components/ChatMarkdown";
 import FlakeMaintenanceTerminal from "../components/FlakeMaintenanceTerminal";
 import GitActionsControl from "../components/GitActionsControl";
 import HostDeploymentTerminal from "../components/HostDeploymentTerminal";
+import HostDriftTerminal from "../components/HostDriftTerminal";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import {
@@ -67,6 +74,7 @@ import { refreshGitStatus, useGitStatus } from "../lib/gitStatusState";
 import {
   fleetDeploymentQueryOptions,
   flakeMaintenanceQueryOptions,
+  hostDriftQueryOptions,
   hostDeploymentQueryOptions,
   hostDeploymentPreviewQueryOptions,
   projectDashboardContentQueryOptions,
@@ -79,11 +87,15 @@ import {
 } from "./flakeDashboardHostMenu";
 import { selectEnvironmentState, useStore } from "../store";
 import { createProjectSelectorByRef } from "../storeSelectors";
-import { buildFlakeRouteParams, resolveFlakeRouteRef } from "../threadRoutes";
+import {
+  buildFlakeRouteParams,
+  buildThreadRouteParams,
+  resolveFlakeRouteRef,
+} from "../threadRoutes";
 
 export interface FlakeDashboardSearch {
   host?: string;
-  view?: "changes" | "deploy" | "doc" | "flake" | "maintenance" | "rollout";
+  view?: "changes" | "deploy" | "doc" | "drift" | "flake" | "maintenance" | "rollout";
 }
 
 function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashboardSearch {
@@ -97,6 +109,7 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
     view === "changes" ||
     view === "deploy" ||
     view === "doc" ||
+    view === "drift" ||
     view === "flake" ||
     view === "maintenance" ||
     view === "rollout"
@@ -106,9 +119,23 @@ function parseFlakeDashboardSearch(search: Record<string, unknown>): FlakeDashbo
   return next;
 }
 
-type FlakeDashboardView = "changes" | "deploy" | "doc" | "flake" | "maintenance" | "rollout";
+type FlakeDashboardView =
+  | "changes"
+  | "deploy"
+  | "doc"
+  | "drift"
+  | "flake"
+  | "maintenance"
+  | "rollout";
 const DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS = 30;
 const DEFAULT_ROLLOUT_MAX_PARALLELISM = 1;
+const HOST_DRIFT_CATEGORY_ORDER: ReadonlyArray<HostDriftCategory> = [
+  "identity",
+  "system",
+  "users",
+  "enabledServices",
+  "firewallPorts",
+];
 
 function buildDashboardSearch(input: {
   hostName: string | null;
@@ -120,6 +147,9 @@ function buildDashboardSearch(input: {
     }
     if (input.view === "deploy") {
       return { host: input.hostName, view: "deploy" };
+    }
+    if (input.view === "drift") {
+      return { host: input.hostName, view: "drift" };
     }
     return { host: input.hostName };
   }
@@ -245,6 +275,146 @@ function formatDeploymentModeLabel(deployOnServer: boolean): string {
 
 function formatActivationStrategyLabel(strategy: "switch" | "boot"): string {
   return strategy === "boot" ? "Stage For Reboot" : "Switch Live Now";
+}
+
+function formatDriftStatusLabel(status: HostDriftStatus): string {
+  switch (status) {
+    case "idle":
+      return "Needs input";
+    case "starting":
+      return "Starting";
+    case "running":
+      return "Running";
+    case "completed":
+      return "Completed";
+    case "failed":
+      return "Failed";
+    case "canceled":
+      return "Canceled";
+    case "error":
+    default:
+      return "Error";
+  }
+}
+
+function driftStatusClasses(status: HostDriftStatus): string {
+  switch (status) {
+    case "idle":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "starting":
+      return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+    case "running":
+      return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+    case "completed":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "failed":
+      return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+    case "canceled":
+      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+    case "error":
+    default:
+      return "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  }
+}
+
+function isActiveHostDriftStatusValue(status: HostDriftStatus | null | undefined): boolean {
+  return status === "starting" || status === "running";
+}
+
+function formatHostDriftAuthPhaseLabel(phase: HostDriftAuthPhase): string {
+  return phase === "remote-sudo" ? "Remote sudo password" : "SSH login password";
+}
+
+function formatHostDriftCategoryLabel(category: HostDriftCategory): string {
+  switch (category) {
+    case "identity":
+      return "Identity";
+    case "system":
+      return "System";
+    case "users":
+      return "Users";
+    case "enabledServices":
+      return "Enabled services";
+    case "firewallPorts":
+      return "Firewall ports";
+  }
+}
+
+function hostDriftCategoryStatusClasses(status: HostDriftCategoryResult["status"]): string {
+  switch (status) {
+    case "match":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "drift":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "unknown":
+    default:
+      return "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300";
+  }
+}
+
+function formatHostDriftCategoryStatusLabel(status: HostDriftCategoryResult["status"]): string {
+  switch (status) {
+    case "match":
+      return "Match";
+    case "drift":
+      return "Drift";
+    case "unknown":
+    default:
+      return "Unknown";
+  }
+}
+
+function formatDriftValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "Unavailable";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function describeHostDriftSummary(summary: HostDriftSummary | null | undefined): string {
+  if (!summary) {
+    return "Run a drift scan to compare the flake with the live host.";
+  }
+  if (summary.awaitingAuthPhase) {
+    return `${formatHostDriftAuthPhaseLabel(summary.awaitingAuthPhase)} is required to continue the scan.`;
+  }
+  switch (summary.status) {
+    case "starting":
+      return "Preparing the drift scan and opening the terminal session.";
+    case "running":
+      return "Collecting live host state and comparing it against the flake.";
+    case "completed":
+      return `Compared ${summary.categoryResults.length} categories against the live host.`;
+    case "failed":
+      return summary.lastError ?? "The drift scan failed.";
+    case "canceled":
+      return "The drift scan was canceled.";
+    case "error":
+      return summary.lastError ?? "The drift scan stopped unexpectedly.";
+    case "idle":
+    default:
+      return summary.lastError ?? "The drift scan is waiting for input.";
+  }
+}
+
+function orderHostDriftCategoryResults(
+  results: ReadonlyArray<HostDriftCategoryResult>,
+): ReadonlyArray<HostDriftCategoryResult> {
+  const rank = new Map(
+    HOST_DRIFT_CATEGORY_ORDER.map((category, index) => [category, index] as const),
+  );
+  return [...results].sort(
+    (left, right) =>
+      (rank.get(left.category) ?? Number.MAX_SAFE_INTEGER) -
+      (rank.get(right.category) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 function deploymentCheckClasses(check: DeploymentCheck): string {
@@ -597,6 +767,11 @@ function FlakeDashboardRouteView() {
     String(DEFAULT_ROLLOUT_MAX_PARALLELISM),
   );
   const [rolloutPreflightRequested, setRolloutPreflightRequested] = useState(false);
+  const [driftPending, setDriftPending] = useState(false);
+  const [driftSecretInput, setDriftSecretInput] = useState("");
+  const [driftSecretPending, setDriftSecretPending] = useState(false);
+  const [driftReconcilePendingIntent, setDriftReconcilePendingIntent] =
+    useState<HostDriftReconcileIntent | null>(null);
   const gitStatusQuery = useGitStatus({
     environmentId: projectRef?.environmentId ?? null,
     cwd: project?.cwd ?? null,
@@ -734,6 +909,18 @@ function FlakeDashboardRouteView() {
   }, [navigate, projectRef, requestedHostName, search.view]);
 
   useEffect(() => {
+    if (!projectRef || search.view !== "drift" || requestedHostName !== null) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: {},
+      replace: true,
+    });
+  }, [navigate, projectRef, requestedHostName, search.view]);
+
+  useEffect(() => {
     if (!projectRef || search.view !== "maintenance" || requestedHostName === null) {
       return;
     }
@@ -780,6 +967,21 @@ function FlakeDashboardRouteView() {
         (matchedRouteHostName ?? requestedHostName) !== null,
     }),
     refetchInterval: search.view === "deploy" ? 2_000 : false,
+  });
+
+  const hostDriftQuery = useQuery({
+    ...hostDriftQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      hostName: matchedRouteHostName ?? requestedHostName,
+      enabled:
+        bootstrapComplete &&
+        projectRef !== null &&
+        project !== null &&
+        (matchedRouteHostName ?? requestedHostName) !== null &&
+        search.view === "drift",
+    }),
+    refetchInterval: search.view === "drift" ? 2_000 : false,
   });
 
   const flakeMaintenanceQuery = useQuery(
@@ -1124,6 +1326,15 @@ function FlakeDashboardRouteView() {
     });
   }, [project, projectRef, queryClient]);
 
+  const invalidateHostDriftQueries = useCallback(() => {
+    if (!projectRef || !project) {
+      return Promise.resolve();
+    }
+    return queryClient.invalidateQueries({
+      queryKey: projectQueryKeys.hostDriftPrefix(projectRef.environmentId, project.id),
+    });
+  }, [project, projectRef, queryClient]);
+
   const invalidateFleetDeploymentQueries = useCallback(() => {
     if (!projectRef || !project) {
       return Promise.resolve();
@@ -1387,6 +1598,9 @@ function FlakeDashboardRouteView() {
       if (search.view === "deploy") {
         return "deploy";
       }
+      if (search.view === "drift") {
+        return "drift";
+      }
       return "changes";
     }
     if (search.view === "flake") {
@@ -1435,6 +1649,23 @@ function FlakeDashboardRouteView() {
     : null;
   const isSelectedHostDeploymentActive =
     selectedHostDeployment?.status === "starting" || selectedHostDeployment?.status === "running";
+  const selectedHostDrift = selectedHostSummary
+    ? (hostDriftQuery.data ?? selectedHostSummary.latestDrift ?? null)
+    : null;
+  const orderedSelectedHostDriftCategoryResults = useMemo(
+    () => orderHostDriftCategoryResults(selectedHostDrift?.categoryResults ?? []),
+    [selectedHostDrift?.categoryResults],
+  );
+  const selectedHostDriftMatchCount = orderedSelectedHostDriftCategoryResults.filter(
+    (result) => result.status === "match",
+  ).length;
+  const selectedHostDriftMismatchCount = orderedSelectedHostDriftCategoryResults.filter(
+    (result) => result.status === "drift",
+  ).length;
+  const selectedHostDriftUnknownCount = orderedSelectedHostDriftCategoryResults.filter(
+    (result) => result.status === "unknown",
+  ).length;
+  const isSelectedHostDriftActive = isActiveHostDriftStatusValue(selectedHostDrift?.status);
   const selectedFlakeMaintenance =
     flakeMaintenanceQuery.data ?? dashboardQuery.data?.latestMaintenance ?? null;
   const isSelectedFlakeMaintenanceActive =
@@ -1506,6 +1737,12 @@ function FlakeDashboardRouteView() {
       pendingDocGenerationsByHost[selectedHostSummary.host.name] !== undefined);
   const maintenanceActionDisabledReason = maintenanceDisabledReason(gitStatusQuery.data);
 
+  useEffect(() => {
+    setDriftSecretInput("");
+    setDriftSecretPending(false);
+    setDriftReconcilePendingIntent(null);
+  }, [selectedHostSummary?.host.name, selectedHostDrift?.awaitingAuthPhase]);
+
   const handleStopDeployment = useCallback(async () => {
     if (!projectRef || !project || !selectedHostSummary) {
       return;
@@ -1538,6 +1775,206 @@ function FlakeDashboardRouteView() {
     projectRef,
     selectedHostSummary,
   ]);
+
+  const handleStartDrift = useCallback(async () => {
+    if (!projectRef || !project || !selectedHostSummary || driftPending) {
+      return;
+    }
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setDriftPending(true);
+    try {
+      const result = await api.hostDrift.refresh({
+        projectId: project.id,
+        hostName: selectedHostSummary.host.name,
+      });
+      await Promise.all([invalidateHostDriftQueries(), invalidateDashboardQueries()]);
+      toastManager.add({
+        type: "success",
+        title:
+          result.disposition === "already-running"
+            ? "Drift scan already running"
+            : "Drift scan started",
+        description:
+          result.disposition === "already-running"
+            ? `Continuing to track ${selectedHostSummary.host.name}.`
+            : `Scanning ${selectedHostSummary.host.name} for drift.`,
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to start drift scan for ${selectedHostSummary.host.name}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setDriftPending(false);
+    }
+  }, [
+    driftPending,
+    invalidateDashboardQueries,
+    invalidateHostDriftQueries,
+    project,
+    projectRef,
+    selectedHostSummary,
+  ]);
+
+  const handleCancelDrift = useCallback(async () => {
+    if (!projectRef || !project || !selectedHostSummary || driftPending) {
+      return;
+    }
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setDriftPending(true);
+    try {
+      await api.hostDrift.cancel({
+        projectId: project.id,
+        hostName: selectedHostSummary.host.name,
+      });
+      await Promise.all([invalidateHostDriftQueries(), invalidateDashboardQueries()]);
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to cancel drift scan for ${selectedHostSummary.host.name}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setDriftPending(false);
+    }
+  }, [
+    driftPending,
+    invalidateDashboardQueries,
+    invalidateHostDriftQueries,
+    project,
+    projectRef,
+    selectedHostSummary,
+  ]);
+
+  const handleSubmitDriftSecret = useCallback(async () => {
+    if (
+      !projectRef ||
+      !project ||
+      !selectedHostSummary ||
+      !selectedHostDrift?.awaitingAuthPhase ||
+      driftSecretPending
+    ) {
+      return;
+    }
+    const secret = driftSecretInput;
+    if (secret.trim().length === 0) {
+      toastManager.add({
+        type: "error",
+        title: "Enter a password first",
+        description: "Provide the requested password to continue the drift scan.",
+      });
+      return;
+    }
+
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake actions are unavailable",
+      });
+      return;
+    }
+
+    setDriftSecretPending(true);
+    try {
+      const result = await api.hostDrift.submitSecret({
+        projectId: project.id,
+        hostName: selectedHostSummary.host.name,
+        phase: selectedHostDrift.awaitingAuthPhase,
+        secret,
+      });
+      await Promise.all([invalidateHostDriftQueries(), invalidateDashboardQueries()]);
+      if (!result.accepted) {
+        toastManager.add({
+          type: "error",
+          title: "The drift scan did not accept that password",
+          description: "Refresh the view and try again if the scan is still waiting for input.",
+        });
+        return;
+      }
+      setDriftSecretInput("");
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: `Failed to continue drift scan for ${selectedHostSummary.host.name}`,
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setDriftSecretPending(false);
+    }
+  }, [
+    driftSecretInput,
+    driftSecretPending,
+    invalidateDashboardQueries,
+    invalidateHostDriftQueries,
+    project,
+    projectRef,
+    selectedHostDrift?.awaitingAuthPhase,
+    selectedHostSummary,
+  ]);
+
+  const handleReconcileDrift = useCallback(
+    async (intent: HostDriftReconcileIntent) => {
+      if (!projectRef || !project || !selectedHostSummary || driftReconcilePendingIntent !== null) {
+        return;
+      }
+      const api = readEnvironmentApi(projectRef.environmentId);
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "Flake actions are unavailable",
+        });
+        return;
+      }
+
+      setDriftReconcilePendingIntent(intent);
+      try {
+        const result = await api.hostDrift.reconcile({
+          projectId: project.id,
+          hostName: selectedHostSummary.host.name,
+          intent,
+        });
+        toastManager.add({
+          type: "success",
+          title: "Planning thread created",
+          description: `Opened a reconciliation thread for ${selectedHostSummary.host.name}.`,
+        });
+        await navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams({
+            environmentId: projectRef.environmentId,
+            threadId: result.threadId,
+          }),
+        });
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: `Failed to open reconciliation for ${selectedHostSummary.host.name}`,
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      } finally {
+        setDriftReconcilePendingIntent(null);
+      }
+    },
+    [driftReconcilePendingIntent, navigate, project, projectRef, selectedHostSummary],
+  );
 
   const handleToggleRolloutHost = useCallback((hostName: string) => {
     setRolloutSelectedHostNames((current) =>
@@ -1977,6 +2414,7 @@ function FlakeDashboardRouteView() {
                         const hostChangesSelected = isSelected && activeView === "changes";
                         const hostDocSelected = isSelected && activeView === "doc";
                         const hostDeploySelected = isSelected && activeView === "deploy";
+                        const hostDriftSelected = isSelected && activeView === "drift";
                         const deployDisabledReason = deploymentReasonLabel(
                           summary.deployment.reason,
                         );
@@ -2021,6 +2459,16 @@ function FlakeDashboardRouteView() {
                                     )}
                                   >
                                     {formatDeploymentStatusLabel(summary.latestDeployment.status)}
+                                  </span>
+                                ) : null}
+                                {summary.latestDrift ? (
+                                  <span
+                                    className={cn(
+                                      "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
+                                      driftStatusClasses(summary.latestDrift.status),
+                                    )}
+                                  >
+                                    {formatDriftStatusLabel(summary.latestDrift.status)}
                                   </span>
                                 ) : null}
                                 <span
@@ -2085,6 +2533,17 @@ function FlakeDashboardRouteView() {
                                   <RocketIcon className="size-3" />
                                 )}
                                 Deploy
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant={hostDriftSelected ? "secondary" : "ghost"}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  selectDashboardView(summary.host.name, "drift");
+                                }}
+                              >
+                                <ShieldCheckIcon className="size-3" />
+                                Drift
                               </Button>
 
                               <div className="ml-auto">
@@ -2194,15 +2653,17 @@ function FlakeDashboardRouteView() {
                             ? `Documentation for ${selectedHostSummary?.host.name ?? "host"}`
                             : activeView === "deploy"
                               ? `Deployment for ${selectedHostSummary?.host.name ?? "host"}`
-                              : activeView === "rollout"
-                                ? "Fleet rollout"
-                                : activeView === "maintenance"
-                                  ? "Flake maintenance"
-                                  : activeView === "flake"
-                                    ? "flake.nix"
-                                    : selectedHostSummary
-                                      ? `Recent changes for ${selectedHostSummary.host.name}`
-                                      : "Recent changes"}
+                              : activeView === "drift"
+                                ? `Drift for ${selectedHostSummary?.host.name ?? "host"}`
+                                : activeView === "rollout"
+                                  ? "Fleet rollout"
+                                  : activeView === "maintenance"
+                                    ? "Flake maintenance"
+                                    : activeView === "flake"
+                                      ? "flake.nix"
+                                      : selectedHostSummary
+                                        ? `Recent changes for ${selectedHostSummary.host.name}`
+                                        : "Recent changes"}
                         </h2>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                           {activeView === "doc"
@@ -2217,19 +2678,21 @@ function FlakeDashboardRouteView() {
                               ? selectedHostDeployment
                                 ? `${formatDeploymentStatusLabel(selectedHostDeployment.status)} deployment output for ${selectedHostDeployment.hostName}.`
                                 : "Start or foreground a deployment for this host to inspect the latest terminal output here."
-                              : activeView === "rollout"
-                                ? selectedFleetDeployment
-                                  ? `${formatDeploymentStatusLabel(selectedFleetDeployment.status)} rollout across ${selectedFleetDeployment.hostEntries.length} hosts.`
-                                  : "Choose hosts, order them, then run a shared deploy-rs rollout from this page."
-                                : activeView === "maintenance"
-                                  ? selectedFlakeMaintenance
-                                    ? `${formatDeploymentStatusLabel(selectedFlakeMaintenance.status)} nix flake update run with git review for this flake.`
-                                    : "Run nix flake update and review the resulting dependency changes from this page."
-                                  : activeView === "flake"
-                                    ? "Read-only source preview for the selected flake."
-                                    : selectedHostSummary
-                                      ? "Shows the latest host-specific and ambiguous changes that may affect this host."
-                                      : "Shows the latest flake-wide changes recorded by T3code."}
+                              : activeView === "drift"
+                                ? describeHostDriftSummary(selectedHostDrift)
+                                : activeView === "rollout"
+                                  ? selectedFleetDeployment
+                                    ? `${formatDeploymentStatusLabel(selectedFleetDeployment.status)} rollout across ${selectedFleetDeployment.hostEntries.length} hosts.`
+                                    : "Choose hosts, order them, then run a shared deploy-rs rollout from this page."
+                                  : activeView === "maintenance"
+                                    ? selectedFlakeMaintenance
+                                      ? `${formatDeploymentStatusLabel(selectedFlakeMaintenance.status)} nix flake update run with git review for this flake.`
+                                      : "Run nix flake update and review the resulting dependency changes from this page."
+                                    : activeView === "flake"
+                                      ? "Read-only source preview for the selected flake."
+                                      : selectedHostSummary
+                                        ? "Shows the latest host-specific and ambiguous changes that may affect this host."
+                                        : "Shows the latest flake-wide changes recorded by T3code."}
                         </p>
                         {selectedHostSummary ? (
                           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -2262,6 +2725,16 @@ function FlakeDashboardRouteView() {
                               <SquareTerminalIcon className="size-3.5" />
                               Deploy
                             </Button>
+                            <Button
+                              size="sm"
+                              variant={activeView === "drift" ? "secondary" : "ghost"}
+                              onClick={() =>
+                                selectDashboardView(selectedHostSummary.host.name, "drift")
+                              }
+                            >
+                              <ShieldCheckIcon className="size-3.5" />
+                              Drift
+                            </Button>
                           </div>
                         ) : null}
                       </div>
@@ -2291,6 +2764,23 @@ function FlakeDashboardRouteView() {
                             <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                               {formatDeploymentModeLabel(selectedHostDeployment.deployOnServer)}
                             </span>
+                          </>
+                        ) : null}
+                        {activeView === "drift" && selectedHostDrift ? (
+                          <>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                driftStatusClasses(selectedHostDrift.status),
+                              )}
+                            >
+                              {formatDriftStatusLabel(selectedHostDrift.status)}
+                            </span>
+                            {selectedHostDrift.awaitingAuthPhase ? (
+                              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                                {formatHostDriftAuthPhaseLabel(selectedHostDrift.awaitingAuthPhase)}
+                              </span>
+                            ) : null}
                           </>
                         ) : null}
                         {activeView === "maintenance" && selectedFlakeMaintenance ? (
@@ -2545,6 +3035,368 @@ function FlakeDashboardRouteView() {
                                   <EmptyPanel
                                     title="No terminal output yet"
                                     description="The deploy page will stream the latest run here once a deployment has started."
+                                    icon={<SquareTerminalIcon className="size-5" />}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : activeView === "drift" && selectedHostSummary ? (
+                        <div className="space-y-4 p-4 sm:p-5">
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                  Host
+                                </div>
+                                <div className="mt-0.5 text-base font-semibold text-foreground">
+                                  {selectedHostSummary.host.name}
+                                </div>
+                                <div className="mt-1 text-sm text-muted-foreground">
+                                  {selectedHostSummary.host.target}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleStartDrift()}
+                                  disabled={driftPending}
+                                >
+                                  {driftPending ? (
+                                    <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <ShieldCheckIcon className="size-3.5" />
+                                  )}
+                                  {selectedHostDrift ? "Run again" : "Run scan"}
+                                </Button>
+                                {isSelectedHostDriftActive ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => void handleCancelDrift()}
+                                    disabled={driftPending}
+                                  >
+                                    Cancel
+                                  </Button>
+                                ) : null}
+                                {selectedHostDrift?.status === "completed" &&
+                                orderedSelectedHostDriftCategoryResults.length > 0 ? (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        void handleReconcileDrift("reconcile-flake-to-host")
+                                      }
+                                      disabled={driftReconcilePendingIntent !== null}
+                                    >
+                                      {driftReconcilePendingIntent === "reconcile-flake-to-host" ? (
+                                        <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                      ) : (
+                                        <PlayIcon className="size-3.5" />
+                                      )}
+                                      Flake to host
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() =>
+                                        void handleReconcileDrift("reconcile-host-to-flake")
+                                      }
+                                      disabled={driftReconcilePendingIntent !== null}
+                                    >
+                                      {driftReconcilePendingIntent === "reconcile-host-to-flake" ? (
+                                        <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                      ) : (
+                                        <PlayIcon className="size-3.5" />
+                                      )}
+                                      Host to flake
+                                    </Button>
+                                  </>
+                                ) : null}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectDashboardView(selectedHostSummary.host.name, "changes")
+                                  }
+                                >
+                                  Changes
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectDashboardView(selectedHostSummary.host.name, "doc")
+                                  }
+                                >
+                                  Doc
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectDashboardView(selectedHostSummary.host.name, "deploy")
+                                  }
+                                >
+                                  Deploy
+                                </Button>
+                              </div>
+                            </div>
+
+                            {selectedHostDrift ? (
+                              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Started
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatTimestamp(selectedHostDrift.startedAt)}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Updated
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatTimestamp(selectedHostDrift.updatedAt)}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    SSH login
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {selectedHostSummary.host.sshUser
+                                      ? `${selectedHostSummary.host.sshUser}@${selectedHostSummary.host.target}`
+                                      : selectedHostSummary.host.target}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Activation user
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {selectedHostSummary.host.activationUser ?? "root"}
+                                  </div>
+                                </div>
+                                {selectedHostDrift.lastError ? (
+                                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 lg:col-span-2">
+                                    <div className="text-[11px] uppercase tracking-widest text-amber-700 dark:text-amber-300">
+                                      Latest issue
+                                    </div>
+                                    <div className="mt-1 whitespace-pre-wrap text-sm text-amber-950 dark:text-amber-50">
+                                      {selectedHostDrift.lastError}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : hostDriftQuery.isPending ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Loading drift state"
+                                  description="Checking whether this host already has a saved drift scan."
+                                  icon={<LoaderIcon className="size-5 animate-spin" />}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="No drift scan yet"
+                                  description={`Run a drift scan for ${selectedHostSummary.host.name} to compare the flake with the live host.`}
+                                  icon={<ShieldCheckIcon className="size-5" />}
+                                  actionLabel="Run scan"
+                                  onAction={() => void handleStartDrift()}
+                                  pending={driftPending}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {selectedHostDrift?.awaitingAuthPhase ? (
+                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-50">
+                                    {formatHostDriftAuthPhaseLabel(
+                                      selectedHostDrift.awaitingAuthPhase,
+                                    )}{" "}
+                                    required
+                                  </h3>
+                                  <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
+                                    Enter the requested password to continue the scan. The value is
+                                    only used for this workflow attempt.
+                                  </p>
+                                </div>
+                                <span className="rounded-full border border-amber-500/30 bg-background/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-800 dark:text-amber-200">
+                                  Waiting
+                                </span>
+                              </div>
+                              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                                <Input
+                                  type="password"
+                                  value={driftSecretInput}
+                                  onChange={(event) => setDriftSecretInput(event.target.value)}
+                                  placeholder={
+                                    selectedHostDrift.awaitingAuthPhase === "remote-sudo"
+                                      ? "Remote sudo password"
+                                      : "SSH login password"
+                                  }
+                                />
+                                <Button
+                                  onClick={() => void handleSubmitDriftSecret()}
+                                  disabled={
+                                    driftSecretPending || driftSecretInput.trim().length === 0
+                                  }
+                                >
+                                  {driftSecretPending ? (
+                                    <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <ShieldCheckIcon className="size-3.5" />
+                                  )}
+                                  Continue scan
+                                </Button>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h3 className="text-sm font-semibold text-foreground">
+                                  Category results
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                  Deterministic desired-vs-observed comparison for the current MVP
+                                  categories.
+                                </p>
+                              </div>
+                              {selectedHostDrift ? (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                                    Match {selectedHostDriftMatchCount}
+                                  </span>
+                                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                                    Drift {selectedHostDriftMismatchCount}
+                                  </span>
+                                  <span className="rounded-full border border-zinc-500/30 bg-zinc-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-700 dark:text-zinc-300">
+                                    Unknown {selectedHostDriftUnknownCount}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {selectedHostDrift &&
+                            orderedSelectedHostDriftCategoryResults.length > 0 ? (
+                              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                                {orderedSelectedHostDriftCategoryResults.map((result) => (
+                                  <div
+                                    key={`${selectedHostSummary.host.name}:${result.category}`}
+                                    className="rounded-xl border border-border/50 bg-background/50 p-3"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div>
+                                        <div className="text-sm font-medium text-foreground">
+                                          {formatHostDriftCategoryLabel(result.category)}
+                                        </div>
+                                        <div className="mt-1 text-sm text-foreground">
+                                          {result.summary}
+                                        </div>
+                                      </div>
+                                      <span
+                                        className={cn(
+                                          "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                          hostDriftCategoryStatusClasses(result.status),
+                                        )}
+                                      >
+                                        {formatHostDriftCategoryStatusLabel(result.status)}
+                                      </span>
+                                    </div>
+                                    {result.detail ? (
+                                      <div className="mt-3 whitespace-pre-wrap rounded-lg bg-muted/70 px-2.5 py-2 text-xs text-muted-foreground">
+                                        {result.detail}
+                                      </div>
+                                    ) : null}
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                      <div className="rounded-lg border border-border/50 bg-background/70 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                          Desired
+                                        </div>
+                                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-xs text-foreground">
+                                          {formatDriftValue(result.desiredValue)}
+                                        </pre>
+                                      </div>
+                                      <div className="rounded-lg border border-border/50 bg-background/70 p-2.5">
+                                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                          Observed
+                                        </div>
+                                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-xs text-foreground">
+                                          {formatDriftValue(result.observedValue)}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : selectedHostDrift ? (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="No category results yet"
+                                  description="The drift scan has not produced comparison results yet."
+                                  icon={<ShieldCheckIcon className="size-5" />}
+                                />
+                              </div>
+                            ) : (
+                              <div className="mt-4">
+                                <EmptyPanel
+                                  title="Run a scan first"
+                                  description="Category results appear here after a host drift scan completes."
+                                  icon={<ShieldCheckIcon className="size-5" />}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="overflow-hidden rounded-xl border border-border/60 bg-background/60">
+                            <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                              <div>
+                                <h3 className="text-sm font-semibold text-foreground">Terminal</h3>
+                                <p className="text-xs text-muted-foreground">
+                                  Read-only drift scan output for the latest run on this host.
+                                </p>
+                              </div>
+                              {selectedHostDrift ? (
+                                <span
+                                  className={cn(
+                                    "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                                    driftStatusClasses(selectedHostDrift.status),
+                                  )}
+                                >
+                                  {formatDriftStatusLabel(selectedHostDrift.status)}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="h-[56vh] min-h-[320px] p-2">
+                              {selectedHostDrift ? (
+                                <HostDriftTerminal
+                                  environmentId={projectRef.environmentId}
+                                  projectId={project.id}
+                                  hostName={selectedHostSummary.host.name}
+                                  cwd={selectedHostDrift.cwd}
+                                  autoFocus
+                                  onSessionExited={() => {
+                                    void Promise.all([
+                                      invalidateHostDriftQueries(),
+                                      invalidateDashboardQueries(),
+                                    ]);
+                                  }}
+                                />
+                              ) : (
+                                <div className="h-full p-2">
+                                  <EmptyPanel
+                                    title="No terminal output yet"
+                                    description="The drift page will stream the latest run here once a scan has started."
                                     icon={<SquareTerminalIcon className="size-5" />}
                                   />
                                 </div>

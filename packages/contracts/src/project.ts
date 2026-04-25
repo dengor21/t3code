@@ -1,9 +1,10 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import type { DeploymentActivationStrategy } from "./deploymentSafety.ts";
 import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./environment.ts";
 import { FlakeMaintenanceSummary } from "./flakeMaintenance.ts";
 import { HostDeploymentSummary } from "./hostDeployment.ts";
+import { HostDriftSummary } from "./hostDrift.ts";
 
 const PROJECT_SEARCH_ENTRIES_MAX_LIMIT = 200;
 const PROJECT_WRITE_FILE_PATH_MAX_LENGTH = 512;
@@ -169,6 +170,9 @@ export const ProjectDashboardHostSummary = Schema.Struct({
   documentation: HostDocumentationState,
   deployment: ProjectDashboardHostDeployment,
   latestDeployment: Schema.NullOr(HostDeploymentSummary),
+  latestDrift: Schema.NullOr(HostDriftSummary).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type ProjectDashboardHostSummary = typeof ProjectDashboardHostSummary.Type;
 

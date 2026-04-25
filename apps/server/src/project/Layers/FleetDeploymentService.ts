@@ -846,42 +846,40 @@ export const FleetDeploymentServiceLive = Layer.effect(
       });
 
     const stop: FleetDeploymentServiceShape["stop"] = (input) =>
-      Effect.gen(function* () {
-        return yield* withProjectLock(
-          input.projectId,
-          Effect.gen(function* () {
-            const rollout = yield* getPersistedSummary(input);
-            if (!rollout) {
-              return null;
-            }
-            if (!isActiveFleetDeploymentStatus(rollout.status)) {
-              return rollout;
-            }
+      withProjectLock(
+        input.projectId,
+        Effect.gen(function* () {
+          const rollout = yield* getPersistedSummary(input);
+          if (!rollout) {
+            return null;
+          }
+          if (!isActiveFleetDeploymentStatus(rollout.status)) {
+            return rollout;
+          }
 
-            const controls = yield* Ref.get(activeRolloutsRef).pipe(
-              Effect.map((current) => current.get(input.projectId) ?? null),
-            );
-            if (!controls || controls.rolloutId !== rollout.rolloutId) {
-              return yield* toFleetDeploymentError("The active rollout control state is missing.");
-            }
+          const controls = yield* Ref.get(activeRolloutsRef).pipe(
+            Effect.map((current) => current.get(input.projectId) ?? null),
+          );
+          if (!controls || controls.rolloutId !== rollout.rolloutId) {
+            return yield* toFleetDeploymentError("The active rollout control state is missing.");
+          }
 
-            yield* Ref.set(controls.cancelRequested, true);
-            yield* Effect.forEach(
-              rollout.hostEntries.filter((entry) => isTerminalActiveStatus(entry.status)),
-              (entry) =>
-                hostDeploymentService
-                  .stop({
-                    projectId: input.projectId,
-                    hostName: entry.hostName,
-                  })
-                  .pipe(Effect.ignoreCause({ log: true })),
-              { discard: true },
-            );
-            yield* Fiber.await(controls.fiber);
-            return yield* getPersistedSummary(input);
-          }),
-        );
-      });
+          yield* Ref.set(controls.cancelRequested, true);
+          yield* Effect.forEach(
+            rollout.hostEntries.filter((entry) => isTerminalActiveStatus(entry.status)),
+            (entry) =>
+              hostDeploymentService
+                .stop({
+                  projectId: input.projectId,
+                  hostName: entry.hostName,
+                })
+                .pipe(Effect.ignoreCause({ log: true })),
+            { discard: true },
+          );
+          yield* Fiber.await(controls.fiber);
+          return yield* getPersistedSummary(input);
+        }),
+      );
 
     return {
       start,

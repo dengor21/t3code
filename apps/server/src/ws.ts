@@ -53,13 +53,12 @@ import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
 import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
-import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
-import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
 import { DeploymentSafetyService } from "./project/Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
+import { HostDriftService } from "./project/Services/HostDriftService.ts";
 import { HostImportService } from "./project/Services/HostImportService.ts";
 import { FlakeMaintenanceService } from "./project/Services/FlakeMaintenanceService.ts";
 import { FleetDeploymentService } from "./project/Services/FleetDeploymentService.ts";
@@ -159,6 +158,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const deploymentSafetyService = yield* DeploymentSafetyService;
       const hostDeploymentService = yield* HostDeploymentService;
       const fleetDeploymentService = yield* FleetDeploymentService;
+      const hostDriftService = yield* HostDriftService;
       const hostImportService = yield* HostImportService;
       const flakeMaintenanceService = yield* FlakeMaintenanceService;
       const providerRegistry = yield* ProviderRegistry;
@@ -922,6 +922,42 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             hostDeploymentService.subscribeTerminalEvents(input),
             { "rpc.aggregate": "terminal" },
           ),
+        [WS_METHODS.hostDriftRefresh]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftRefresh, hostDriftService.refresh(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDriftGet]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftGet, hostDriftService.get(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDriftCancel]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftCancel, hostDriftService.cancel(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDriftSubmitSecret]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftSubmitSecret, hostDriftService.submitSecret(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDriftReconcile]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftReconcile, hostDriftService.reconcile(input), {
+            "rpc.aggregate": "workspace",
+          }),
+        [WS_METHODS.hostDriftTerminalOpen]: (input) =>
+          observeRpcEffect(WS_METHODS.hostDriftTerminalOpen, hostDriftService.openTerminal(input), {
+            "rpc.aggregate": "terminal",
+          }),
+        [WS_METHODS.hostDriftTerminalResize]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostDriftTerminalResize,
+            hostDriftService.resizeTerminal(input),
+            { "rpc.aggregate": "terminal" },
+          ),
+        [WS_METHODS.hostDriftSubscribeTerminalEvents]: (input) =>
+          observeRpcStream(
+            WS_METHODS.hostDriftSubscribeTerminalEvents,
+            hostDriftService.subscribeTerminalEvents(input),
+            { "rpc.aggregate": "terminal" },
+          ),
         [WS_METHODS.hostImportsStart]: (input) =>
           observeRpcEffect(WS_METHODS.hostImportsStart, hostImportService.start(input), {
             "rpc.aggregate": "workspace",
@@ -1288,11 +1324,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           },
         }).pipe(
           Effect.provide(
-            makeWsRpcLayer(session.sessionId).pipe(
-              Layer.provideMerge(RpcSerialization.layerJson),
-              Layer.provideMerge(FlakeMetadataResolverLive),
-              Layer.provideMerge(ProjectDashboardContentResolverLive),
-            ),
+            makeWsRpcLayer(session.sessionId).pipe(Layer.provideMerge(RpcSerialization.layerJson)),
           ),
         );
         return yield* Effect.acquireUseRelease(

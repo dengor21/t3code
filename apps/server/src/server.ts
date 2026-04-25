@@ -18,6 +18,7 @@ import { HostDeploymentRepositoryLive } from "./persistence/Layers/HostDeploymen
 import { HostImportRepositoryLive } from "./persistence/Layers/HostImports.ts";
 import { FlakeMaintenanceRepositoryLive } from "./persistence/Layers/FlakeMaintenance.ts";
 import { FleetDeploymentRepositoryLive } from "./persistence/Layers/FleetDeployments.ts";
+import { HostDriftRepositoryLive } from "./persistence/Layers/HostDrift.ts";
 import { ServerLifecycleEventsLive } from "./serverLifecycleEvents.ts";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService.ts";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger.ts";
@@ -61,7 +62,9 @@ import { HostDeploymentServiceLive } from "./project/Layers/HostDeploymentServic
 import { HostImportServiceLive } from "./project/Layers/HostImportService.ts";
 import { FlakeMaintenanceServiceLive } from "./project/Layers/FlakeMaintenanceService.ts";
 import { FleetDeploymentServiceLive } from "./project/Layers/FleetDeploymentService.ts";
+import { HostDriftServiceLive } from "./project/Layers/HostDriftService.ts";
 import { EphemeralWorkflowSecretVaultLive } from "./project/Layers/EphemeralWorkflowSecretVault.ts";
+import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
@@ -232,6 +235,12 @@ const FleetDeploymentLayerLive = FleetDeploymentServiceLive.pipe(
   Layer.provideMerge(DeploymentSafetyServiceLive),
 );
 
+const ProjectDashboardLayerLive = ProjectDashboardContentResolverLive.pipe(
+  Layer.provideMerge(HostDeploymentLayerLive),
+  Layer.provideMerge(HostDriftServiceLive),
+  Layer.provideMerge(FlakeMaintenanceServiceLive),
+);
+
 const GitLayerLive = Layer.empty.pipe(
   Layer.provideMerge(GitManagerLayerLive),
   Layer.provideMerge(GitStatusBroadcasterLive.pipe(Layer.provide(GitManagerLayerLive))),
@@ -282,6 +291,7 @@ const RuntimeProjectLayerLive = Layer.empty.pipe(
   Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(HostDeploymentRepositoryLive),
   Layer.provideMerge(FleetDeploymentRepositoryLive),
+  Layer.provideMerge(HostDriftRepositoryLive),
   Layer.provideMerge(HostImportRepositoryLive),
   Layer.provideMerge(FlakeMaintenanceRepositoryLive),
   Layer.provideMerge(EphemeralWorkflowSecretVaultLive),
@@ -302,12 +312,18 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(RuntimeProjectLayerLive),
 );
 
-const RuntimeServicesLive = Layer.empty.pipe(
-  Layer.provideMerge(ServerRuntimeStartupLive),
+const RuntimeProjectServicesLive = Layer.empty.pipe(
   Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(FleetDeploymentLayerLive),
+  Layer.provideMerge(HostDriftServiceLive),
   Layer.provideMerge(HostImportServiceLive),
   Layer.provideMerge(FlakeMaintenanceServiceLive),
+);
+
+const RuntimeServicesLive = Layer.empty.pipe(
+  Layer.provideMerge(ServerRuntimeStartupLive),
+  Layer.provideMerge(ProjectDashboardLayerLive),
+  Layer.provideMerge(RuntimeProjectServicesLive),
   Layer.provide(RuntimeDependenciesLive),
 );
 

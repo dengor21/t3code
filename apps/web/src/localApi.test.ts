@@ -67,6 +67,16 @@ const rpcClientMock = {
     resizeTerminal: vi.fn(),
     onTerminalEvent: vi.fn(() => () => undefined),
   },
+  hostDrift: {
+    refresh: vi.fn(),
+    get: vi.fn(),
+    cancel: vi.fn(),
+    submitSecret: vi.fn(),
+    reconcile: vi.fn(),
+    openTerminal: vi.fn(),
+    resizeTerminal: vi.fn(),
+    onTerminalEvent: vi.fn(() => () => undefined),
+  },
   hostImports: {
     start: vi.fn(),
     get: vi.fn(),

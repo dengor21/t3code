@@ -202,6 +202,7 @@ function createMockEnvironmentApi(input: {
     projects: {} as EnvironmentApi["projects"],
     hostDeployments: {} as EnvironmentApi["hostDeployments"],
     fleetDeployments: {} as EnvironmentApi["fleetDeployments"],
+    hostDrift: {} as EnvironmentApi["hostDrift"],
     hostImports: {} as EnvironmentApi["hostImports"],
     flakeMaintenance: {} as EnvironmentApi["flakeMaintenance"],
     filesystem: {

@@ -27,6 +27,7 @@ const HOST_SUMMARY: ProjectDashboardHostSummary = {
     status: "unavailable",
   },
   latestDeployment: null,
+  latestDrift: null,
 };
 
 const PENDING: PendingHostDocGeneration = {

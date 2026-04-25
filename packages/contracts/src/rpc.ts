@@ -86,6 +86,22 @@ import {
   NullOrHostDeploymentSummary,
 } from "./hostDeployment.ts";
 import {
+  HostDriftCancelInput,
+  HostDriftError,
+  HostDriftGetInput,
+  HostDriftReconcileInput,
+  HostDriftReconcileResult,
+  HostDriftRefreshInput,
+  HostDriftRefreshResult,
+  HostDriftSubmitSecretInput,
+  HostDriftSubmitSecretResult,
+  HostDriftTerminalEvent,
+  HostDriftTerminalOpenInput,
+  HostDriftTerminalResizeInput,
+  HostDriftTerminalSnapshot,
+  NullOrHostDriftSummary,
+} from "./hostDrift.ts";
+import {
   HostImportCancelInput,
   HostImportError,
   HostImportGetInput,
@@ -153,6 +169,14 @@ export const WS_METHODS = {
   hostDeploymentsTerminalOpen: "hostDeployments.terminalOpen",
   hostDeploymentsTerminalResize: "hostDeployments.terminalResize",
   hostDeploymentsSubscribeTerminalEvents: "hostDeployments.subscribeTerminalEvents",
+  hostDriftRefresh: "hostDrift.refresh",
+  hostDriftGet: "hostDrift.get",
+  hostDriftCancel: "hostDrift.cancel",
+  hostDriftSubmitSecret: "hostDrift.submitSecret",
+  hostDriftReconcile: "hostDrift.reconcile",
+  hostDriftTerminalOpen: "hostDrift.terminalOpen",
+  hostDriftTerminalResize: "hostDrift.terminalResize",
+  hostDriftSubscribeTerminalEvents: "hostDrift.subscribeTerminalEvents",
   hostImportsStart: "hostImports.start",
   hostImportsGet: "hostImports.get",
   hostImportsCancel: "hostImports.cancel",
@@ -327,6 +351,57 @@ export const WsHostDeploymentsSubscribeTerminalEventsRpc = Rpc.make(
     payload: HostDeploymentGetInput,
     success: HostDeploymentTerminalEvent,
     error: HostDeploymentError,
+    stream: true,
+  },
+);
+
+export const WsHostDriftRefreshRpc = Rpc.make(WS_METHODS.hostDriftRefresh, {
+  payload: HostDriftRefreshInput,
+  success: HostDriftRefreshResult,
+  error: HostDriftError,
+});
+
+export const WsHostDriftGetRpc = Rpc.make(WS_METHODS.hostDriftGet, {
+  payload: HostDriftGetInput,
+  success: NullOrHostDriftSummary,
+  error: HostDriftError,
+});
+
+export const WsHostDriftCancelRpc = Rpc.make(WS_METHODS.hostDriftCancel, {
+  payload: HostDriftCancelInput,
+  success: NullOrHostDriftSummary,
+  error: HostDriftError,
+});
+
+export const WsHostDriftSubmitSecretRpc = Rpc.make(WS_METHODS.hostDriftSubmitSecret, {
+  payload: HostDriftSubmitSecretInput,
+  success: HostDriftSubmitSecretResult,
+  error: HostDriftError,
+});
+
+export const WsHostDriftReconcileRpc = Rpc.make(WS_METHODS.hostDriftReconcile, {
+  payload: HostDriftReconcileInput,
+  success: HostDriftReconcileResult,
+  error: HostDriftError,
+});
+
+export const WsHostDriftTerminalOpenRpc = Rpc.make(WS_METHODS.hostDriftTerminalOpen, {
+  payload: HostDriftTerminalOpenInput,
+  success: HostDriftTerminalSnapshot,
+  error: HostDriftError,
+});
+
+export const WsHostDriftTerminalResizeRpc = Rpc.make(WS_METHODS.hostDriftTerminalResize, {
+  payload: HostDriftTerminalResizeInput,
+  error: HostDriftError,
+});
+
+export const WsHostDriftSubscribeTerminalEventsRpc = Rpc.make(
+  WS_METHODS.hostDriftSubscribeTerminalEvents,
+  {
+    payload: HostDriftGetInput,
+    success: HostDriftTerminalEvent,
+    error: HostDriftError,
     stream: true,
   },
 );
@@ -625,6 +700,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsHostDeploymentsTerminalOpenRpc,
   WsHostDeploymentsTerminalResizeRpc,
   WsHostDeploymentsSubscribeTerminalEventsRpc,
+  WsHostDriftRefreshRpc,
+  WsHostDriftGetRpc,
+  WsHostDriftCancelRpc,
+  WsHostDriftSubmitSecretRpc,
+  WsHostDriftReconcileRpc,
+  WsHostDriftTerminalOpenRpc,
+  WsHostDriftTerminalResizeRpc,
+  WsHostDriftSubscribeTerminalEventsRpc,
   WsHostImportsStartRpc,
   WsHostImportsGetRpc,
   WsHostImportsCancelRpc,

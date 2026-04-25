@@ -13,6 +13,8 @@ import {
   type FlakeMaintenanceStartInput,
   type FlakeMaintenanceSummary,
   type FlakeMaintenanceTerminalSnapshot,
+  type HostDriftSummary,
+  type HostDriftTerminalSnapshot,
   GitCommandError,
   type HostDeploymentStartInput,
   type HostDeploymentSummary,
@@ -149,6 +151,10 @@ import {
   type FlakeMaintenanceServiceShape,
 } from "./project/Services/FlakeMaintenanceService.ts";
 import {
+  HostDriftService,
+  type HostDriftServiceShape,
+} from "./project/Services/HostDriftService.ts";
+import {
   RepositoryIdentityResolver,
   type RepositoryIdentityResolverShape,
 } from "./project/Services/RepositoryIdentityResolver.ts";
@@ -259,6 +265,43 @@ const makeFlakeMaintenanceSummary = (overrides: Partial<FlakeMaintenanceSummary>
     updatedAt: now,
     exitCode: null,
     exitSignal: null,
+    ...overrides,
+  };
+};
+
+const makeHostDriftSummary = (overrides: Partial<HostDriftSummary> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    projectId: defaultProjectId,
+    hostName: "bc250",
+    terminalOwnerId: "host-drift:project-default:bc250",
+    cwd: "/workspace",
+    status: "running" as const,
+    startedAt: now,
+    finishedAt: null,
+    updatedAt: now,
+    lastError: null,
+    awaitingAuthPhase: null,
+    exitCode: null,
+    exitSignal: null,
+    categoryResults: [],
+    ...overrides,
+  };
+};
+
+const makeHostDriftTerminalSnapshot = (overrides: Partial<HostDriftTerminalSnapshot> = {}) => {
+  const now = new Date(0).toISOString();
+  return {
+    terminalOwnerId: "host-drift:project-default:bc250",
+    terminalId: "default",
+    cwd: "/workspace",
+    worktreePath: null,
+    status: "running" as const,
+    pid: 123,
+    history: "",
+    exitCode: null,
+    exitSignal: null,
+    updatedAt: now,
     ...overrides,
   };
 };
@@ -535,6 +578,7 @@ const buildAppUnderTest = (options?: {
     deploymentSafetyService?: Partial<DeploymentSafetyServiceShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
     fleetDeploymentService?: Partial<FleetDeploymentServiceShape>;
+    hostDriftService?: Partial<HostDriftServiceShape>;
     hostImportService?: Partial<HostImportServiceShape>;
     flakeMaintenanceService?: Partial<FlakeMaintenanceServiceShape>;
     deployRsResolver?: Partial<DeployRsResolverShape>;
@@ -838,6 +882,31 @@ const buildAppUnderTest = (options?: {
           get: () => Effect.succeed(null),
           stop: () => Effect.succeed(null),
           ...options?.layers?.fleetDeploymentService,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(HostDriftService)({
+          refresh: () =>
+            Effect.succeed({
+              disposition: "started" as const,
+              summary: makeHostDriftSummary(),
+            }),
+          get: () => Effect.succeed(null),
+          listByProjectId: () => Effect.succeed(new Map()),
+          cancel: () => Effect.succeed(null),
+          submitSecret: () =>
+            Effect.succeed({
+              accepted: false,
+              status: "idle" as const,
+            }),
+          reconcile: () =>
+            Effect.succeed({
+              threadId: defaultThreadId,
+            }),
+          openTerminal: () => Effect.succeed(makeHostDriftTerminalSnapshot()),
+          resizeTerminal: () => Effect.void,
+          subscribeTerminalEvents: () => Stream.empty,
+          ...options?.layers?.hostDriftService,
         }),
       ),
       Layer.provide(

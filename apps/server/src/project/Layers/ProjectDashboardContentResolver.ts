@@ -21,6 +21,7 @@ import {
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
 import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
+import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import {
   ProjectDashboardContentResolver,
@@ -68,6 +69,7 @@ const make = Effect.gen(function* () {
   const documentationStatusResolver = yield* DocumentationStatusResolver;
   const workspacePaths = yield* WorkspacePaths;
   const hostDeploymentService = yield* HostDeploymentService;
+  const hostDriftService = yield* HostDriftService;
   const flakeMaintenanceService = yield* FlakeMaintenanceService;
 
   const resolveWithinWorkspace = (workspaceRoot: string, relativePath: string) =>
@@ -171,6 +173,11 @@ const make = Effect.gen(function* () {
             toDashboardError("Failed to load host deployment state.", cause),
           ),
         );
+      const latestDriftByHost = yield* hostDriftService
+        .listByProjectId(input.projectId)
+        .pipe(
+          Effect.mapError((cause) => toDashboardError("Failed to load host drift state.", cause)),
+        );
       const latestMaintenance = yield* flakeMaintenanceService
         .get({
           projectId: input.projectId,
@@ -261,6 +268,7 @@ const make = Effect.gen(function* () {
           command: null,
         },
         latestDeployment: latestDeploymentByHost.get(host.name.toLowerCase()) ?? null,
+        latestDrift: latestDriftByHost.get(host.name.toLowerCase()) ?? null,
       }));
 
       return {

@@ -37,6 +37,16 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       onTerminalEvent: (input, callback) =>
         rpcClient.hostDeployments.onTerminalEvent(input, callback),
     },
+    hostDrift: {
+      refresh: rpcClient.hostDrift.refresh,
+      get: rpcClient.hostDrift.get,
+      cancel: rpcClient.hostDrift.cancel,
+      submitSecret: rpcClient.hostDrift.submitSecret,
+      reconcile: rpcClient.hostDrift.reconcile,
+      openTerminal: rpcClient.hostDrift.openTerminal,
+      resizeTerminal: rpcClient.hostDrift.resizeTerminal,
+      onTerminalEvent: (input, callback) => rpcClient.hostDrift.onTerminalEvent(input, callback),
+    },
     hostImports: {
       start: rpcClient.hostImports.start,
       get: rpcClient.hostImports.get,

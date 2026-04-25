@@ -22,6 +22,7 @@ import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
 import { ProjectDashboardContentResolver } from "../Services/ProjectDashboardContentResolver.ts";
 import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
 import { HostDeploymentService } from "../Services/HostDeploymentService.ts";
+import { HostDriftService } from "../Services/HostDriftService.ts";
 import { FlakeMaintenanceService } from "../Services/FlakeMaintenanceService.ts";
 import { ProjectDashboardContentResolverLive } from "./ProjectDashboardContentResolver.ts";
 
@@ -238,6 +239,19 @@ Current-state documentation for bc250.
           get: () => Effect.die("unused"),
           listByProjectId: () => Effect.succeed(new Map()),
           stop: () => Effect.die("unused"),
+          openTerminal: () => Effect.die("unused"),
+          resizeTerminal: () => Effect.die("unused"),
+          subscribeTerminalEvents: () => Stream.empty,
+        }),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(HostDriftService, {
+          refresh: () => Effect.die("unused"),
+          get: () => Effect.die("unused"),
+          listByProjectId: () => Effect.succeed(new Map()),
+          cancel: () => Effect.die("unused"),
+          submitSecret: () => Effect.die("unused"),
+          reconcile: () => Effect.die("unused"),
           openTerminal: () => Effect.die("unused"),
           resizeTerminal: () => Effect.die("unused"),
           subscribeTerminalEvents: () => Stream.empty,

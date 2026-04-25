@@ -88,6 +88,18 @@ export interface WsRpcClient {
       typeof WS_METHODS.hostDeploymentsSubscribeTerminalEvents
     >;
   };
+  readonly hostDrift: {
+    readonly refresh: RpcUnaryMethod<typeof WS_METHODS.hostDriftRefresh>;
+    readonly get: RpcUnaryMethod<typeof WS_METHODS.hostDriftGet>;
+    readonly cancel: RpcUnaryMethod<typeof WS_METHODS.hostDriftCancel>;
+    readonly submitSecret: RpcUnaryMethod<typeof WS_METHODS.hostDriftSubmitSecret>;
+    readonly reconcile: RpcUnaryMethod<typeof WS_METHODS.hostDriftReconcile>;
+    readonly openTerminal: RpcUnaryMethod<typeof WS_METHODS.hostDriftTerminalOpen>;
+    readonly resizeTerminal: RpcUnaryMethod<typeof WS_METHODS.hostDriftTerminalResize>;
+    readonly onTerminalEvent: RpcInputStreamMethod<
+      typeof WS_METHODS.hostDriftSubscribeTerminalEvents
+    >;
+  };
   readonly hostImports: {
     readonly start: RpcUnaryMethod<typeof WS_METHODS.hostImportsStart>;
     readonly get: RpcUnaryMethod<typeof WS_METHODS.hostImportsGet>;
@@ -214,6 +226,25 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       onTerminalEvent: (input, listener, options) =>
         transport.subscribe(
           (client) => client[WS_METHODS.hostDeploymentsSubscribeTerminalEvents](input),
+          listener,
+          options,
+        ),
+    },
+    hostDrift: {
+      refresh: (input) => transport.request((client) => client[WS_METHODS.hostDriftRefresh](input)),
+      get: (input) => transport.request((client) => client[WS_METHODS.hostDriftGet](input)),
+      cancel: (input) => transport.request((client) => client[WS_METHODS.hostDriftCancel](input)),
+      submitSecret: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDriftSubmitSecret](input)),
+      reconcile: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDriftReconcile](input)),
+      openTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDriftTerminalOpen](input)),
+      resizeTerminal: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDriftTerminalResize](input)),
+      onTerminalEvent: (input, listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.hostDriftSubscribeTerminalEvents](input),
           listener,
           options,
         ),

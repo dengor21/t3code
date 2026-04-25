@@ -53,6 +53,21 @@ import type {
   NullOrHostDeploymentSummary,
 } from "./hostDeployment.ts";
 import type {
+  HostDriftCancelInput,
+  HostDriftGetInput,
+  HostDriftReconcileInput,
+  HostDriftReconcileResult,
+  HostDriftRefreshInput,
+  HostDriftRefreshResult,
+  HostDriftSubmitSecretInput,
+  HostDriftSubmitSecretResult,
+  HostDriftTerminalEvent,
+  HostDriftTerminalOpenInput,
+  HostDriftTerminalResizeInput,
+  HostDriftTerminalSnapshot,
+  NullOrHostDriftSummary,
+} from "./hostDrift.ts";
+import type {
   HostImportCancelInput,
   HostImportGetInput,
   HostImportStartInput,
@@ -318,6 +333,19 @@ export interface EnvironmentApi {
     onTerminalEvent: (
       input: HostDeploymentGetInput,
       callback: (event: HostDeploymentTerminalEvent) => void,
+    ) => () => void;
+  };
+  hostDrift: {
+    refresh: (input: HostDriftRefreshInput) => Promise<HostDriftRefreshResult>;
+    get: (input: HostDriftGetInput) => Promise<NullOrHostDriftSummary>;
+    cancel: (input: HostDriftCancelInput) => Promise<NullOrHostDriftSummary>;
+    submitSecret: (input: HostDriftSubmitSecretInput) => Promise<HostDriftSubmitSecretResult>;
+    reconcile: (input: HostDriftReconcileInput) => Promise<HostDriftReconcileResult>;
+    openTerminal: (input: HostDriftTerminalOpenInput) => Promise<HostDriftTerminalSnapshot>;
+    resizeTerminal: (input: HostDriftTerminalResizeInput) => Promise<void>;
+    onTerminalEvent: (
+      input: HostDriftGetInput,
+      callback: (event: HostDriftTerminalEvent) => void,
     ) => () => void;
   };
   hostImports: {
