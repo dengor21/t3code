@@ -69,6 +69,10 @@ function decodeHost(value: unknown, fallbackName?: string): FlakeHost | null {
   const candidate = value as Record<string, unknown>;
   const name = trimToNull(typeof candidate.name === "string" ? candidate.name : fallbackName);
   const target = trimToNull(typeof candidate.target === "string" ? candidate.target : null);
+  const sshUser = trimToNull(typeof candidate.sshUser === "string" ? candidate.sshUser : null);
+  const activationUser = trimToNull(
+    typeof candidate.activationUser === "string" ? candidate.activationUser : null,
+  );
   const system = trimToNull(typeof candidate.system === "string" ? candidate.system : null);
   const type = trimToNull(typeof candidate.type === "string" ? candidate.type : null);
 
@@ -79,6 +83,8 @@ function decodeHost(value: unknown, fallbackName?: string): FlakeHost | null {
   return {
     name,
     target,
+    ...(sshUser ? { sshUser } : {}),
+    ...(activationUser ? { activationUser } : {}),
     ...(system ? { system } : {}),
     ...(type ? { type } : {}),
   };
@@ -127,10 +133,15 @@ function parseLiteralHostBlock(contents: string): ParsedFlakeMetadataResult {
   const [, block = ""] = blockMatch;
   const nameValue = /\bname\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
   const targetValue = /\btarget\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
+  const sshUserValue = /\bsshUser\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
+  const activationUserValue =
+    /\bactivationUser\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
   const systemValue = /\bsystem\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
   const typeValue = /\btype\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(block)?.[1] ?? null;
   const name = nameValue ? parseQuotedNixString(nameValue) : null;
   const target = targetValue ? parseQuotedNixString(targetValue) : null;
+  const sshUser = sshUserValue ? parseQuotedNixString(sshUserValue) : null;
+  const activationUser = activationUserValue ? parseQuotedNixString(activationUserValue) : null;
   const system = systemValue ? parseQuotedNixString(systemValue) : null;
   const type = typeValue ? parseQuotedNixString(typeValue) : null;
 
@@ -140,6 +151,8 @@ function parseLiteralHostBlock(contents: string): ParsedFlakeMetadataResult {
         {
           name,
           target,
+          ...(sshUser ? { sshUser } : {}),
+          ...(activationUser ? { activationUser } : {}),
           ...(system ? { system } : {}),
           ...(type ? { type } : {}),
         },
@@ -184,10 +197,15 @@ function parseLiteralT3HostsBlock(contents: string): ParsedFlakeMetadataResult {
     sawEntry = true;
     const nameValue = /\bname\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
     const targetValue = /\btarget\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
+    const sshUserValue = /\bsshUser\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
+    const activationUserValue =
+      /\bactivationUser\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
     const systemValue = /\bsystem\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
     const typeValue = /\btype\s*=\s*("(?:[^"\\]|\\.)*")\s*;/m.exec(entryBody)?.[1] ?? null;
     const name = nameValue ? parseQuotedNixString(nameValue) : trimToNull(key);
     const target = targetValue ? parseQuotedNixString(targetValue) : null;
+    const sshUser = sshUserValue ? parseQuotedNixString(sshUserValue) : null;
+    const activationUser = activationUserValue ? parseQuotedNixString(activationUserValue) : null;
     const system = systemValue ? parseQuotedNixString(systemValue) : null;
     const type = typeValue ? parseQuotedNixString(typeValue) : null;
 
@@ -195,6 +213,8 @@ function parseLiteralT3HostsBlock(contents: string): ParsedFlakeMetadataResult {
       hosts.push({
         name,
         target,
+        ...(sshUser ? { sshUser } : {}),
+        ...(activationUser ? { activationUser } : {}),
         ...(system ? { system } : {}),
         ...(type ? { type } : {}),
       });

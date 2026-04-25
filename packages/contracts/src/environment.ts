@@ -62,6 +62,8 @@ export type RepositoryIdentity = typeof RepositoryIdentity.Type;
 export const FlakeHost = Schema.Struct({
   name: TrimmedNonEmptyString,
   target: TrimmedNonEmptyString,
+  sshUser: Schema.optionalKey(TrimmedNonEmptyString),
+  activationUser: Schema.optionalKey(TrimmedNonEmptyString),
   system: Schema.optionalKey(TrimmedNonEmptyString),
   type: Schema.optionalKey(TrimmedNonEmptyString),
 });

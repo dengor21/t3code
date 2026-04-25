@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDeployRsCommand } from "./project.ts";
+import { buildDeployRsCommand, buildDeployRsInvocation } from "./project.ts";
 
 describe("buildDeployRsCommand", () => {
   it("builds the default remote-build command", () => {
@@ -38,5 +38,33 @@ describe("buildDeployRsCommand", () => {
         magicRollback: false,
       }),
     ).toBe("nix run github:serokell/deploy-rs -- --magic-rollback false .#nexus");
+  });
+
+  it("supports staging a deployment for next boot", () => {
+    expect(
+      buildDeployRsCommand("nexus", {
+        activationStrategy: "boot",
+      }),
+    ).toBe("nix run github:serokell/deploy-rs -- --skip-checks --remote-build --boot .#nexus");
+  });
+
+  it("builds a dry-activation invocation for live switch previews", () => {
+    expect(
+      buildDeployRsInvocation("nexus", {
+        dryActivate: true,
+        activationStrategy: "switch",
+      }),
+    ).toEqual({
+      command: "nix",
+      args: [
+        "run",
+        "github:serokell/deploy-rs",
+        "--",
+        "--skip-checks",
+        "--remote-build",
+        "--dry-activate",
+        ".#nexus",
+      ],
+    });
   });
 });

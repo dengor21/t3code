@@ -83,8 +83,24 @@ function createTestClient() {
       getDashboardContent: vi.fn(async () => undefined),
       generateHostDocumentation: vi.fn(async () => undefined),
     },
+    fleetDeployments: {
+      start: vi.fn(async () => undefined),
+      get: vi.fn(async () => null),
+      stop: vi.fn(async () => null),
+    },
     hostDeployments: {
       start: vi.fn(async () => undefined),
+      preview: vi.fn(async () => ({
+        report: {
+          activationStrategy: "switch",
+          acknowledgedWarnings: false,
+          canProceed: true,
+          blockingFailureCount: 0,
+          warningCount: 0,
+          checks: [],
+          updatedAt: new Date(0).toISOString(),
+        },
+      })),
       get: vi.fn(async () => null),
       stop: vi.fn(async () => null),
       openTerminal: vi.fn(async () => undefined),

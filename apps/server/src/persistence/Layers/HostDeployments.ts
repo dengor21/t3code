@@ -1,6 +1,8 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema, Struct } from "effect";
+
+import { DeploymentPostflightReport, DeploymentPreflightReport } from "@t3tools/contracts";
 
 import {
   HostDeploymentRepository,
@@ -33,12 +35,15 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           cwd,
           command,
           deploy_on_server,
+          activation_strategy,
           status,
           started_at,
           finished_at,
           updated_at,
           exit_code,
-          exit_signal
+          exit_signal,
+          preflight_report_json,
+          postflight_report_json
         )
         VALUES (
           ${row.projectId},
@@ -48,12 +53,15 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           ${row.cwd},
           ${row.command},
           ${row.deployOnServer ? 1 : 0},
+          ${row.activationStrategy},
           ${row.status},
           ${row.startedAt},
           ${row.finishedAt},
           ${row.updatedAt},
           ${row.exitCode},
-          ${row.exitSignal}
+          ${row.exitSignal},
+          ${row.preflightReport === null ? null : JSON.stringify(row.preflightReport)},
+          ${row.postflightReport === null ? null : JSON.stringify(row.postflightReport)}
         )
         ON CONFLICT (project_id, host_name_normalized)
         DO UPDATE SET
@@ -62,19 +70,32 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           cwd = excluded.cwd,
           command = excluded.command,
           deploy_on_server = excluded.deploy_on_server,
+          activation_strategy = excluded.activation_strategy,
           status = excluded.status,
           started_at = excluded.started_at,
           finished_at = excluded.finished_at,
           updated_at = excluded.updated_at,
           exit_code = excluded.exit_code,
-          exit_signal = excluded.exit_signal
+          exit_signal = excluded.exit_signal,
+          preflight_report_json = excluded.preflight_report_json,
+          postflight_report_json = excluded.postflight_report_json
       `,
   });
 
-  const HostDeploymentDbRow = Schema.Struct({
-    ...PersistedHostDeployment.fields,
-    deployOnServer: Schema.Number,
-  });
+  const HostDeploymentDbRow = PersistedHostDeployment.mapFields(
+    Struct.assign({
+      deployOnServer: Schema.Number,
+      preflightReport: Schema.NullOr(Schema.fromJsonString(DeploymentPreflightReport)),
+      postflightReport: Schema.NullOr(Schema.fromJsonString(DeploymentPostflightReport)),
+    }),
+  );
+
+  const toPersistedHostDeployment = (
+    row: typeof HostDeploymentDbRow.Type,
+  ): PersistedHostDeployment =>
+    Object.assign({}, row, {
+      deployOnServer: row.deployOnServer === 1,
+    });
 
   const getHostDeploymentRow = SqlSchema.findOneOption({
     Request: HostDeploymentLookup,
@@ -89,12 +110,15 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           cwd,
           command,
           deploy_on_server AS "deployOnServer",
+          activation_strategy AS "activationStrategy",
           status,
           started_at AS "startedAt",
           finished_at AS "finishedAt",
           updated_at AS "updatedAt",
           exit_code AS "exitCode",
-          exit_signal AS "exitSignal"
+          exit_signal AS "exitSignal",
+          preflight_report_json AS "preflightReport",
+          postflight_report_json AS "postflightReport"
         FROM host_deployments
         WHERE project_id = ${projectId}
           AND host_name_normalized = ${hostNameNormalized}
@@ -115,12 +139,15 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           cwd,
           command,
           deploy_on_server AS "deployOnServer",
+          activation_strategy AS "activationStrategy",
           status,
           started_at AS "startedAt",
           finished_at AS "finishedAt",
           updated_at AS "updatedAt",
           exit_code AS "exitCode",
-          exit_signal AS "exitSignal"
+          exit_signal AS "exitSignal",
+          preflight_report_json AS "preflightReport",
+          postflight_report_json AS "postflightReport"
         FROM host_deployments
         WHERE project_id = ${projectId}
         ORDER BY host_name_normalized ASC
@@ -140,12 +167,15 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           cwd,
           command,
           deploy_on_server AS "deployOnServer",
+          activation_strategy AS "activationStrategy",
           status,
           started_at AS "startedAt",
           finished_at AS "finishedAt",
           updated_at AS "updatedAt",
           exit_code AS "exitCode",
-          exit_signal AS "exitSignal"
+          exit_signal AS "exitSignal",
+          preflight_report_json AS "preflightReport",
+          postflight_report_json AS "postflightReport"
         FROM host_deployments
         WHERE status IN ('starting', 'running')
         ORDER BY updated_at ASC, project_id ASC, host_name_normalized ASC
@@ -170,14 +200,7 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           "HostDeploymentRepository.getByProjectAndHost:decodeRow",
         ),
       ),
-      Effect.map(
-        Option.map(
-          (row): PersistedHostDeployment => ({
-            ...row,
-            deployOnServer: row.deployOnServer === 1,
-          }),
-        ),
-      ),
+      Effect.map(Option.map(toPersistedHostDeployment)),
     );
 
   const listByProjectId: HostDeploymentRepositoryShape["listByProjectId"] = (input) =>
@@ -188,14 +211,7 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           "HostDeploymentRepository.listByProjectId:decodeRows",
         ),
       ),
-      Effect.map((rows) =>
-        rows.map(
-          (row): PersistedHostDeployment => ({
-            ...row,
-            deployOnServer: row.deployOnServer === 1,
-          }),
-        ),
-      ),
+      Effect.map((rows) => rows.map(toPersistedHostDeployment)),
     );
 
   const listActive: HostDeploymentRepositoryShape["listActive"] = () =>
@@ -206,14 +222,7 @@ const makeHostDeploymentRepository = Effect.gen(function* () {
           "HostDeploymentRepository.listActive:decodeRows",
         ),
       ),
-      Effect.map((rows) =>
-        rows.map(
-          (row): PersistedHostDeployment => ({
-            ...row,
-            deployOnServer: row.deployOnServer === 1,
-          }),
-        ),
-      ),
+      Effect.map((rows) => rows.map(toPersistedHostDeployment)),
     );
 
   return {

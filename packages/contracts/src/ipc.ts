@@ -20,6 +20,10 @@ import type {
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  HostDeploymentPreviewInput,
+  HostDeploymentPreviewResult,
+} from "./deploymentSafety.ts";
+import type {
   FleetDeploymentGetInput,
   FleetDeploymentStartInput,
   FleetDeploymentStartResult,
@@ -304,6 +308,7 @@ export interface EnvironmentApi {
   };
   hostDeployments: {
     start: (input: HostDeploymentStartInput) => Promise<HostDeploymentStartResult>;
+    preview: (input: HostDeploymentPreviewInput) => Promise<HostDeploymentPreviewResult>;
     get: (input: HostDeploymentGetInput) => Promise<NullOrHostDeploymentSummary>;
     stop: (input: HostDeploymentStopInput) => Promise<NullOrHostDeploymentSummary>;
     openTerminal: (

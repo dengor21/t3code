@@ -57,6 +57,7 @@ import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolve
 import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptRunner.ts";
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
+import { DeploymentSafetyService } from "./project/Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
 import { HostImportService } from "./project/Services/HostImportService.ts";
@@ -155,6 +156,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const git = yield* GitCore;
       const gitStatusBroadcaster = yield* GitStatusBroadcaster;
       const terminalManager = yield* TerminalManager;
+      const deploymentSafetyService = yield* DeploymentSafetyService;
       const hostDeploymentService = yield* HostDeploymentService;
       const fleetDeploymentService = yield* FleetDeploymentService;
       const hostImportService = yield* HostImportService;
@@ -886,6 +888,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.hostDeploymentsStart, hostDeploymentService.start(input), {
             "rpc.aggregate": "workspace",
           }),
+        [WS_METHODS.hostDeploymentsPreview]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.hostDeploymentsPreview,
+            deploymentSafetyService.preview(input),
+            {
+              "rpc.aggregate": "workspace",
+            },
+          ),
         [WS_METHODS.hostDeploymentsGet]: (input) =>
           observeRpcEffect(WS_METHODS.hostDeploymentsGet, hostDeploymentService.get(input), {
             "rpc.aggregate": "workspace",

@@ -1,5 +1,10 @@
 import { Effect, Schema } from "effect";
 import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  DeploymentActivationStrategy,
+  DeploymentPostflightReport,
+  DeploymentPreflightReport,
+} from "./deploymentSafety.ts";
 
 export const HostDeploymentStatus = Schema.Literals([
   "starting",
@@ -18,12 +23,19 @@ export const HostDeploymentSummary = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   command: TrimmedNonEmptyString,
   deployOnServer: Schema.Boolean,
+  activationStrategy: DeploymentActivationStrategy,
   status: HostDeploymentStatus,
   startedAt: IsoDateTime,
   finishedAt: Schema.NullOr(IsoDateTime),
   updatedAt: IsoDateTime,
   exitCode: Schema.NullOr(Schema.Int),
   exitSignal: Schema.NullOr(Schema.Int),
+  preflightReport: Schema.NullOr(DeploymentPreflightReport).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  postflightReport: Schema.NullOr(DeploymentPostflightReport).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type HostDeploymentSummary = typeof HostDeploymentSummary.Type;
 
@@ -33,6 +45,8 @@ export const HostDeploymentStartInput = Schema.Struct({
   deployOnServer: Schema.optional(Schema.Boolean),
   magicRollback: Schema.optional(Schema.Boolean),
   confirmTimeoutSeconds: Schema.optional(PositiveInt),
+  activationStrategy: Schema.optional(DeploymentActivationStrategy),
+  acknowledgeWarnings: Schema.optional(Schema.Boolean),
 });
 export type HostDeploymentStartInput = typeof HostDeploymentStartInput.Type;
 

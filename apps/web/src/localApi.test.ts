@@ -53,8 +53,14 @@ const rpcClientMock = {
     getDashboardContent: vi.fn(),
     generateHostDocumentation: vi.fn(),
   },
+  fleetDeployments: {
+    start: vi.fn(),
+    get: vi.fn(),
+    stop: vi.fn(),
+  },
   hostDeployments: {
     start: vi.fn(),
+    preview: vi.fn(),
     get: vi.fn(),
     stop: vi.fn(),
     openTerminal: vi.fn(),

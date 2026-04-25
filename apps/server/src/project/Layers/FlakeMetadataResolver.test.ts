@@ -41,6 +41,8 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
     t3code.host = {
       name = "web-01";
       target = "192.168.1.10";
+      sshUser = "deployer";
+      activationUser = "root";
     };
   };
 }
@@ -54,11 +56,15 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
       expect(metadata.host).toEqual({
         name: "web-01",
         target: "192.168.1.10",
+        sshUser: "deployer",
+        activationUser: "root",
       });
       expect(metadata.hosts).toEqual([
         {
           name: "web-01",
           target: "192.168.1.10",
+          sshUser: "deployer",
+          activationUser: "root",
         },
       ]);
       expect(normalizePath(metadata.flakePath)).toBe(normalizePath(`${cwd}/flake.nix`));
@@ -124,6 +130,8 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
       nexus = {
         name = "nexus";
         target = "10.0.0.115";
+        sshUser = "deployer";
+        activationUser = "root";
         system = "x86_64-linux";
         type = "nixos";
       };
@@ -147,6 +155,8 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
         {
           name: "nexus",
           target: "10.0.0.115",
+          sshUser: "deployer",
+          activationUser: "root",
           system: "x86_64-linux",
           type: "nixos",
         },

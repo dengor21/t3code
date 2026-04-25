@@ -55,6 +55,7 @@ import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import { ServerSettingsLive } from "./serverSettings.ts";
 import { ProjectFaviconResolverLive } from "./project/Layers/ProjectFaviconResolver.ts";
 import { DeployRsResolverLive } from "./project/Layers/DeployRsResolver.ts";
+import { DeploymentSafetyServiceLive } from "./project/Layers/DeploymentSafetyService.ts";
 import { FlakeMetadataResolverLive } from "./project/Layers/FlakeMetadataResolver.ts";
 import { HostDeploymentServiceLive } from "./project/Layers/HostDeploymentService.ts";
 import { HostImportServiceLive } from "./project/Layers/HostImportService.ts";
@@ -222,8 +223,13 @@ const DocumentationLayerLive = Layer.mergeAll(
   HostDocumentationServiceLive.pipe(Layer.provideMerge(DocumentationSupportLayerLive)),
 );
 
+const HostDeploymentLayerLive = HostDeploymentServiceLive.pipe(
+  Layer.provideMerge(DeploymentSafetyServiceLive),
+);
+
 const FleetDeploymentLayerLive = FleetDeploymentServiceLive.pipe(
-  Layer.provideMerge(HostDeploymentServiceLive),
+  Layer.provideMerge(HostDeploymentLayerLive),
+  Layer.provideMerge(DeploymentSafetyServiceLive),
 );
 
 const GitLayerLive = Layer.empty.pipe(
@@ -298,7 +304,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
 
 const RuntimeServicesLive = Layer.empty.pipe(
   Layer.provideMerge(ServerRuntimeStartupLive),
-  Layer.provideMerge(HostDeploymentServiceLive),
+  Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(FleetDeploymentLayerLive),
   Layer.provideMerge(HostImportServiceLive),
   Layer.provideMerge(FlakeMaintenanceServiceLive),

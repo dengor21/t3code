@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import type { DeploymentActivationStrategy } from "./deploymentSafety.ts";
 import { FlakeHost, HostDocumentationState, HostDocumentationStatus } from "./environment.ts";
 import { FlakeMaintenanceSummary } from "./flakeMaintenance.ts";
 import { HostDeploymentSummary } from "./hostDeployment.ts";
@@ -105,11 +106,19 @@ export interface DeployRsCommandOptions {
   readonly deployOnServer?: boolean | null | undefined;
   readonly magicRollback?: boolean | null | undefined;
   readonly confirmTimeoutSeconds?: number | null | undefined;
+  readonly activationStrategy?: DeploymentActivationStrategy | null | undefined;
+  readonly dryActivate?: boolean | null | undefined;
 }
 
-export function buildDeployRsCommand(hostName: string, options?: DeployRsCommandOptions): string {
+export function buildDeployRsInvocation(
+  hostName: string,
+  options?: DeployRsCommandOptions,
+): {
+  readonly command: "nix";
+  readonly args: ReadonlyArray<string>;
+} {
   const target = hostName.trim();
-  const args = ["nix run github:serokell/deploy-rs --"];
+  const args = ["run", "github:serokell/deploy-rs", "--"];
 
   if (!options?.deployOnServer) {
     args.push("--skip-checks", "--remote-build");
@@ -127,9 +136,25 @@ export function buildDeployRsCommand(hostName: string, options?: DeployRsCommand
     args.push("--confirm-timeout", String(options.confirmTimeoutSeconds));
   }
 
+  if (options?.dryActivate) {
+    args.push("--dry-activate");
+  }
+
+  if (options?.activationStrategy === "boot") {
+    args.push("--boot");
+  }
+
   args.push(`.#${target}`);
 
-  return args.join(" ");
+  return {
+    command: "nix",
+    args,
+  };
+}
+
+export function buildDeployRsCommand(hostName: string, options?: DeployRsCommandOptions): string {
+  const invocation = buildDeployRsInvocation(hostName, options);
+  return [invocation.command, ...invocation.args].join(" ");
 }
 
 export const ProjectDashboardHostDeployment = Schema.Struct({

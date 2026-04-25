@@ -129,6 +129,10 @@ import {
   type ProjectSetupScriptRunnerShape,
 } from "./project/Services/ProjectSetupScriptRunner.ts";
 import {
+  DeploymentSafetyService,
+  type DeploymentSafetyServiceShape,
+} from "./project/Services/DeploymentSafetyService.ts";
+import {
   HostDeploymentService,
   type HostDeploymentServiceShape,
 } from "./project/Services/HostDeploymentService.ts";
@@ -175,12 +179,15 @@ const makeHostDeploymentSummary = (overrides: Partial<HostDeploymentSummary> = {
     cwd: "/workspace",
     command: buildDeployRsCommand("bc250"),
     deployOnServer: false,
+    activationStrategy: "switch" as const,
     status: "running" as const,
     startedAt: now,
     finishedAt: null,
     updatedAt: now,
     exitCode: null,
     exitSignal: null,
+    preflightReport: null,
+    postflightReport: null,
     ...overrides,
   };
 };
@@ -213,6 +220,7 @@ const makeFleetDeploymentSummary = (overrides: Partial<FleetDeploymentSummary> =
     maxParallelism: 1,
     stopOnFirstFailure: true,
     deployOnServer: false,
+    activationStrategy: "switch" as const,
     magicRollback: true,
     confirmTimeoutSeconds: 30,
     startedAt: now,
@@ -230,6 +238,8 @@ const makeFleetDeploymentSummary = (overrides: Partial<FleetDeploymentSummary> =
         updatedAt: now,
         exitCode: null,
         exitSignal: null,
+        preflightReport: null,
+        postflightReport: null,
       },
     ],
     ...overrides,
@@ -522,6 +532,7 @@ const buildAppUnderTest = (options?: {
     serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>;
     serverEnvironment?: Partial<ServerEnvironmentShape>;
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
+    deploymentSafetyService?: Partial<DeploymentSafetyServiceShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
     fleetDeploymentService?: Partial<FleetDeploymentServiceShape>;
     hostImportService?: Partial<HostImportServiceShape>;
@@ -776,6 +787,29 @@ const buildAppUnderTest = (options?: {
               latestMaintenance: null,
             }),
           ...options?.layers?.projectDashboardContentResolver,
+        }),
+      ),
+      Layer.provide(
+        Layer.mock(DeploymentSafetyService)({
+          preview: () =>
+            Effect.succeed({
+              report: {
+                activationStrategy: "switch",
+                acknowledgedWarnings: false,
+                canProceed: true,
+                blockingFailureCount: 0,
+                warningCount: 0,
+                checks: [],
+                updatedAt: new Date(0).toISOString(),
+              },
+            }),
+          buildPostflightReport: () =>
+            Effect.succeed({
+              activationStrategy: "switch",
+              checks: [],
+              updatedAt: new Date(0).toISOString(),
+            }),
+          ...options?.layers?.deploymentSafetyService,
         }),
       ),
       Layer.provide(
@@ -2574,6 +2608,45 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("routes websocket rpc hostDeployments.preview", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          deploymentSafetyService: {
+            preview: (input) =>
+              Effect.succeed({
+                report: {
+                  activationStrategy: input.activationStrategy ?? "switch",
+                  acknowledgedWarnings: input.acknowledgeWarnings === true,
+                  canProceed: true,
+                  blockingFailureCount: 0,
+                  warningCount: 0,
+                  checks: [],
+                  updatedAt: new Date(0).toISOString(),
+                },
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.hostDeploymentsPreview]({
+            projectId: defaultProjectId,
+            hostName: "bc250",
+            activationStrategy: "boot",
+            acknowledgeWarnings: true,
+          }),
+        ),
+      );
+
+      assert.equal(response.report.activationStrategy, "boot");
+      assert.equal(response.report.acknowledgedWarnings, true);
+      assert.equal(response.report.canProceed, true);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc fleetDeployments.start", () =>
     Effect.gen(function* () {
       let receivedInput: FleetDeploymentStartInput | null = null;
@@ -2603,6 +2676,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                       updatedAt: new Date(0).toISOString(),
                       exitCode: null,
                       exitSignal: null,
+                      preflightReport: null,
+                      postflightReport: null,
                     })),
                   }),
                 };
@@ -2662,6 +2737,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                       updatedAt: new Date(0).toISOString(),
                       exitCode: null,
                       exitSignal: null,
+                      preflightReport: null,
+                      postflightReport: null,
                     },
                     {
                       hostName: "router",
@@ -2673,6 +2750,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                       updatedAt: new Date(0).toISOString(),
                       exitCode: null,
                       exitSignal: null,
+                      preflightReport: null,
+                      postflightReport: null,
                     },
                   ],
                 }),
@@ -2721,6 +2800,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                       updatedAt: new Date(1_000).toISOString(),
                       exitCode: null,
                       exitSignal: null,
+                      preflightReport: null,
+                      postflightReport: null,
                     },
                   ],
                 });

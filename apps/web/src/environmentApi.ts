@@ -29,6 +29,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
     },
     hostDeployments: {
       start: rpcClient.hostDeployments.start,
+      preview: rpcClient.hostDeployments.preview,
       get: rpcClient.hostDeployments.get,
       stop: rpcClient.hostDeployments.stop,
       openTerminal: rpcClient.hostDeployments.openTerminal,

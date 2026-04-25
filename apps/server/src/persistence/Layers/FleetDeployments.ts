@@ -1,6 +1,8 @@
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema, Struct } from "effect";
+
+import { DeploymentPostflightReport, DeploymentPreflightReport } from "@t3tools/contracts";
 
 import {
   FleetDeploymentHostLookup,
@@ -33,6 +35,7 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           max_parallelism,
           stop_on_first_failure,
           deploy_on_server,
+          activation_strategy,
           magic_rollback,
           confirm_timeout_seconds,
           started_at,
@@ -47,6 +50,7 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           ${row.maxParallelism},
           ${row.stopOnFirstFailure ? 1 : 0},
           ${row.deployOnServer ? 1 : 0},
+          ${row.activationStrategy},
           ${row.magicRollback === null ? null : row.magicRollback ? 1 : 0},
           ${row.confirmTimeoutSeconds},
           ${row.startedAt},
@@ -61,6 +65,7 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           max_parallelism = excluded.max_parallelism,
           stop_on_first_failure = excluded.stop_on_first_failure,
           deploy_on_server = excluded.deploy_on_server,
+          activation_strategy = excluded.activation_strategy,
           magic_rollback = excluded.magic_rollback,
           confirm_timeout_seconds = excluded.confirm_timeout_seconds,
           started_at = excluded.started_at,
@@ -85,7 +90,9 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           finished_at,
           updated_at,
           exit_code,
-          exit_signal
+          exit_signal,
+          preflight_report_json,
+          postflight_report_json
         )
         VALUES (
           ${row.rolloutId},
@@ -98,7 +105,9 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           ${row.finishedAt},
           ${row.updatedAt},
           ${row.exitCode},
-          ${row.exitSignal}
+          ${row.exitSignal},
+          ${row.preflightReport === null ? null : JSON.stringify(row.preflightReport)},
+          ${row.postflightReport === null ? null : JSON.stringify(row.postflightReport)}
         )
         ON CONFLICT (rollout_id, host_name_normalized)
         DO UPDATE SET
@@ -110,16 +119,19 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           finished_at = excluded.finished_at,
           updated_at = excluded.updated_at,
           exit_code = excluded.exit_code,
-          exit_signal = excluded.exit_signal
+          exit_signal = excluded.exit_signal,
+          preflight_report_json = excluded.preflight_report_json,
+          postflight_report_json = excluded.postflight_report_json
       `,
   });
 
-  const FleetDeploymentDbRow = Schema.Struct({
-    ...PersistedFleetDeployment.fields,
-    stopOnFirstFailure: Schema.Number,
-    deployOnServer: Schema.Number,
-    magicRollback: Schema.NullOr(Schema.Number),
-  });
+  const FleetDeploymentDbRow = PersistedFleetDeployment.mapFields(
+    Struct.assign({
+      stopOnFirstFailure: Schema.Number,
+      deployOnServer: Schema.Number,
+      magicRollback: Schema.NullOr(Schema.Number),
+    }),
+  );
 
   const getLatestFleetDeploymentRow = SqlSchema.findOneOption({
     Request: FleetDeploymentLookup,
@@ -133,6 +145,7 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           max_parallelism AS "maxParallelism",
           stop_on_first_failure AS "stopOnFirstFailure",
           deploy_on_server AS "deployOnServer",
+          activation_strategy AS "activationStrategy",
           magic_rollback AS "magicRollback",
           confirm_timeout_seconds AS "confirmTimeoutSeconds",
           started_at AS "startedAt",
@@ -146,9 +159,12 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
       `,
   });
 
-  const FleetDeploymentHostDbRow = Schema.Struct({
-    ...PersistedFleetDeploymentHost.fields,
-  });
+  const FleetDeploymentHostDbRow = PersistedFleetDeploymentHost.mapFields(
+    Struct.assign({
+      preflightReport: Schema.NullOr(Schema.fromJsonString(DeploymentPreflightReport)),
+      postflightReport: Schema.NullOr(Schema.fromJsonString(DeploymentPostflightReport)),
+    }),
+  );
 
   const listFleetDeploymentHostRows = SqlSchema.findAll({
     Request: FleetDeploymentHostLookup,
@@ -166,7 +182,9 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           finished_at AS "finishedAt",
           updated_at AS "updatedAt",
           exit_code AS "exitCode",
-          exit_signal AS "exitSignal"
+          exit_signal AS "exitSignal",
+          preflight_report_json AS "preflightReport",
+          postflight_report_json AS "postflightReport"
         FROM fleet_deployment_hosts
         WHERE rollout_id = ${rolloutId}
         ORDER BY host_order ASC, host_name_normalized ASC
@@ -185,6 +203,7 @@ const makeFleetDeploymentRepository = Effect.gen(function* () {
           max_parallelism AS "maxParallelism",
           stop_on_first_failure AS "stopOnFirstFailure",
           deploy_on_server AS "deployOnServer",
+          activation_strategy AS "activationStrategy",
           magic_rollback AS "magicRollback",
           confirm_timeout_seconds AS "confirmTimeoutSeconds",
           started_at AS "startedAt",

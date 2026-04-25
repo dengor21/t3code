@@ -20,6 +20,7 @@ import {
 } from "../../persistence/Services/HostDeployments.ts";
 import { TerminalManager } from "../../terminal/Services/Manager.ts";
 import { DeployRsResolver } from "../Services/DeployRsResolver.ts";
+import { DeploymentSafetyService } from "../Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
 import {
   HostDeploymentService,
@@ -199,6 +200,7 @@ const makeHostDeploymentService = Effect.gen(function* () {
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const flakeMetadataResolver = yield* FlakeMetadataResolver;
   const deployRsResolver = yield* DeployRsResolver;
+  const deploymentSafetyService = yield* DeploymentSafetyService;
   const terminalManager = yield* TerminalManager;
   const hostDeploymentRepository = yield* HostDeploymentRepository;
 
@@ -295,6 +297,7 @@ const makeHostDeploymentService = Effect.gen(function* () {
     const deployOnServer = input.deployOnServer === true;
     const magicRollback = input.magicRollback;
     const confirmTimeoutSeconds = input.confirmTimeoutSeconds;
+    const activationStrategy = input.activationStrategy ?? "switch";
 
     return {
       project,
@@ -302,11 +305,13 @@ const makeHostDeploymentService = Effect.gen(function* () {
       deployOnServer,
       magicRollback,
       confirmTimeoutSeconds,
+      activationStrategy,
       hostNameNormalized,
       command: buildDeployRsCommand(selectedHost.name, {
         deployOnServer,
         magicRollback,
         confirmTimeoutSeconds,
+        activationStrategy,
       }),
       terminalOwnerId: ownerIdFor(input.projectId, hostNameNormalized),
     } as const;
@@ -382,6 +387,16 @@ const makeHostDeploymentService = Effect.gen(function* () {
           };
           break;
         case "exited":
+          const postflightReport =
+            existing.status === "canceled" || event.exitCode !== 0
+              ? existing.postflightReport
+              : yield* deploymentSafetyService
+                  .buildPostflightReport({
+                    projectId: existing.projectId,
+                    hostName: existing.hostName,
+                    activationStrategy: existing.activationStrategy,
+                  })
+                  .pipe(Effect.catch(() => Effect.succeed(existing.postflightReport)));
           next = {
             ...existing,
             status:
@@ -394,6 +409,7 @@ const makeHostDeploymentService = Effect.gen(function* () {
             updatedAt: event.createdAt,
             exitCode: event.exitCode,
             exitSignal: event.exitSignal,
+            postflightReport,
           };
           break;
         case "error":
@@ -519,6 +535,40 @@ const makeHostDeploymentService = Effect.gen(function* () {
               );
           }
 
+          const preflight = yield* deploymentSafetyService
+            .preview({
+              projectId: input.projectId,
+              hostName: context.selectedHost.name,
+              deployOnServer: context.deployOnServer,
+              ...(context.magicRollback !== undefined
+                ? { magicRollback: context.magicRollback }
+                : {}),
+              ...(context.confirmTimeoutSeconds !== undefined
+                ? { confirmTimeoutSeconds: context.confirmTimeoutSeconds }
+                : {}),
+              activationStrategy: context.activationStrategy,
+              acknowledgeWarnings: input.acknowledgeWarnings,
+            })
+            .pipe(
+              Effect.mapError((cause) =>
+                toHostDeploymentError("Failed to run deployment preflight checks.", cause),
+              ),
+            );
+
+          if (!preflight.report.canProceed) {
+            const blockingCheck = preflight.report.checks.find(
+              (check) => check.severity === "blocking" && check.result === "fail",
+            );
+            const warningCheck = preflight.report.checks.find((check) => check.result === "warn");
+            const message =
+              blockingCheck?.recommendedAction === "use-boot-activation"
+                ? "Live switch is not recommended for this deployment. Stage it for next boot instead."
+                : (blockingCheck?.summary ??
+                  warningCheck?.summary ??
+                  "Acknowledge deployment warnings before starting.");
+            return yield* toHostDeploymentError(message);
+          }
+
           yield* terminalManager
             .close({
               threadId: context.terminalOwnerId,
@@ -541,12 +591,15 @@ const makeHostDeploymentService = Effect.gen(function* () {
             cwd: context.project.workspaceRoot,
             command: context.command,
             deployOnServer: context.deployOnServer,
+            activationStrategy: context.activationStrategy,
             status: "starting",
             startedAt,
             finishedAt: null,
             updatedAt: startedAt,
             exitCode: null,
             exitSignal: null,
+            preflightReport: preflight.report,
+            postflightReport: null,
           };
 
           yield* hostDeploymentRepository

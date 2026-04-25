@@ -79,6 +79,7 @@ export interface WsRpcClient {
   };
   readonly hostDeployments: {
     readonly start: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsStart>;
+    readonly preview: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsPreview>;
     readonly get: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsGet>;
     readonly stop: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsStop>;
     readonly openTerminal: RpcUnaryMethod<typeof WS_METHODS.hostDeploymentsTerminalOpen>;
@@ -202,6 +203,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
     hostDeployments: {
       start: (input) =>
         transport.request((client) => client[WS_METHODS.hostDeploymentsStart](input)),
+      preview: (input) =>
+        transport.request((client) => client[WS_METHODS.hostDeploymentsPreview](input)),
       get: (input) => transport.request((client) => client[WS_METHODS.hostDeploymentsGet](input)),
       stop: (input) => transport.request((client) => client[WS_METHODS.hostDeploymentsStop](input)),
       openTerminal: (input) =>

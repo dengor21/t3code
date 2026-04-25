@@ -37,6 +37,30 @@ export const projectQueryKeys = {
       projectId ?? null,
       hostName ?? null,
     ] as const,
+  hostDeploymentPreviewPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
+    ["projects", "host-deployment-preview", environmentId ?? null, projectId ?? null] as const,
+  hostDeploymentPreview: (
+    environmentId: EnvironmentId | null,
+    projectId: ProjectId | null,
+    hostName: string | null,
+    activationStrategy: "switch" | "boot",
+    deployOnServer: boolean,
+    magicRollback: boolean,
+    confirmTimeoutSeconds: number | null,
+    acknowledgeWarnings: boolean,
+  ) =>
+    [
+      "projects",
+      "host-deployment-preview",
+      environmentId ?? null,
+      projectId ?? null,
+      hostName ?? null,
+      activationStrategy,
+      deployOnServer,
+      magicRollback,
+      confirmTimeoutSeconds,
+      acknowledgeWarnings,
+    ] as const,
   fleetDeploymentPrefix: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
     ["projects", "fleet-deployment", environmentId ?? null, projectId ?? null] as const,
   fleetDeployment: (environmentId: EnvironmentId | null, projectId: ProjectId | null) =>
@@ -82,6 +106,7 @@ const DEFAULT_SEARCH_ENTRIES_STALE_TIME = 15_000;
 const DEFAULT_DASHBOARD_CONTENT_STALE_TIME = 5_000;
 const DEFAULT_FLEET_DEPLOYMENT_STALE_TIME = 2_000;
 const DEFAULT_HOST_DEPLOYMENT_STALE_TIME = 2_000;
+const DEFAULT_HOST_DEPLOYMENT_PREVIEW_STALE_TIME = Number.POSITIVE_INFINITY;
 const DEFAULT_HOST_IMPORT_STALE_TIME = 2_000;
 const DEFAULT_FLAKE_MAINTENANCE_STALE_TIME = 2_000;
 const EMPTY_SEARCH_ENTRIES_RESULT: ProjectSearchEntriesResult = {
@@ -182,6 +207,59 @@ export function hostDeploymentQueryOptions(input: {
       normalizedHostName !== null,
     staleTime: input.staleTime ?? DEFAULT_HOST_DEPLOYMENT_STALE_TIME,
     placeholderData: (previous) => previous ?? null,
+  });
+}
+
+export function hostDeploymentPreviewQueryOptions(input: {
+  environmentId: EnvironmentId | null;
+  projectId: ProjectId | null;
+  hostName?: string | null;
+  activationStrategy: "switch" | "boot";
+  deployOnServer: boolean;
+  magicRollback: boolean;
+  confirmTimeoutSeconds: number | null;
+  acknowledgeWarnings: boolean;
+  enabled?: boolean;
+  staleTime?: number;
+}) {
+  const normalizedHostName = input.hostName?.trim() ? input.hostName.trim() : null;
+  return queryOptions({
+    queryKey: projectQueryKeys.hostDeploymentPreview(
+      input.environmentId,
+      input.projectId,
+      normalizedHostName,
+      input.activationStrategy,
+      input.deployOnServer,
+      input.magicRollback,
+      input.confirmTimeoutSeconds,
+      input.acknowledgeWarnings,
+    ),
+    queryFn: async () => {
+      if (!input.environmentId || !input.projectId || !normalizedHostName) {
+        throw new Error("Host deployment preview is unavailable.");
+      }
+      const api = ensureEnvironmentApi(input.environmentId);
+      return api.hostDeployments.preview({
+        projectId: input.projectId,
+        hostName: normalizedHostName,
+        deployOnServer: input.deployOnServer,
+        magicRollback: input.magicRollback,
+        ...(input.magicRollback && input.confirmTimeoutSeconds !== null
+          ? { confirmTimeoutSeconds: input.confirmTimeoutSeconds }
+          : {}),
+        activationStrategy: input.activationStrategy,
+        ...(input.acknowledgeWarnings ? { acknowledgeWarnings: true } : {}),
+      });
+    },
+    enabled:
+      (input.enabled ?? true) &&
+      input.environmentId !== null &&
+      input.projectId !== null &&
+      normalizedHostName !== null,
+    staleTime: input.staleTime ?? DEFAULT_HOST_DEPLOYMENT_PREVIEW_STALE_TIME,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

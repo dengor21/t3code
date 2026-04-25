@@ -1,4 +1,7 @@
 import {
+  DeploymentActivationStrategy,
+  DeploymentPostflightReport,
+  DeploymentPreflightReport,
   type FleetDeploymentHostStatus as FleetDeploymentHostStatusType,
   type FleetDeploymentStatus as FleetDeploymentStatusType,
   ProjectId,
@@ -15,6 +18,7 @@ export const PersistedFleetDeployment = Schema.Struct({
   maxParallelism: Schema.Int,
   stopOnFirstFailure: Schema.Boolean,
   deployOnServer: Schema.Boolean,
+  activationStrategy: DeploymentActivationStrategy,
   magicRollback: Schema.NullOr(Schema.Boolean),
   confirmTimeoutSeconds: Schema.NullOr(Schema.Int),
   startedAt: Schema.String,
@@ -45,6 +49,8 @@ export const PersistedFleetDeploymentHost = Schema.Struct({
   updatedAt: Schema.String,
   exitCode: Schema.NullOr(Schema.Int),
   exitSignal: Schema.NullOr(Schema.Int),
+  preflightReport: Schema.NullOr(DeploymentPreflightReport),
+  postflightReport: Schema.NullOr(DeploymentPostflightReport),
 });
 export type PersistedFleetDeploymentHost = typeof PersistedFleetDeploymentHost.Type;
 

@@ -1,5 +1,8 @@
 import {
   buildDeployRsCommand,
+  type DeploymentCheck,
+  type DeploymentPostflightReport,
+  type DeploymentPreflightReport,
   type FleetDeploymentHostStatus,
   type FleetDeploymentStatus,
   type FlakeHost,
@@ -15,7 +18,7 @@ import {
   normalizeHostCreationHostName,
   resolveHostCreationTarget,
 } from "@t3tools/shared/hostWorkflow";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertCircleIcon,
@@ -29,10 +32,11 @@ import {
   PlayIcon,
   RefreshCcwIcon,
   RocketIcon,
+  ShieldCheckIcon,
   SquareTerminalIcon,
   Trash2Icon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import ChatMarkdown from "../components/ChatMarkdown";
 import FlakeMaintenanceTerminal from "../components/FlakeMaintenanceTerminal";
@@ -64,6 +68,7 @@ import {
   fleetDeploymentQueryOptions,
   flakeMaintenanceQueryOptions,
   hostDeploymentQueryOptions,
+  hostDeploymentPreviewQueryOptions,
   projectDashboardContentQueryOptions,
   projectQueryKeys,
 } from "../lib/projectReactQuery";
@@ -236,6 +241,141 @@ function deploymentStatusClasses(
 
 function formatDeploymentModeLabel(deployOnServer: boolean): string {
   return deployOnServer ? "Deploy On Server" : "Remote Build";
+}
+
+function formatActivationStrategyLabel(strategy: "switch" | "boot"): string {
+  return strategy === "boot" ? "Stage For Reboot" : "Switch Live Now";
+}
+
+function deploymentCheckClasses(check: DeploymentCheck): string {
+  if (check.result === "pass") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  }
+  if (check.result === "warn") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  }
+  if (check.result === "fail") {
+    return check.severity === "blocking"
+      ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+      : "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  }
+  return "border-border/60 bg-background/60 text-muted-foreground";
+}
+
+function formatDeploymentCheckResultLabel(check: DeploymentCheck): string {
+  switch (check.result) {
+    case "pass":
+      return "Pass";
+    case "warn":
+      return "Warning";
+    case "fail":
+      return check.severity === "blocking" ? "Blocked" : "Failed";
+    case "skipped":
+    default:
+      return "Skipped";
+  }
+}
+
+function findFirstDeploymentAttentionSummary(
+  report: DeploymentPreflightReport | DeploymentPostflightReport | null | undefined,
+): string | null {
+  if (!report) {
+    return null;
+  }
+  return (
+    report.checks.find((check) => check.result === "fail")?.summary ??
+    report.checks.find((check) => check.result === "warn")?.summary ??
+    null
+  );
+}
+
+function DeploymentReportCard(props: {
+  title: string;
+  report: DeploymentPreflightReport | DeploymentPostflightReport | null | undefined;
+  emptyMessage: string;
+  showProceedState?: boolean;
+}) {
+  if (!props.report) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-background/50 p-3 text-sm text-muted-foreground">
+        {props.emptyMessage}
+      </div>
+    );
+  }
+
+  const preflight = "canProceed" in props.report ? props.report : null;
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-medium text-foreground">{props.title}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {formatActivationStrategyLabel(props.report.activationStrategy)} • Updated{" "}
+            {formatTimestamp(props.report.updatedAt)}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {props.showProceedState && preflight ? (
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                preflight.canProceed
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+              )}
+            >
+              {preflight.canProceed ? "Ready" : "Needs action"}
+            </span>
+          ) : null}
+          {preflight?.warningCount ? (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+              {preflight.warningCount} warning{preflight.warningCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          {preflight?.blockingFailureCount ? (
+            <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+              {preflight.blockingFailureCount} blocked
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {props.report.checks.map((check) => (
+          <div
+            key={`${check.code}:${check.label}`}
+            className="rounded-lg border border-border/50 bg-background/60 p-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium text-foreground">{check.label}</div>
+                <div className="mt-1 text-sm text-foreground">{check.summary}</div>
+              </div>
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em]",
+                  deploymentCheckClasses(check),
+                )}
+              >
+                {formatDeploymentCheckResultLabel(check)}
+              </span>
+            </div>
+            {check.detail ? (
+              <div className="mt-2 rounded-lg bg-muted/70 px-2.5 py-2 text-xs text-muted-foreground">
+                {check.detail}
+              </div>
+            ) : null}
+            {check.recommendedAction === "use-boot-activation" ? (
+              <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                Recommended action: stage this deployment for the next reboot instead of switching
+                live.
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function parseConfirmTimeoutSeconds(value: string): number | null {
@@ -437,39 +577,115 @@ function FlakeDashboardRouteView() {
   const [deployingHostName, setDeployingHostName] = useState<string | null>(null);
   const [maintenancePending, setMaintenancePending] = useState(false);
   const [deployOnServer, setDeployOnServer] = useState(false);
+  const [deployActivationStrategy, setDeployActivationStrategy] = useState<"switch" | "boot">(
+    "switch",
+  );
   const [deployMagicRollback, setDeployMagicRollback] = useState(true);
+  const [deployAcknowledgeWarnings, setDeployAcknowledgeWarnings] = useState(false);
   const [deployConfirmTimeoutSecondsInput, setDeployConfirmTimeoutSecondsInput] = useState("");
   const [rolloutSelectedHostNames, setRolloutSelectedHostNames] = useState<string[]>([]);
   const [rolloutSelectionInitialized, setRolloutSelectionInitialized] = useState(false);
   const [rolloutPending, setRolloutPending] = useState(false);
   const [rolloutDeployOnServer, setRolloutDeployOnServer] = useState(false);
+  const [rolloutActivationStrategy, setRolloutActivationStrategy] = useState<"switch" | "boot">(
+    "switch",
+  );
   const [rolloutMagicRollback, setRolloutMagicRollback] = useState(true);
+  const [rolloutAcknowledgeWarnings, setRolloutAcknowledgeWarnings] = useState(false);
   const [rolloutConfirmTimeoutSecondsInput, setRolloutConfirmTimeoutSecondsInput] = useState("");
   const [rolloutMaxParallelismInput, setRolloutMaxParallelismInput] = useState(
     String(DEFAULT_ROLLOUT_MAX_PARALLELISM),
   );
+  const [rolloutPreflightRequested, setRolloutPreflightRequested] = useState(false);
   const gitStatusQuery = useGitStatus({
     environmentId: projectRef?.environmentId ?? null,
     cwd: project?.cwd ?? null,
   });
+  const routeEnvironmentId = projectRef?.environmentId ?? null;
+  const routeProjectId = project?.id ?? null;
+  const previousDashboardViewRef = useRef<FlakeDashboardView | undefined>(search.view);
 
   const resetDeployDialogOptions = useCallback(() => {
     setDeployOnServer(false);
+    setDeployActivationStrategy("switch");
     setDeployMagicRollback(true);
+    setDeployAcknowledgeWarnings(false);
     setDeployConfirmTimeoutSecondsInput("");
   }, []);
 
   const resetRolloutOptions = useCallback(() => {
     setRolloutDeployOnServer(false);
+    setRolloutActivationStrategy("switch");
     setRolloutMagicRollback(true);
+    setRolloutAcknowledgeWarnings(false);
     setRolloutConfirmTimeoutSecondsInput("");
     setRolloutMaxParallelismInput(String(DEFAULT_ROLLOUT_MAX_PARALLELISM));
   }, []);
 
   useEffect(() => {
+    setDeployAcknowledgeWarnings(false);
+  }, [
+    deployActivationStrategy,
+    deployConfirmTimeoutSecondsInput,
+    deployDialogHostName,
+    deployMagicRollback,
+    deployOnServer,
+  ]);
+
+  useEffect(() => {
+    setRolloutAcknowledgeWarnings(false);
+  }, [
+    rolloutActivationStrategy,
+    rolloutConfirmTimeoutSecondsInput,
+    rolloutMagicRollback,
+    rolloutMaxParallelismInput,
+    rolloutDeployOnServer,
+    rolloutSelectedHostNames,
+  ]);
+
+  useEffect(() => {
+    setRolloutPreflightRequested(false);
+    if (routeEnvironmentId === null || routeProjectId === null) {
+      return;
+    }
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.hostDeploymentPreviewPrefix(routeEnvironmentId, routeProjectId),
+    });
+  }, [
+    queryClient,
+    routeEnvironmentId,
+    routeProjectId,
+    rolloutActivationStrategy,
+    rolloutConfirmTimeoutSecondsInput,
+    rolloutDeployOnServer,
+    rolloutMagicRollback,
+    rolloutMaxParallelismInput,
+    rolloutSelectedHostNames,
+  ]);
+
+  useEffect(() => {
+    const previousView = previousDashboardViewRef.current;
+    previousDashboardViewRef.current = search.view;
+    if (previousView === search.view) {
+      return;
+    }
+    if (search.view !== "rollout" && previousView !== "rollout") {
+      return;
+    }
+    setRolloutPreflightRequested(false);
+    if (routeEnvironmentId === null || routeProjectId === null) {
+      return;
+    }
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.hostDeploymentPreviewPrefix(routeEnvironmentId, routeProjectId),
+    });
+  }, [queryClient, routeEnvironmentId, routeProjectId, search.view]);
+
+  useEffect(() => {
     setRolloutSelectedHostNames([]);
     setRolloutSelectionInitialized(false);
     setRolloutPending(false);
+    setRolloutPreflightRequested(false);
     resetRolloutOptions();
   }, [project?.id, resetRolloutOptions]);
 
@@ -552,8 +768,8 @@ function FlakeDashboardRouteView() {
     refetchInterval: hasPendingDocGenerations ? 2_000 : false,
   });
 
-  const hostDeploymentQuery = useQuery(
-    hostDeploymentQueryOptions({
+  const hostDeploymentQuery = useQuery({
+    ...hostDeploymentQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
@@ -563,7 +779,8 @@ function FlakeDashboardRouteView() {
         project !== null &&
         (matchedRouteHostName ?? requestedHostName) !== null,
     }),
-  );
+    refetchInterval: search.view === "deploy" ? 2_000 : false,
+  });
 
   const flakeMaintenanceQuery = useQuery(
     flakeMaintenanceQueryOptions({
@@ -585,6 +802,29 @@ function FlakeDashboardRouteView() {
     }),
     refetchInterval: search.view === "rollout" ? 2_000 : false,
   });
+
+  const deployDialogPreviewQuery = useQuery(
+    hostDeploymentPreviewQueryOptions({
+      environmentId: projectRef?.environmentId ?? null,
+      projectId: project?.id ?? null,
+      hostName: deployDialogHostName,
+      activationStrategy: deployActivationStrategy,
+      deployOnServer,
+      magicRollback: deployMagicRollback,
+      confirmTimeoutSeconds: deployMagicRollback
+        ? parseConfirmTimeoutSeconds(deployConfirmTimeoutSecondsInput)
+        : null,
+      acknowledgeWarnings: deployAcknowledgeWarnings,
+      enabled:
+        bootstrapComplete &&
+        projectRef !== null &&
+        project !== null &&
+        deployDialogHostName !== null &&
+        (!deployMagicRollback ||
+          deployConfirmTimeoutSecondsInput.trim().length === 0 ||
+          parseConfirmTimeoutSeconds(deployConfirmTimeoutSecondsInput) !== null),
+    }),
+  );
 
   useEffect(() => {
     if (
@@ -654,6 +894,11 @@ function FlakeDashboardRouteView() {
     () => (dashboardQuery.data?.hostSummaries ?? []).map((summary) => summary.host.name),
     [dashboardQuery.data?.hostSummaries],
   );
+  const rolloutPreviewHostNames = useMemo(
+    () =>
+      rolloutSelectedHostNames.filter((hostName) => availableRolloutHostNames.includes(hostName)),
+    [availableRolloutHostNames, rolloutSelectedHostNames],
+  );
 
   useEffect(() => {
     if (!dashboardQuery.data) {
@@ -672,6 +917,34 @@ function FlakeDashboardRouteView() {
       return sameStringArray(current, next) ? current : next;
     });
   }, [availableRolloutHostNames, dashboardQuery.data, rolloutSelectionInitialized]);
+
+  const rolloutPreviewQueries = useQueries({
+    queries:
+      search.view === "rollout" && rolloutPreflightRequested
+        ? rolloutPreviewHostNames.map((hostName) => {
+            const options = hostDeploymentPreviewQueryOptions({
+              environmentId: projectRef?.environmentId ?? null,
+              projectId: project?.id ?? null,
+              hostName,
+              activationStrategy: rolloutActivationStrategy,
+              deployOnServer: rolloutDeployOnServer,
+              magicRollback: rolloutMagicRollback,
+              confirmTimeoutSeconds: rolloutMagicRollback
+                ? parseConfirmTimeoutSeconds(rolloutConfirmTimeoutSecondsInput)
+                : null,
+              acknowledgeWarnings: false,
+              enabled:
+                bootstrapComplete &&
+                projectRef !== null &&
+                project !== null &&
+                (!rolloutMagicRollback ||
+                  rolloutConfirmTimeoutSecondsInput.trim().length === 0 ||
+                  parseConfirmTimeoutSeconds(rolloutConfirmTimeoutSecondsInput) !== null),
+            });
+            return options;
+          })
+        : [],
+  });
 
   const selectDashboardView = useCallback(
     (hostName: string | null, view: FlakeDashboardView) => {
@@ -937,19 +1210,35 @@ function FlakeDashboardRouteView() {
 
   const handleOpenDeployDialog = useCallback(
     (hostName: string) => {
+      if (projectRef && project) {
+        queryClient.removeQueries({
+          queryKey: projectQueryKeys.hostDeploymentPreviewPrefix(
+            projectRef.environmentId,
+            project.id,
+          ),
+        });
+      }
       resetDeployDialogOptions();
       setDeployDialogHostName(hostName);
     },
-    [resetDeployDialogOptions],
+    [project, projectRef, queryClient, resetDeployDialogOptions],
   );
 
   const handleCloseDeployDialog = useCallback(() => {
     if (deployingHostName !== null) {
       return;
     }
+    if (projectRef && project) {
+      queryClient.removeQueries({
+        queryKey: projectQueryKeys.hostDeploymentPreviewPrefix(
+          projectRef.environmentId,
+          project.id,
+        ),
+      });
+    }
     resetDeployDialogOptions();
     setDeployDialogHostName(null);
-  }, [deployingHostName, resetDeployDialogOptions]);
+  }, [deployingHostName, project, projectRef, queryClient, resetDeployDialogOptions]);
 
   const handleConfirmDeployment = useCallback(async () => {
     if (!projectRef || !project || !deployDialogHostName) {
@@ -998,14 +1287,27 @@ function FlakeDashboardRouteView() {
       return;
     }
 
+    if (!deployDialogPreviewQuery.data?.report.canProceed) {
+      toastManager.add({
+        type: "error",
+        title: "Deployment checks need attention",
+        description:
+          findFirstDeploymentAttentionSummary(deployDialogPreviewQuery.data?.report) ??
+          "Resolve the blocking checks or acknowledge the warnings before deploying.",
+      });
+      return;
+    }
+
     setDeployingHostName(hostSummary.host.name);
     try {
       await api.hostDeployments.start({
         projectId: project.id,
         hostName: hostSummary.host.name,
         deployOnServer,
+        activationStrategy: deployActivationStrategy,
         magicRollback: deployMagicRollback,
         ...(deployMagicRollback && confirmTimeoutSeconds !== null ? { confirmTimeoutSeconds } : {}),
+        ...(deployAcknowledgeWarnings ? { acknowledgeWarnings: true } : {}),
       });
 
       await Promise.all([invalidateHostDeploymentQueries(), invalidateDashboardQueries()]);
@@ -1032,6 +1334,9 @@ function FlakeDashboardRouteView() {
   }, [
     dashboardQuery.data?.hostSummaries,
     deployDialogHostName,
+    deployDialogPreviewQuery.data,
+    deployActivationStrategy,
+    deployAcknowledgeWarnings,
     deployConfirmTimeoutSecondsInput,
     deployMagicRollback,
     deployOnServer,
@@ -1102,6 +1407,7 @@ function FlakeDashboardRouteView() {
     deployDialogHostSummary?.deployment.status === "deployable"
       ? buildDeployRsCommand(deployDialogHostSummary.host.name, {
           deployOnServer,
+          activationStrategy: deployActivationStrategy,
           magicRollback: deployMagicRollback,
           ...(deployMagicRollback
             ? {
@@ -1121,6 +1427,9 @@ function FlakeDashboardRouteView() {
     deployMagicRollback &&
     deployDialogHasConfirmTimeoutInput &&
     deployDialogConfirmTimeoutSeconds === null;
+  const deployDialogPreviewReport = deployDialogPreviewQuery.data?.report ?? null;
+  const deployDialogHasWarnings = (deployDialogPreviewReport?.warningCount ?? 0) > 0;
+  const deployDialogCanProceed = deployDialogPreviewReport?.canProceed ?? false;
   const selectedHostDeployment = selectedHostSummary
     ? (hostDeploymentQuery.data ?? selectedHostSummary.latestDeployment ?? null)
     : null;
@@ -1160,6 +1469,30 @@ function FlakeDashboardRouteView() {
     rolloutMagicRollback && rolloutHasConfirmTimeoutInput && rolloutConfirmTimeoutSeconds === null;
   const rolloutMaxParallelism = parseRolloutMaxParallelism(rolloutMaxParallelismInput);
   const rolloutMaxParallelismInvalid = rolloutMaxParallelism === null;
+  const rolloutPreviewReports = rolloutPreviewQueries
+    .map((query, index) => {
+      const hostName = rolloutPreviewHostNames[index];
+      return hostName && query.data ? { hostName, report: query.data.report } : null;
+    })
+    .filter(
+      (value): value is { hostName: string; report: DeploymentPreflightReport } => value !== null,
+    );
+  const rolloutPreviewPending = rolloutPreviewQueries.some((query) => query.isPending);
+  const rolloutPreviewHasBlockingChecks = rolloutPreviewReports.some(
+    (entry) => entry.report.blockingFailureCount > 0,
+  );
+  const rolloutPreviewHasWarnings = rolloutPreviewReports.some(
+    (entry) => entry.report.warningCount > 0,
+  );
+  const rolloutPreviewCanProceed =
+    rolloutPreviewReports.length > 0 &&
+    rolloutPreviewReports.every((entry) => entry.report.blockingFailureCount === 0) &&
+    (!rolloutPreviewHasWarnings || rolloutAcknowledgeWarnings);
+  const rolloutCanRunPreflight =
+    selectedRolloutHostsCount > 0 &&
+    !rolloutMaxParallelismInvalid &&
+    !rolloutConfirmTimeoutInvalid &&
+    availableRolloutHostNames.length > 0;
   const rolloutStatusCounts = useMemo(() => {
     const next = new Map<FleetDeploymentHostStatus, number>();
     for (const entry of selectedFleetDeployment?.hostEntries ?? []) {
@@ -1273,6 +1606,31 @@ function FlakeDashboardRouteView() {
       return;
     }
 
+    if (!rolloutPreflightRequested || rolloutPreviewReports.length === 0) {
+      toastManager.add({
+        type: "error",
+        title: "Run rollout checks first",
+        description:
+          "Review the preflight checks for the selected hosts before starting the rollout.",
+      });
+      return;
+    }
+
+    if (!rolloutPreviewCanProceed) {
+      const firstAttentionSummary =
+        rolloutPreviewReports
+          .map((entry) => findFirstDeploymentAttentionSummary(entry.report))
+          .find((summary) => summary !== null) ?? null;
+      toastManager.add({
+        type: "error",
+        title: "Rollout checks need attention",
+        description:
+          firstAttentionSummary ??
+          "Resolve the blocking checks or acknowledge the warnings before starting the rollout.",
+      });
+      return;
+    }
+
     const api = readEnvironmentApi(projectRef.environmentId);
     if (!api) {
       toastManager.add({
@@ -1289,6 +1647,7 @@ function FlakeDashboardRouteView() {
         hostNames,
         maxParallelism: rolloutMaxParallelism,
         deployOnServer: rolloutDeployOnServer,
+        activationStrategy: rolloutActivationStrategy,
         magicRollback: rolloutMagicRollback,
         ...(rolloutMagicRollback && rolloutConfirmTimeoutSeconds !== null
           ? {
@@ -1296,6 +1655,7 @@ function FlakeDashboardRouteView() {
             }
           : {}),
         stopOnFirstFailure: true,
+        ...(rolloutAcknowledgeWarnings ? { acknowledgeWarnings: true } : {}),
       });
 
       await Promise.all([
@@ -1338,10 +1698,26 @@ function FlakeDashboardRouteView() {
     rolloutHasConfirmTimeoutInput,
     rolloutMagicRollback,
     rolloutMaxParallelism,
+    rolloutPreviewCanProceed,
+    rolloutPreviewReports,
+    rolloutPreflightRequested,
     rolloutPending,
     rolloutSelectedHostNames,
+    rolloutActivationStrategy,
+    rolloutAcknowledgeWarnings,
     rolloutDeployOnServer,
   ]);
+
+  const handleRunRolloutPreflight = useCallback(() => {
+    if (!projectRef || !project || !rolloutCanRunPreflight) {
+      return;
+    }
+    queryClient.removeQueries({
+      queryKey: projectQueryKeys.hostDeploymentPreviewPrefix(projectRef.environmentId, project.id),
+    });
+    setRolloutAcknowledgeWarnings(false);
+    setRolloutPreflightRequested(true);
+  }, [project, projectRef, queryClient, rolloutCanRunPreflight]);
 
   const handleStopRollout = useCallback(async () => {
     if (!projectRef || !project || rolloutPending) {
@@ -2061,6 +2437,16 @@ function FlakeDashboardRouteView() {
                                       : "Still running"}
                                   </div>
                                 </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Activation
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatActivationStrategyLabel(
+                                      selectedHostDeployment.activationStrategy,
+                                    )}
+                                  </div>
+                                </div>
                                 <div className="rounded-xl border border-border/50 bg-background/50 p-3 lg:col-span-2">
                                   <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                                     Command
@@ -2068,6 +2454,21 @@ function FlakeDashboardRouteView() {
                                   <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
                                     {selectedHostDeployment.command}
                                   </code>
+                                </div>
+                                <div className="lg:col-span-2">
+                                  <DeploymentReportCard
+                                    title="Latest preflight"
+                                    report={selectedHostDeployment.preflightReport}
+                                    emptyMessage="No preflight report was recorded for this deployment yet."
+                                    showProceedState
+                                  />
+                                </div>
+                                <div className="lg:col-span-2">
+                                  <DeploymentReportCard
+                                    title="Latest postflight"
+                                    report={selectedHostDeployment.postflightReport}
+                                    emptyMessage="No postflight report has been recorded yet."
+                                  />
                                 </div>
                               </div>
                             ) : hostDeploymentQuery.isPending ? (
@@ -2175,6 +2576,9 @@ function FlakeDashboardRouteView() {
                                     rolloutPending ||
                                     isSelectedFleetDeploymentActive ||
                                     selectedRolloutHostsCount === 0 ||
+                                    !rolloutPreflightRequested ||
+                                    rolloutPreviewPending ||
+                                    !rolloutPreviewCanProceed ||
                                     rolloutMaxParallelismInvalid ||
                                     rolloutConfirmTimeoutInvalid ||
                                     availableRolloutHostNames.length === 0
@@ -2215,7 +2619,7 @@ function FlakeDashboardRouteView() {
                             </div>
 
                             {selectedFleetDeployment ? (
-                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                                 <div className="rounded-xl border border-border/50 bg-background/50 p-3">
                                   <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
                                     Started
@@ -2249,6 +2653,16 @@ function FlakeDashboardRouteView() {
                                   <div className="mt-1 text-sm text-foreground">
                                     {formatDeploymentModeLabel(
                                       selectedFleetDeployment.deployOnServer,
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                  <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                    Activation
+                                  </div>
+                                  <div className="mt-1 text-sm text-foreground">
+                                    {formatActivationStrategyLabel(
+                                      selectedFleetDeployment.activationStrategy,
                                     )}
                                   </div>
                                 </div>
@@ -2401,6 +2815,46 @@ function FlakeDashboardRouteView() {
                                   </div>
 
                                   <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                                    <div className="text-xs font-medium text-foreground">
+                                      Activation strategy
+                                    </div>
+                                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                      <Button
+                                        size="sm"
+                                        variant={
+                                          rolloutActivationStrategy === "switch"
+                                            ? "secondary"
+                                            : "outline"
+                                        }
+                                        onClick={() => {
+                                          setRolloutActivationStrategy("switch");
+                                          setRolloutAcknowledgeWarnings(false);
+                                        }}
+                                      >
+                                        Switch live now
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant={
+                                          rolloutActivationStrategy === "boot"
+                                            ? "secondary"
+                                            : "outline"
+                                        }
+                                        onClick={() => {
+                                          setRolloutActivationStrategy("boot");
+                                          setRolloutAcknowledgeWarnings(false);
+                                        }}
+                                      >
+                                        Stage for reboot
+                                      </Button>
+                                    </div>
+                                    <div className="mt-2 text-xs text-muted-foreground">
+                                      Use boot staging when switch inhibitors or reboot-requiring
+                                      changes make live activation unsafe.
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
                                     <label className="flex items-start gap-3">
                                       <Checkbox
                                         checked={rolloutDeployOnServer}
@@ -2486,6 +2940,126 @@ function FlakeDashboardRouteView() {
                           <div className="rounded-xl border border-border/60 bg-card/50 p-4">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
+                                <h3 className="text-sm font-semibold text-foreground">Preflight</h3>
+                                <p className="text-xs text-muted-foreground">
+                                  These are the checks the rollout will reuse when each host starts.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRunRolloutPreflight()}
+                                  disabled={rolloutPreviewPending || !rolloutCanRunPreflight}
+                                >
+                                  {rolloutPreviewPending ? (
+                                    <RefreshCcwIcon className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <ShieldCheckIcon className="size-3.5" />
+                                  )}
+                                  {rolloutPreflightRequested ? "Run again" : "Run checks"}
+                                </Button>
+                                {rolloutPreviewPending ? (
+                                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                    Checking
+                                  </span>
+                                ) : null}
+                                {rolloutPreviewHasWarnings ? (
+                                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                                    Warnings
+                                  </span>
+                                ) : null}
+                                {rolloutPreviewHasBlockingChecks ? (
+                                  <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+                                    Blocked
+                                  </span>
+                                ) : null}
+                                {!rolloutPreviewPending &&
+                                rolloutPreviewReports.length > 0 &&
+                                rolloutPreviewCanProceed ? (
+                                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                                    Ready
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            {selectedRolloutHostsCount > 0 ? (
+                              <div className="mt-4 space-y-3">
+                                {rolloutPreviewHasWarnings ? (
+                                  <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                                    <Checkbox
+                                      checked={rolloutAcknowledgeWarnings}
+                                      onCheckedChange={(checked) => {
+                                        setRolloutAcknowledgeWarnings(checked === true);
+                                      }}
+                                      aria-label="Acknowledge rollout warnings"
+                                    />
+                                    <span className="min-w-0 text-sm text-amber-900 dark:text-amber-100">
+                                      Acknowledge rollout warnings and continue with the current
+                                      workspace state.
+                                    </span>
+                                  </label>
+                                ) : null}
+
+                                {rolloutPreviewReports.length > 0 ? (
+                                  <div className="grid gap-2">
+                                    {rolloutPreviewReports.map(({ hostName, report }) => (
+                                      <div
+                                        key={`rollout-preflight:${hostName}`}
+                                        className="rounded-xl border border-border/50 bg-background/50 p-3"
+                                      >
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                          <div>
+                                            <div className="text-sm font-medium text-foreground">
+                                              {hostName}
+                                            </div>
+                                            <div className="mt-1 text-xs text-muted-foreground">
+                                              {findFirstDeploymentAttentionSummary(report) ??
+                                                "All checks passed."}
+                                            </div>
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            {report.warningCount > 0 ? (
+                                              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                                                {report.warningCount} warning
+                                              </span>
+                                            ) : null}
+                                            {report.blockingFailureCount > 0 ? (
+                                              <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-rose-700 dark:text-rose-300">
+                                                Blocked
+                                              </span>
+                                            ) : (
+                                              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                                                Ready
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : rolloutPreviewPending ? (
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3 text-sm text-muted-foreground">
+                                    Running preflight checks for the selected hosts.
+                                  </div>
+                                ) : rolloutCanRunPreflight ? (
+                                  <div className="rounded-xl border border-border/50 bg-background/50 p-3 text-sm text-muted-foreground">
+                                    Run preflight checks to inspect the selected hosts before
+                                    starting the rollout.
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="mt-4 rounded-xl border border-border/50 bg-background/50 p-3 text-sm text-muted-foreground">
+                                Select at least one host to preview rollout safety checks.
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-xl border border-border/60 bg-card/50 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
                                 <h3 className="text-sm font-semibold text-foreground">
                                   Rollout hosts
                                 </h3>
@@ -2536,6 +3110,26 @@ function FlakeDashboardRouteView() {
                                             ? ` • Finished ${formatTimestamp(entry.finishedAt)}`
                                             : ""}
                                         </div>
+                                        {findFirstDeploymentAttentionSummary(
+                                          entry.preflightReport,
+                                        ) ? (
+                                          <div className="mt-1 text-[11px] text-muted-foreground">
+                                            Preflight:{" "}
+                                            {findFirstDeploymentAttentionSummary(
+                                              entry.preflightReport,
+                                            )}
+                                          </div>
+                                        ) : null}
+                                        {findFirstDeploymentAttentionSummary(
+                                          entry.postflightReport,
+                                        ) ? (
+                                          <div className="mt-1 text-[11px] text-muted-foreground">
+                                            Postflight:{" "}
+                                            {findFirstDeploymentAttentionSummary(
+                                              entry.postflightReport,
+                                            )}
+                                          </div>
+                                        ) : null}
                                       </div>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span
@@ -3026,7 +3620,7 @@ function FlakeDashboardRouteView() {
           }
         }}
       >
-        <DialogPopup className="max-w-xl">
+        <DialogPopup className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>
               {deployDialogHostSummary
@@ -3034,164 +3628,244 @@ function FlakeDashboardRouteView() {
                 : "Deploy host?"}
             </DialogTitle>
             <DialogDescription>
-              Confirm the deploy-rs command before opening the dedicated host deployment page.
+              Review the live preflight checks before opening the dedicated host deployment page.
             </DialogDescription>
           </DialogHeader>
           <DialogPanel className="space-y-4">
             {deployDialogHostSummary ? (
               <>
-                <div className="grid gap-3 rounded-xl border border-border/50 bg-background/40 p-4 text-sm">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
-                        Host
-                      </div>
-                      <div className="mt-0.5 font-medium text-foreground">
-                        {deployDialogHostSummary.host.name}
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
-                        documentationStatusClasses(deployDialogHostSummary.documentation.status),
-                      )}
-                    >
-                      {formatDocumentationStatusLabel(deployDialogHostSummary.documentation.status)}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
-                      Target
-                    </div>
-                    <div className="mt-0.5 break-all text-foreground">
-                      {deployDialogHostSummary.host.target}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
-                      Command
-                    </div>
-                    <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
-                      {deployDialogCommand ?? deployDialogDisabledReason ?? "Unavailable"}
-                    </code>
-                  </div>
-                  <div className="rounded-xl border border-border/50 bg-background/50 p-3">
-                    <label className="flex items-start gap-3">
-                      <Checkbox
-                        checked={deployOnServer}
-                        disabled={deployingHostName !== null}
-                        onCheckedChange={(checked) => {
-                          setDeployOnServer(checked === true);
-                        }}
-                        aria-label="Deploy on server"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-foreground">
-                          Deploy on server
-                        </span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          Unchecked is the standard path and adds deploy-rs remote build plus
-                          skip-checks so the target host builds the system itself without local
-                          cross-architecture deployment checks.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                  <div className="space-y-3 rounded-xl border border-border/50 bg-background/50 p-3">
-                    <label className="flex items-start gap-3">
-                      <Checkbox
-                        checked={deployMagicRollback}
-                        disabled={deployingHostName !== null}
-                        onCheckedChange={(checked) => {
-                          setDeployMagicRollback(checked !== false);
-                        }}
-                        aria-label="Use magic rollback verification"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-foreground">
-                          Use magic rollback verification
-                        </span>
-                        <span className="mt-0.5 block text-xs text-muted-foreground">
-                          Keep this enabled for the normal safe path. Disable it only when the
-                          deployment is expected to break SSH confirmation entirely, such as a
-                          network or host identity change that outlives the reconnect window.
-                        </span>
-                      </span>
-                    </label>
-                    {deployMagicRollback ? (
-                      <div className="space-y-2">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+                  <div className="space-y-4">
+                    <div className="grid gap-3 rounded-xl border border-border/50 bg-background/40 p-4 text-sm">
+                      <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
-                            Confirm Timeout
+                            Host
                           </div>
-                          <div className="mt-1 flex items-center gap-2">
-                            <div className="w-32">
-                              <Input
-                                type="number"
-                                min={1}
-                                step={1}
-                                inputMode="numeric"
-                                nativeInput
-                                value={deployConfirmTimeoutSecondsInput}
-                                disabled={deployingHostName !== null}
-                                aria-label="Confirm timeout in seconds"
-                                placeholder={String(DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS)}
-                                onChange={(event) =>
-                                  setDeployConfirmTimeoutSecondsInput(event.currentTarget.value)
-                                }
-                              />
+                          <div className="mt-0.5 font-medium text-foreground">
+                            {deployDialogHostSummary.host.name}
+                          </div>
+                        </div>
+                        <span
+                          className={cn(
+                            "rounded-full border px-1.5 py-px text-[9px] font-medium uppercase tracking-[0.12em]",
+                            documentationStatusClasses(
+                              deployDialogHostSummary.documentation.status,
+                            ),
+                          )}
+                        >
+                          {formatDocumentationStatusLabel(
+                            deployDialogHostSummary.documentation.status,
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                          Target
+                        </div>
+                        <div className="mt-0.5 break-all text-foreground">
+                          {deployDialogHostSummary.host.target}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                          Activation
+                        </div>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <Button
+                            size="sm"
+                            variant={
+                              deployActivationStrategy === "switch" ? "secondary" : "outline"
+                            }
+                            disabled={deployingHostName !== null}
+                            onClick={() => {
+                              setDeployActivationStrategy("switch");
+                              setDeployAcknowledgeWarnings(false);
+                            }}
+                          >
+                            Switch live now
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={deployActivationStrategy === "boot" ? "secondary" : "outline"}
+                            disabled={deployingHostName !== null}
+                            onClick={() => {
+                              setDeployActivationStrategy("boot");
+                              setDeployAcknowledgeWarnings(false);
+                            }}
+                          >
+                            Stage for reboot
+                          </Button>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Choose boot staging when switch inhibitors or reboot-requiring changes
+                          make live activation unsafe.
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                          Command
+                        </div>
+                        <code className="mt-1 block overflow-x-auto rounded-lg bg-muted/80 px-3 py-2 text-[12px] text-foreground">
+                          {deployDialogCommand ?? deployDialogDisabledReason ?? "Unavailable"}
+                        </code>
+                      </div>
+                      <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                        <label className="flex items-start gap-3">
+                          <Checkbox
+                            checked={deployOnServer}
+                            disabled={deployingHostName !== null}
+                            onCheckedChange={(checked) => {
+                              setDeployOnServer(checked === true);
+                            }}
+                            aria-label="Deploy on server"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-foreground">
+                              Deploy on server
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              Unchecked is the standard path and adds deploy-rs remote build plus
+                              skip-checks so the target host builds the system itself without local
+                              cross-architecture deployment checks.
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                      <div className="space-y-3 rounded-xl border border-border/50 bg-background/50 p-3">
+                        <label className="flex items-start gap-3">
+                          <Checkbox
+                            checked={deployMagicRollback}
+                            disabled={deployingHostName !== null}
+                            onCheckedChange={(checked) => {
+                              setDeployMagicRollback(checked !== false);
+                            }}
+                            aria-label="Use magic rollback verification"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-foreground">
+                              Use magic rollback verification
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              Keep this enabled for the normal safe path. Disable it only when the
+                              deployment is expected to break SSH confirmation entirely, such as a
+                              network or host identity change that outlives the reconnect window.
+                            </span>
+                          </span>
+                        </label>
+                        {deployMagicRollback ? (
+                          <div className="space-y-2">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                                Confirm Timeout
+                              </div>
+                              <div className="mt-1 flex items-center gap-2">
+                                <div className="w-32">
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    inputMode="numeric"
+                                    nativeInput
+                                    value={deployConfirmTimeoutSecondsInput}
+                                    disabled={deployingHostName !== null}
+                                    aria-label="Confirm timeout in seconds"
+                                    placeholder={String(DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS)}
+                                    onChange={(event) =>
+                                      setDeployConfirmTimeoutSecondsInput(event.currentTarget.value)
+                                    }
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground">seconds</span>
+                              </div>
                             </div>
-                            <span className="text-xs text-muted-foreground">seconds</span>
+                            <div className="text-xs text-muted-foreground">
+                              Leave empty to use deploy-rs&apos; default of{" "}
+                              {DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS} seconds. Increase this
+                              when activation temporarily restarts networking and the host needs
+                              longer to become reachable again.
+                            </div>
+                            {deployDialogConfirmTimeoutInvalid ? (
+                              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-800 dark:text-rose-200">
+                                Confirm timeout must be a positive number of seconds.
+                              </div>
+                            ) : null}
                           </div>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Leave empty to use deploy-rs&apos; default of{" "}
-                          {DEPLOY_RS_DEFAULT_CONFIRM_TIMEOUT_SECONDS} seconds. Increase this when
-                          activation temporarily restarts networking and the host needs longer to
-                          become reachable again.
-                        </div>
-                        {deployDialogConfirmTimeoutInvalid ? (
-                          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-800 dark:text-rose-200">
-                            Confirm timeout must be a positive number of seconds.
+                        ) : (
+                          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                            deploy-rs will stop waiting for post-activation confirmation and will
+                            not auto-rollback if the host becomes unreachable after activation.
                           </div>
-                        ) : null}
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
+                          Branch
+                        </div>
+                        <div className="mt-0.5 text-foreground">
+                          {gitStatusQuery.data?.branch ?? "Unavailable"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {gitStatusQuery.data?.hasWorkingTreeChanges ? (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                        This flake repo has uncommitted changes. Deployment will still run from the
+                        current workspace state.
+                      </div>
+                    ) : gitStatusQuery.data ? (
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
+                        This flake repo is clean
+                        {gitStatusQuery.data.branch ? ` on ${gitStatusQuery.data.branch}` : ""}.
+                      </div>
+                    ) : gitStatusQuery.isPending ? (
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
+                        Checking Git status for this flake repo.
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-                        deploy-rs will stop waiting for post-activation confirmation and will not
-                        auto-rollback if the host becomes unreachable after activation.
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
+                        Git status could not be determined for this flake repo.
                       </div>
                     )}
                   </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-widest text-muted-foreground/70">
-                      Branch
-                    </div>
-                    <div className="mt-0.5 text-foreground">
-                      {gitStatusQuery.data?.branch ?? "Unavailable"}
-                    </div>
+
+                  <div className="space-y-4 xl:sticky xl:top-0 xl:self-start">
+                    {deployDialogPreviewQuery.isError ? (
+                      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-800 dark:text-rose-200">
+                        {deployDialogPreviewQuery.error instanceof Error
+                          ? deployDialogPreviewQuery.error.message
+                          : "Failed to load deployment checks."}
+                      </div>
+                    ) : deployDialogPreviewQuery.isPending ? (
+                      <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
+                        Running deployment checks for this host.
+                      </div>
+                    ) : (
+                      <DeploymentReportCard
+                        title="Preflight checks"
+                        report={deployDialogPreviewReport}
+                        emptyMessage="Preflight checks will appear here once the deploy settings are valid."
+                        showProceedState
+                      />
+                    )}
+
+                    {deployDialogHasWarnings ? (
+                      <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                        <Checkbox
+                          checked={deployAcknowledgeWarnings}
+                          disabled={deployingHostName !== null}
+                          onCheckedChange={(checked) => {
+                            setDeployAcknowledgeWarnings(checked === true);
+                          }}
+                          aria-label="Acknowledge deployment warnings"
+                        />
+                        <span className="min-w-0 text-sm text-amber-900 dark:text-amber-100">
+                          Acknowledge warnings and continue with the current workspace state.
+                        </span>
+                      </label>
+                    ) : null}
                   </div>
                 </div>
-
-                {gitStatusQuery.data?.hasWorkingTreeChanges ? (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-                    This flake repo has uncommitted changes. Deployment will still run from the
-                    current workspace state.
-                  </div>
-                ) : gitStatusQuery.data ? (
-                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-200">
-                    This flake repo is clean
-                    {gitStatusQuery.data.branch ? ` on ${gitStatusQuery.data.branch}` : ""}.
-                  </div>
-                ) : gitStatusQuery.isPending ? (
-                  <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
-                    Checking Git status for this flake repo.
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-border/50 bg-background/40 p-3 text-sm text-muted-foreground">
-                    Git status could not be determined for this flake repo.
-                  </div>
-                )}
               </>
             ) : null}
           </DialogPanel>
@@ -3209,7 +3883,9 @@ function FlakeDashboardRouteView() {
                 deployDialogHostSummary === null ||
                 deployDialogHostSummary.deployment.status !== "deployable" ||
                 deployingHostName !== null ||
-                deployDialogConfirmTimeoutInvalid
+                deployDialogConfirmTimeoutInvalid ||
+                deployDialogPreviewQuery.isPending ||
+                !deployDialogCanProceed
               }
             >
               {deployingHostName !== null ? (

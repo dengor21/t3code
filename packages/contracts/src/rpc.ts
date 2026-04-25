@@ -10,6 +10,11 @@ import {
   FilesystemBrowseError,
 } from "./filesystem.ts";
 import {
+  DeploymentSafetyError,
+  HostDeploymentPreviewInput,
+  HostDeploymentPreviewResult,
+} from "./deploymentSafety.ts";
+import {
   FleetDeploymentError,
   FleetDeploymentGetInput,
   FleetDeploymentStartInput,
@@ -142,6 +147,7 @@ export const WS_METHODS = {
   fleetDeploymentsGet: "fleetDeployments.get",
   fleetDeploymentsStop: "fleetDeployments.stop",
   hostDeploymentsStart: "hostDeployments.start",
+  hostDeploymentsPreview: "hostDeployments.preview",
   hostDeploymentsGet: "hostDeployments.get",
   hostDeploymentsStop: "hostDeployments.stop",
   hostDeploymentsTerminalOpen: "hostDeployments.terminalOpen",
@@ -281,6 +287,12 @@ export const WsHostDeploymentsStartRpc = Rpc.make(WS_METHODS.hostDeploymentsStar
   payload: HostDeploymentStartInput,
   success: HostDeploymentStartResult,
   error: HostDeploymentError,
+});
+
+export const WsHostDeploymentsPreviewRpc = Rpc.make(WS_METHODS.hostDeploymentsPreview, {
+  payload: HostDeploymentPreviewInput,
+  success: HostDeploymentPreviewResult,
+  error: DeploymentSafetyError,
 });
 
 export const WsHostDeploymentsGetRpc = Rpc.make(WS_METHODS.hostDeploymentsGet, {
@@ -607,6 +619,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsFleetDeploymentsGetRpc,
   WsFleetDeploymentsStopRpc,
   WsHostDeploymentsStartRpc,
+  WsHostDeploymentsPreviewRpc,
   WsHostDeploymentsGetRpc,
   WsHostDeploymentsStopRpc,
   WsHostDeploymentsTerminalOpenRpc,

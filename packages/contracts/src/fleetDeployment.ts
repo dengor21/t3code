@@ -1,6 +1,11 @@
 import { Effect, Schema } from "effect";
 
 import { IsoDateTime, PositiveInt, ProjectId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  DeploymentActivationStrategy,
+  DeploymentPostflightReport,
+  DeploymentPreflightReport,
+} from "./deploymentSafety.ts";
 
 const FleetDeploymentParallelism = PositiveInt.check(Schema.isLessThanOrEqualTo(5));
 
@@ -38,6 +43,12 @@ export const FleetDeploymentHostEntry = Schema.Struct({
   updatedAt: IsoDateTime,
   exitCode: Schema.NullOr(Schema.Int).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   exitSignal: Schema.NullOr(Schema.Int).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  preflightReport: Schema.NullOr(DeploymentPreflightReport).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  postflightReport: Schema.NullOr(DeploymentPostflightReport).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type FleetDeploymentHostEntry = typeof FleetDeploymentHostEntry.Type;
 
@@ -48,6 +59,7 @@ export const FleetDeploymentSummary = Schema.Struct({
   maxParallelism: FleetDeploymentParallelism,
   stopOnFirstFailure: Schema.Boolean,
   deployOnServer: Schema.Boolean,
+  activationStrategy: DeploymentActivationStrategy,
   magicRollback: Schema.NullOr(Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
@@ -69,9 +81,11 @@ export const FleetDeploymentStartInput = Schema.Struct({
   hostNames: Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1)),
   maxParallelism: Schema.optional(FleetDeploymentParallelism),
   deployOnServer: Schema.optional(Schema.Boolean),
+  activationStrategy: Schema.optional(DeploymentActivationStrategy),
   magicRollback: Schema.optional(Schema.Boolean),
   confirmTimeoutSeconds: Schema.optional(PositiveInt),
   stopOnFirstFailure: Schema.optional(Schema.Boolean),
+  acknowledgeWarnings: Schema.optional(Schema.Boolean),
 });
 export type FleetDeploymentStartInput = typeof FleetDeploymentStartInput.Type;
 

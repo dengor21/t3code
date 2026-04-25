@@ -24,6 +24,7 @@ import {
 } from "../../persistence/Services/FleetDeployments.ts";
 import { isActiveHostDeploymentStatus } from "../../persistence/Services/HostDeployments.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
+import { DeploymentSafetyService } from "../Services/DeploymentSafetyService.ts";
 import {
   FleetDeploymentService,
   type FleetDeploymentServiceShape,
@@ -55,6 +56,8 @@ function mapPersistedHostEntry(row: PersistedFleetDeploymentHost): FleetDeployme
     updatedAt: row.updatedAt,
     exitCode: row.exitCode,
     exitSignal: row.exitSignal,
+    preflightReport: row.preflightReport,
+    postflightReport: row.postflightReport,
   };
 }
 
@@ -69,6 +72,7 @@ function mapPersistedRollout(
     maxParallelism: row.maxParallelism,
     stopOnFirstFailure: row.stopOnFirstFailure,
     deployOnServer: row.deployOnServer,
+    activationStrategy: row.activationStrategy,
     magicRollback: row.magicRollback,
     confirmTimeoutSeconds: row.confirmTimeoutSeconds,
     startedAt: row.startedAt,
@@ -103,8 +107,10 @@ interface StartContext {
   readonly maxParallelism: number;
   readonly stopOnFirstFailure: boolean;
   readonly deployOnServer: boolean;
+  readonly activationStrategy: "switch" | "boot";
   readonly magicRollback: boolean | null;
   readonly confirmTimeoutSeconds: number | null;
+  readonly acknowledgeWarnings: boolean;
 }
 
 interface ActiveRolloutControl {
@@ -150,6 +156,7 @@ export const FleetDeploymentServiceLive = Layer.effect(
   Effect.gen(function* () {
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const flakeMetadataResolver = yield* FlakeMetadataResolver;
+    const deploymentSafetyService = yield* DeploymentSafetyService;
     const hostDeploymentService = yield* HostDeploymentService;
     const fleetDeploymentRepository = yield* FleetDeploymentRepository;
 
@@ -260,8 +267,10 @@ export const FleetDeploymentServiceLive = Layer.effect(
         maxParallelism: input.maxParallelism ?? DEFAULT_MAX_PARALLELISM,
         stopOnFirstFailure: input.stopOnFirstFailure !== false,
         deployOnServer: input.deployOnServer === true,
+        activationStrategy: input.activationStrategy ?? "switch",
         magicRollback: input.magicRollback ?? null,
         confirmTimeoutSeconds: input.confirmTimeoutSeconds ?? null,
+        acknowledgeWarnings: input.acknowledgeWarnings === true,
       } satisfies StartContext;
     });
 
@@ -337,6 +346,7 @@ export const FleetDeploymentServiceLive = Layer.effect(
           maxParallelism: context.maxParallelism,
           stopOnFirstFailure: context.stopOnFirstFailure,
           deployOnServer: context.deployOnServer,
+          activationStrategy: context.activationStrategy,
           magicRollback: context.magicRollback,
           confirmTimeoutSeconds: context.confirmTimeoutSeconds,
           startedAt: new Date().toISOString(),
@@ -360,6 +370,8 @@ export const FleetDeploymentServiceLive = Layer.effect(
           updatedAt,
           exitCode: null,
           exitSignal: null,
+          preflightReport: null,
+          postflightReport: null,
         });
         const hostEntries = new Map<string, PersistedFleetDeploymentHost>(
           context.selectedHosts.map(
@@ -451,15 +463,85 @@ export const FleetDeploymentServiceLive = Layer.effect(
               updatedAt: startedAt,
             }));
 
+            const preflight = yield* deploymentSafetyService
+              .preview({
+                projectId: context.projectId,
+                hostName: host.hostName,
+                deployOnServer: context.deployOnServer,
+                activationStrategy: context.activationStrategy,
+                ...(context.magicRollback !== null ? { magicRollback: context.magicRollback } : {}),
+                ...(context.confirmTimeoutSeconds !== null
+                  ? { confirmTimeoutSeconds: context.confirmTimeoutSeconds }
+                  : {}),
+                ...(context.acknowledgeWarnings ? { acknowledgeWarnings: true } : {}),
+              })
+              .pipe(
+                Effect.map((value) => ({ _tag: "success" as const, value })),
+                Effect.catch((error) => Effect.succeed({ _tag: "failure" as const, error })),
+              );
+
+            if (preflight._tag === "failure") {
+              const failedAt = new Date().toISOString();
+              failureDetected = true;
+              failureMessage = preflight.error.message;
+              rollout = {
+                ...rollout,
+                lastError: preflight.error.message,
+                updatedAt: failedAt,
+              };
+              yield* updateHostEntry(host.normalized, (current) => ({
+                ...current,
+                status: "error",
+                finishedAt: failedAt,
+                updatedAt: failedAt,
+              }));
+              continue;
+            }
+
+            yield* updateHostEntry(host.normalized, (current) => ({
+              ...current,
+              preflightReport: preflight.value.report,
+              updatedAt: preflight.value.report.updatedAt,
+            }));
+
+            if (!preflight.value.report.canProceed) {
+              const failedAt = preflight.value.report.updatedAt;
+              const blockingCheck = preflight.value.report.checks.find(
+                (check) => check.severity === "blocking" && check.result === "fail",
+              );
+              const warningCheck = preflight.value.report.checks.find(
+                (check) => check.result === "warn",
+              );
+              failureDetected = true;
+              failureMessage =
+                blockingCheck?.summary ??
+                warningCheck?.summary ??
+                `Deployment preflight failed for ${host.hostName}.`;
+              rollout = {
+                ...rollout,
+                lastError: failureMessage,
+                updatedAt: failedAt,
+              };
+              yield* updateHostEntry(host.normalized, (current) => ({
+                ...current,
+                status: "error",
+                finishedAt: failedAt,
+                updatedAt: failedAt,
+              }));
+              continue;
+            }
+
             const result = yield* hostDeploymentService
               .start({
                 projectId: context.projectId,
                 hostName: host.hostName,
                 deployOnServer: context.deployOnServer,
+                activationStrategy: context.activationStrategy,
                 ...(context.magicRollback !== null ? { magicRollback: context.magicRollback } : {}),
                 ...(context.confirmTimeoutSeconds !== null
                   ? { confirmTimeoutSeconds: context.confirmTimeoutSeconds }
                   : {}),
+                ...(context.acknowledgeWarnings ? { acknowledgeWarnings: true } : {}),
               })
               .pipe(
                 Effect.map((value) => ({ _tag: "success" as const, value })),
@@ -495,6 +577,8 @@ export const FleetDeploymentServiceLive = Layer.effect(
               updatedAt: deployment.updatedAt,
               exitCode: deployment.exitCode,
               exitSignal: deployment.exitSignal,
+              preflightReport: deployment.preflightReport,
+              postflightReport: deployment.postflightReport,
             }));
 
             if (isActiveHostDeploymentStatus(deployment.status)) {
@@ -577,6 +661,8 @@ export const FleetDeploymentServiceLive = Layer.effect(
                     updatedAt: deploymentSummary.updatedAt,
                     exitCode: deploymentSummary.exitCode,
                     exitSignal: deploymentSummary.exitSignal,
+                    preflightReport: deploymentSummary.preflightReport,
+                    postflightReport: deploymentSummary.postflightReport,
                   }));
 
                   if (!isActiveHostDeploymentStatus(deploymentSummary.status)) {
@@ -624,6 +710,7 @@ export const FleetDeploymentServiceLive = Layer.effect(
                 maxParallelism: context.maxParallelism,
                 stopOnFirstFailure: context.stopOnFirstFailure,
                 deployOnServer: context.deployOnServer,
+                activationStrategy: context.activationStrategy,
                 magicRollback: context.magicRollback,
                 confirmTimeoutSeconds: context.confirmTimeoutSeconds,
                 startedAt: failedAt,
@@ -665,6 +752,7 @@ export const FleetDeploymentServiceLive = Layer.effect(
               maxParallelism: context.maxParallelism,
               stopOnFirstFailure: context.stopOnFirstFailure,
               deployOnServer: context.deployOnServer,
+              activationStrategy: context.activationStrategy,
               magicRollback: context.magicRollback,
               confirmTimeoutSeconds: context.confirmTimeoutSeconds,
               startedAt: now,
@@ -681,6 +769,8 @@ export const FleetDeploymentServiceLive = Layer.effect(
                 updatedAt: now,
                 exitCode: null,
                 exitSignal: null,
+                preflightReport: null,
+                postflightReport: null,
               })),
             };
 
@@ -692,6 +782,7 @@ export const FleetDeploymentServiceLive = Layer.effect(
                 maxParallelism: initialSummary.maxParallelism,
                 stopOnFirstFailure: initialSummary.stopOnFirstFailure,
                 deployOnServer: initialSummary.deployOnServer,
+                activationStrategy: initialSummary.activationStrategy,
                 magicRollback: initialSummary.magicRollback,
                 confirmTimeoutSeconds: initialSummary.confirmTimeoutSeconds,
                 startedAt: initialSummary.startedAt,
@@ -719,6 +810,8 @@ export const FleetDeploymentServiceLive = Layer.effect(
                   updatedAt: now,
                   exitCode: null,
                   exitSignal: null,
+                  preflightReport: null,
+                  postflightReport: null,
                 }),
               {
                 discard: true,
