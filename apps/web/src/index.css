@@ -113,12 +113,12 @@
 
   @variant dark {
     color-scheme: dark;
-    --background: #110b15;
+    --background: #1c1424;
     --app-chrome-background: var(--background);
     --foreground: #e8dced;
-    --card: #16101b;
+    --card: #231a2c;
     --card-foreground: #e8dced;
-    --popover: #16101b;
+    --popover: #231a2c;
     --popover-foreground: #e8dced;
     --primary: oklch(0.62 0.2 335);
     --primary-foreground: var(--color-white);
@@ -139,7 +139,7 @@
     --success-foreground: var(--color-emerald-400);
     --warning: var(--color-amber-500);
     --warning-foreground: var(--color-amber-400);
-    --sidebar: #130d18;
+    --sidebar: #1e1626;
     --sidebar-foreground: #e0d0e4;
     --sidebar-border: --alpha(#c890c0 / 6%);
     --sidebar-accent: --alpha(#c890c0 / 8%);
