@@ -354,7 +354,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
             scopedHostName: "nexus",
             flake: {
               documentationPaths: {
-                generalChanges: ".t3code/changes.md",
+                generalChanges: ".hal/changes.md",
               },
             },
           },
@@ -369,7 +369,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
           scopedHostName: "nexus",
           flake: {
             documentationPaths: {
-              generalChanges: ".t3code/changes.md",
+              generalChanges: ".hal/changes.md",
             },
           },
         },

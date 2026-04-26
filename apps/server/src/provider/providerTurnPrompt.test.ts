@@ -51,7 +51,7 @@ describe("providerTurnPrompt", () => {
       ),
     );
     assert.ok(preamble?.includes("SSH discovery target: root@nexus.example."));
-    assert.ok(preamble?.includes("t3hosts.nexus and hosts/nexus/default.nix"));
+    assert.ok(preamble?.includes("halHosts.nexus and hosts/nexus/default.nix"));
     assert.ok(preamble?.includes("secure password prompt UI"));
     assert.ok(preamble?.includes("Never ask the user to paste passwords into chat"));
     assert.ok(

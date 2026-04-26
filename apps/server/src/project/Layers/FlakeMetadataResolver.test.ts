@@ -115,18 +115,18 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
     ),
   );
 
-  it.effect("reads multiple hosts from t3hosts", () =>
+  it.effect("reads multiple hosts from halHosts", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const cwd = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-flake-metadata-t3hosts-",
+        prefix: "t3-flake-metadata-halHosts-",
       });
 
       yield* writeFile(
         `${cwd}/flake.nix`,
         `{
   outputs = { self }: {
-    t3hosts = {
+    halHosts = {
       nexus = {
         name = "nexus";
         target = "10.0.0.115";
@@ -194,7 +194,7 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
       expect(metadata.host).toBeNull();
       expect(metadata.hosts).toEqual([]);
       expect(metadata.diagnostics.join("\n")).toContain("No literal t3code.host block found");
-      expect(metadata.diagnostics.join("\n")).toContain("No literal t3hosts block found");
+      expect(metadata.diagnostics.join("\n")).toContain("No literal halHosts block found");
     }).pipe(
       Effect.provide(
         makeFlakeMetadataResolverTestLayer({

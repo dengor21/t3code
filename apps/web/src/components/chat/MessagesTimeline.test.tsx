@@ -216,7 +216,7 @@ describe("MessagesTimeline", () => {
                   kind: "host",
                   hostName: "nexus",
                 },
-                hostDocPath: ".t3code/docs/hosts/nexus.md",
+                hostDocPath: ".hal/docs/hosts/nexus.md",
                 createdAt: "2026-03-17T19:12:20.000Z",
               },
             },

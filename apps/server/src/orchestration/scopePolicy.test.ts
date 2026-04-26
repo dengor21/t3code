@@ -11,7 +11,7 @@ const hostScope: ResolvedThreadScope = {
   locked: true,
   source: "scopedHostName",
   flakeAttr: "nixosConfigurations.nexus",
-  hostDocPath: ".t3code/docs/hosts/nexus.md",
+  hostDocPath: ".hal/docs/hosts/nexus.md",
   deployTarget: "root@nexus",
 };
 

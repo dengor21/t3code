@@ -155,7 +155,7 @@ function renderHostDocumentation(input: {
     ...frontmatter,
     `# Host: ${input.host.name}`,
     "",
-    "This file is maintained manually by T3code.",
+    "This file is maintained manually by HAL.",
     "",
     renderSection("Overview", input.generated.overview),
     renderSection("Roles And Purpose", input.generated.rolesAndPurpose),

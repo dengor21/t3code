@@ -1,5 +1,5 @@
 {
-  description = "T3 Code flake";
+  description = "HAL flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -159,8 +159,8 @@
             exec ${nodejs}/bin/node "$workspace/apps/server/dist/bin.mjs" "$@"
           '';
           meta = {
-            description = "Run T3 Code from the flake with a cached Bun workspace bootstrap";
-            homepage = "https://github.com/pingdotgg/t3code";
+            description = "Run HAL from the flake with a cached Bun workspace bootstrap";
+            homepage = "https://github.com/dengor21/t3code";
             license = lib.licenses.mit;
             mainProgram = "t3";
             platforms = lib.platforms.unix;
@@ -198,7 +198,7 @@
             # Keep the default shell lean; browser binaries stay opt-in.
             export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-            echo "T3 Code dev shell"
+            echo "HAL dev shell"
             echo "Node: $(node --version)"
             echo "Bun:  $(bun --version)"
             echo "Nix:  $(nix --version)"

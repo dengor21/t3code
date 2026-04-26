@@ -27,12 +27,12 @@ const project: OrchestrationProject = {
     diagnostics: [],
   },
   documentationState: {
-    docsRoot: ".t3code/docs/hosts",
+    docsRoot: ".hal/docs/hosts",
     legacyDocsDetected: false,
     hosts: [
       {
         hostName: "nexus",
-        docPath: ".t3code/docs/hosts/nexus.md",
+        docPath: ".hal/docs/hosts/nexus.md",
         status: "current",
         generatedAt: "2026-01-01T00:00:00.000Z",
         coversChangesThrough: null,
@@ -94,7 +94,7 @@ describe("threadScope", () => {
       locked: true,
       source: "scopedHostName",
       flakeAttr: "nixosConfigurations.nexus",
-      hostDocPath: ".t3code/docs/hosts/nexus.md",
+      hostDocPath: ".hal/docs/hosts/nexus.md",
       deployTarget: "root@nexus",
     });
   });

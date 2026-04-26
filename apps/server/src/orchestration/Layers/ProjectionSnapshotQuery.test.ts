@@ -260,7 +260,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           repositoryIdentity: null,
           flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
           documentationState: {
-            docsRoot: ".t3code/docs/hosts",
+            docsRoot: ".hal/docs/hosts",
             legacyDocsDetected: false,
             hosts: [],
           },
@@ -385,7 +385,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           repositoryIdentity: null,
           flakeMetadata: missingFlakeMetadata("/tmp/project-1"),
           documentationState: {
-            docsRoot: ".t3code/docs/hosts",
+            docsRoot: ".hal/docs/hosts",
             legacyDocsDetected: false,
             hosts: [],
           },

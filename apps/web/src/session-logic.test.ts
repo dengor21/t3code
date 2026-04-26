@@ -769,7 +769,7 @@ describe("deriveWorkLogEntries", () => {
             kind: "host",
             hostName: "nexus",
           },
-          hostDocPath: ".t3code/docs/hosts/nexus.md",
+          hostDocPath: ".hal/docs/hosts/nexus.md",
           createdAt: "2026-02-23T00:00:03.000Z",
         },
       }),
@@ -791,7 +791,7 @@ describe("deriveWorkLogEntries", () => {
         kind: "host",
         hostName: "nexus",
       },
-      hostDocPath: ".t3code/docs/hosts/nexus.md",
+      hostDocPath: ".hal/docs/hosts/nexus.md",
       createdAt: "2026-02-23T00:00:03.000Z",
     });
   });

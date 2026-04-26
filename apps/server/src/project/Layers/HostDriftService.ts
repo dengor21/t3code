@@ -757,7 +757,7 @@ const makeHostDriftService = Effect.gen(function* () {
     const connection = resolveHostConnection(selectedHost);
     if (connection.sshTarget === null) {
       return yield* toHostDriftError(
-        `Host ${selectedHost.name} is missing t3hosts.${selectedHost.name}.sshUser.`,
+        `Host ${selectedHost.name} is missing halHosts.${selectedHost.name}.sshUser.`,
       );
     }
 
@@ -817,7 +817,7 @@ const makeHostDriftService = Effect.gen(function* () {
         identity: resolvedSnapshotValue(desiredIdentity),
         system:
           desiredSystem === null
-            ? fallbackUnknown("The host does not declare a target system in t3hosts.")
+            ? fallbackUnknown("The host does not declare a target system in halHosts.")
             : resolvedSnapshotValue(desiredSystem),
         users: fallbackUnknown("User drift is only resolved for nixos hosts in this MVP."),
         enabledServices: fallbackUnknown(
@@ -898,7 +898,7 @@ const makeHostDriftService = Effect.gen(function* () {
       identity: resolvedSnapshotValue(desiredIdentity),
       system:
         desiredSystem === null
-          ? fallbackUnknown("The host does not declare a target system in t3hosts.")
+          ? fallbackUnknown("The host does not declare a target system in halHosts.")
           : resolvedSnapshotValue(desiredSystem),
       users:
         users === null

@@ -474,8 +474,8 @@ describe("ProviderCommandReactor", () => {
         flake: {
           hostFlakeAttr: "nixosConfigurations.nexus",
           documentationPaths: {
-            generalChanges: ".t3code/changes.md",
-            hostDoc: ".t3code/docs/hosts/nexus.md",
+            generalChanges: ".hal/changes.md",
+            hostDoc: ".hal/docs/hosts/nexus.md",
           },
         },
       },

@@ -15,7 +15,7 @@ const HOST_SUMMARY: ProjectDashboardHostSummary = {
   },
   documentation: {
     coversChangesThrough: null,
-    docPath: ".t3code/docs/hosts/mediaserver.md",
+    docPath: ".hal/docs/hosts/mediaserver.md",
     generatedAt: "2026-04-22T20:00:00.000Z",
     hostName: "mediaserver",
     latestRelevantChangeAt: null,
@@ -86,7 +86,7 @@ describe("resolvePendingHostDocGeneration", () => {
       }),
       {
         kind: "succeeded",
-        docPath: ".t3code/docs/hosts/mediaserver.md",
+        docPath: ".hal/docs/hosts/mediaserver.md",
       },
     );
   });

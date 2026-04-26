@@ -3053,7 +3053,7 @@ function FlakeDashboardRouteView() {
                                         ? "Read-only source preview for the selected flake."
                                         : selectedHostSummary
                                           ? "Shows the latest host-specific and ambiguous changes that may affect this host."
-                                          : "Shows the latest flake-wide changes recorded by T3code."}
+                                          : "Shows the latest flake-wide changes recorded by HAL."}
                         </p>
                         {selectedHostSummary ? (
                           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -3218,7 +3218,7 @@ function FlakeDashboardRouteView() {
                               }
                               description={
                                 selectedHostDocGenerating
-                                  ? `T3code is generating documentation for ${selectedHostSummary.host.name} in the background.`
+                                  ? `HAL is generating documentation for ${selectedHostSummary.host.name} in the background.`
                                   : `Generate documentation for ${selectedHostSummary.host.name} to materialize its current settings and apps.`
                               }
                               icon={<BookOpenIcon className="size-5" />}
@@ -5006,7 +5006,7 @@ function FlakeDashboardRouteView() {
                                 description={
                                   selectedHostSummary
                                     ? "This host does not have any matching changelog entries yet."
-                                    : "T3code has not written any general changelog entries for this flake yet."
+                                    : "HAL has not written any general changelog entries for this flake yet."
                                 }
                               />
                             )}
@@ -5058,7 +5058,7 @@ function FlakeDashboardRouteView() {
                   createHostNameError ? "text-destructive" : "text-muted-foreground",
                 )}
               >
-                {createHostNameError ?? "Used for the thread scope, t3hosts key, and host path."}
+                {createHostNameError ?? "Used for the thread scope, halHosts key, and host path."}
               </span>
             </label>
 

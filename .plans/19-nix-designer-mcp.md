@@ -2,7 +2,7 @@
 
 ## Why this plan exists
 
-T3 Code already has the **deployment half** of a NixOS tool: `FlakeMetadataResolver`, `FlakeMaintenanceService`, `HostDeploymentService`, `HostImportService`, `FleetDeploymentService`, `DeployRsResolver`, plus the `HostDeploymentTerminal`, `FlakeMaintenanceTerminal`, and `flakeDashboardHostMenu` UI surfaces.
+HAL already has the **deployment half** of a NixOS tool: `FlakeMetadataResolver`, `FlakeMaintenanceService`, `HostDeploymentService`, `HostImportService`, `FleetDeploymentService`, `DeployRsResolver`, plus the `HostDeploymentTerminal`, `FlakeMaintenanceTerminal`, and `flakeDashboardHostMenu` UI surfaces.
 
 The **designer half** — actually authoring and editing NixOS configuration intelligently — does not exist. Today, generation quality depends entirely on whatever Codex or Claude know about Nix from training. That is the weakest part of any general coding agent: hallucinated option paths, deprecated patterns, missing imports, drift between channels.
 

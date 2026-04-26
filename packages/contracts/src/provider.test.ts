@@ -184,8 +184,8 @@ describe("ProviderSendTurnInput", () => {
           flakePath: "flake.nix",
           hostNames: ["nexus", "router"],
           documentationPaths: {
-            generalChanges: ".t3code/changes.md",
-            hostDoc: ".t3code/docs/hosts/nexus.md",
+            generalChanges: ".hal/changes.md",
+            hostDoc: ".hal/docs/hosts/nexus.md",
           },
         },
         workflow: {
@@ -207,10 +207,10 @@ describe("ProviderSendTurnInput", () => {
     expect(parsed.providerContext?.flake?.flakePath).toBe("flake.nix");
     expect(parsed.providerContext?.flake?.hostNames).toEqual(["nexus", "router"]);
     expect(parsed.providerContext?.flake?.documentationPaths?.generalChanges).toBe(
-      ".t3code/changes.md",
+      ".hal/changes.md",
     );
     expect(parsed.providerContext?.flake?.documentationPaths?.hostDoc).toBe(
-      ".t3code/docs/hosts/nexus.md",
+      ".hal/docs/hosts/nexus.md",
     );
     expect(parsed.providerContext?.workflow).toEqual({
       kind: "host-creation",

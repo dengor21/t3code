@@ -1,8 +1,13 @@
 import type { FlakeHost, FlakeMetadata } from "@t3tools/contracts";
 
-export const GENERAL_CHANGELOG_PATH = ".t3code/changes.md";
-export const HOST_DOCS_DIR = ".t3code/docs/hosts";
-export const LEGACY_HOST_DOCS_DIR = ".t3code/hosts";
+export const GENERAL_CHANGELOG_PATH = ".hal/changes.md";
+export const LEGACY_GENERAL_CHANGELOG_PATH = ".t3code/changes.md";
+export const HOST_DOCS_DIR = ".hal/docs/hosts";
+export const LEGACY_HOST_DOCS_DIR = ".t3code/docs/hosts";
+export const LEGACY_HOST_DOCS_FALLBACK_DIR = ".t3code/hosts";
+
+const DOCUMENTATION_MARKER_NAMESPACES = ["hal", "t3code"] as const;
+const DOCUMENTATION_MARKER_NAMESPACE_PATTERN = DOCUMENTATION_MARKER_NAMESPACES.join("|");
 
 export interface DocumentationChangeLogEntry {
   readonly id: string;
@@ -93,6 +98,19 @@ export function inferHostsFromPaths(input: {
     .map((host) => host.name);
 }
 
+export function resolveGeneralChangeLogCandidatePaths(): ReadonlyArray<string> {
+  return [GENERAL_CHANGELOG_PATH, LEGACY_GENERAL_CHANGELOG_PATH];
+}
+
+export function resolveHostDocCandidatePaths(hostName: string): ReadonlyArray<string> {
+  const slug = slugHostName(hostName);
+  return [
+    `${HOST_DOCS_DIR}/${slug}.md`,
+    `${LEGACY_HOST_DOCS_DIR}/${slug}.md`,
+    `${LEGACY_HOST_DOCS_FALLBACK_DIR}/${slug}.md`,
+  ];
+}
+
 function parseFilesLine(value: string): ReadonlyArray<string> {
   const matched = /^Files:\s*(.+)$/m.exec(value)?.[1]?.trim() ?? "";
   if (matched.length === 0) {
@@ -116,7 +134,11 @@ function parseMetadataComment(value: string): {
   hosts: ReadonlyArray<string>;
   ambiguous: boolean;
 } | null {
-  const jsonText = /<!--\s*t3code:meta\s+(\{[\s\S]*?\})\s*-->/m.exec(value)?.[1] ?? null;
+  const jsonText =
+    new RegExp(
+      `<!--\\s*(?:${DOCUMENTATION_MARKER_NAMESPACE_PATTERN}):meta\\s+(\\{[\\s\\S]*?\\})\\s*-->`,
+      "m",
+    ).exec(value)?.[1] ?? null;
   if (!jsonText) {
     return null;
   }
@@ -144,12 +166,15 @@ export function parseChangeLogEntries(input: {
   hosts: ReadonlyArray<FlakeHost>;
 }): ReadonlyArray<DocumentationChangeLogEntry> {
   const entries: DocumentationChangeLogEntry[] = [];
-  const blockRegex =
-    /<!--\s*t3code:(turn|bootstrap):([^:]+):start\s*-->([\s\S]*?)<!--\s*t3code:\1:\2:end\s*-->/g;
+  const blockRegex = new RegExp(
+    `<!--\\s*(${DOCUMENTATION_MARKER_NAMESPACE_PATTERN}):(turn|bootstrap):([^:]+):start\\s*-->([\\s\\S]*?)<!--\\s*\\1:\\2:\\3:end\\s*-->`,
+    "g",
+  );
+
   for (const match of input.markdown.matchAll(blockRegex)) {
-    const markerKind = match[1] === "bootstrap" ? "bootstrap" : "change";
-    const id = match[2]?.trim() ?? "";
-    const block = match[3] ?? "";
+    const markerKind = match[2] === "bootstrap" ? "bootstrap" : "change";
+    const id = match[3]?.trim() ?? "";
+    const block = match[4] ?? "";
     const completedAt = parseCompletedAt(block);
     const title = parseTitle(block);
     if (!completedAt) {
@@ -158,7 +183,13 @@ export function parseChangeLogEntries(input: {
     const files = parseFilesLine(block);
     const metadata = parseMetadataComment(block);
     const sanitizedMarkdown = block
-      .replace(/<!--\s*t3code:meta\s+\{[\s\S]*?\}\s*-->\n?/g, "")
+      .replace(
+        new RegExp(
+          `<!--\\s*(?:${DOCUMENTATION_MARKER_NAMESPACE_PATTERN}):meta\\s+\\{[\\s\\S]*?\\}\\s*-->\\n?`,
+          "g",
+        ),
+        "",
+      )
       .replace(/^###\s+[0-9T:.-]+Z\s+-\s+.+$\n?/m, "")
       .replace(/^Files:\s*.+$/m, "")
       .trim();

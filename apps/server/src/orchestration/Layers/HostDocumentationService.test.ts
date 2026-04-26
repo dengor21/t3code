@@ -119,7 +119,7 @@ describe("HostDocumentationService", () => {
         Layer.mock(DocumentationStatusResolver)({
           resolve: () =>
             Effect.succeed({
-              docsRoot: ".t3code/docs/hosts",
+              docsRoot: ".hal/docs/hosts",
               legacyDocsDetected: false,
               hosts: [],
             }),
@@ -137,7 +137,7 @@ describe("HostDocumentationService", () => {
       }).pipe(Effect.provide(layer)),
     );
 
-    expect(result.docPath).toBe(".t3code/docs/hosts/test.md");
+    expect(result.docPath).toBe(".hal/docs/hosts/test.md");
     expect(result.status).toBe("queued");
     await vi.waitFor(() => {
       expect(generateHostDocumentation).toHaveBeenCalledTimes(1);
@@ -241,7 +241,7 @@ describe("HostDocumentationService", () => {
         Layer.mock(DocumentationStatusResolver)({
           resolve: () =>
             Effect.succeed({
-              docsRoot: ".t3code/docs/hosts",
+              docsRoot: ".hal/docs/hosts",
               legacyDocsDetected: false,
               hosts: [],
             }),
@@ -260,7 +260,7 @@ describe("HostDocumentationService", () => {
       }).pipe(Effect.provide(layer)),
     );
 
-    expect(result.docPath).toBe(".t3code/docs/hosts/test.md");
+    expect(result.docPath).toBe(".hal/docs/hosts/test.md");
     expect(result.status).toBe("queued");
     await vi.waitFor(() => {
       expect(generateHostDocumentation).toHaveBeenCalledTimes(1);

@@ -345,15 +345,95 @@ describe("DocumentationReactor", () => {
     await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
-    const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
+    const changeLog = fs.readFileSync(path.join(harness.cwd, ".hal", "changes.md"), "utf8");
 
-    expect(changeLog).toContain("# T3code Change Log");
+    expect(changeLog).toContain("# HAL Change Log");
     expect(changeLog).toContain("Materialize flake host updates");
     expect(changeLog).toContain("README.md");
-    expect(changeLog).toContain("<!-- t3code:turn:turn-1:start -->");
-    expect(changeLog).toContain("<!-- t3code:meta ");
-    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "nexus.md"))).toBe(false);
+    expect(changeLog).toContain("<!-- hal:turn:turn-1:start -->");
+    expect(changeLog).toContain("<!-- hal:meta ");
+    expect(fs.existsSync(path.join(harness.cwd, ".hal", "docs", "hosts", "nexus.md"))).toBe(false);
     expect(harness.generateChangeDocumentation).toHaveBeenCalledTimes(1);
+  });
+
+  it("migrates legacy changelog history into .hal when only .t3code/changes.md exists", async () => {
+    const harness = await createHarness();
+    const turnId = asTurnId("turn-legacy-migrate");
+    const messageId = MessageId.make("assistant-turn-legacy-migrate");
+    const completedAt = new Date().toISOString();
+
+    fs.mkdirSync(path.join(harness.cwd, ".t3code"), { recursive: true });
+    fs.writeFileSync(
+      path.join(harness.cwd, ".t3code", "changes.md"),
+      `# T3code Change Log
+
+## Entries
+<!-- t3code:turn:turn-legacy:start -->
+### 2026-04-18T09:00:00.000Z - Legacy infrastructure snapshot
+
+Imported from the legacy changelog.
+
+Files: \`flake.nix\`
+<!-- t3code:turn:turn-legacy:end -->
+`,
+      "utf8",
+    );
+
+    await runtime!.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
+      }),
+    );
+    fs.writeFileSync(path.join(harness.cwd, "README.md"), "v2\n", "utf8");
+    await runtime!.runPromise(
+      harness.checkpointStore.captureCheckpoint({
+        cwd: harness.cwd,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+      }),
+    );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-assistant-delta-legacy-migrate"),
+        threadId: ThreadId.make("thread-1"),
+        messageId,
+        delta: "Migrated the legacy changelog.",
+        turnId,
+        createdAt: completedAt,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.diff.complete",
+        commandId: CommandId.make("cmd-turn-diff-legacy-migrate"),
+        threadId: ThreadId.make("thread-1"),
+        turnId,
+        completedAt,
+        checkpointRef: checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1),
+        status: "ready",
+        files: [
+          {
+            path: "README.md",
+            kind: "modified",
+            additions: 1,
+            deletions: 1,
+          },
+        ],
+        assistantMessageId: messageId,
+        checkpointTurnCount: 1,
+        createdAt: completedAt,
+      }),
+    );
+
+    await waitForThreadActivity(harness.engine, "flake.changelog.updated");
+    await harness.drain();
+
+    const changeLog = fs.readFileSync(path.join(harness.cwd, ".hal", "changes.md"), "utf8");
+    expect(changeLog).toContain("Legacy infrastructure snapshot");
+    expect(changeLog).toContain("Materialize flake host updates");
+    expect(changeLog).toContain("<!-- hal:turn:turn-legacy-migrate:start -->");
   });
 
   it("replaces an existing turn entry instead of duplicating it", async () => {
@@ -422,12 +502,12 @@ describe("DocumentationReactor", () => {
     await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
-    const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
-    expect(changeLog.match(/<!-- t3code:turn:turn-1:start -->/g) ?? []).toHaveLength(1);
+    const changeLog = fs.readFileSync(path.join(harness.cwd, ".hal", "changes.md"), "utf8");
+    expect(changeLog.match(/<!-- hal:turn:turn-1:start -->/g) ?? []).toHaveLength(1);
     expect(harness.generateChangeDocumentation).toHaveBeenCalledTimes(2);
   });
 
-  it("skips documentation updates when only .t3code files changed", async () => {
+  it("skips documentation updates when only documentation files changed", async () => {
     const harness = await createHarness();
     const completedAt = new Date().toISOString();
 
@@ -442,7 +522,7 @@ describe("DocumentationReactor", () => {
         status: "ready",
         files: [
           {
-            path: ".t3code/changes.md",
+            path: ".hal/changes.md",
             kind: "modified",
             additions: 4,
             deletions: 1,
@@ -455,7 +535,7 @@ describe("DocumentationReactor", () => {
 
     await harness.drain();
 
-    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "changes.md"))).toBe(false);
+    expect(fs.existsSync(path.join(harness.cwd, ".hal", "changes.md"))).toBe(false);
     expect(harness.generateChangeDocumentation).not.toHaveBeenCalled();
   });
 
@@ -544,9 +624,9 @@ describe("DocumentationReactor", () => {
     await waitForThreadActivity(harness.engine, "flake.changelog.updated");
     await harness.drain();
 
-    const changeLog = fs.readFileSync(path.join(harness.cwd, ".t3code", "changes.md"), "utf8");
+    const changeLog = fs.readFileSync(path.join(harness.cwd, ".hal", "changes.md"), "utf8");
     expect(changeLog).toContain('"hosts":["bc250"]');
     expect(changeLog).toContain('"ambiguous":false');
-    expect(fs.existsSync(path.join(harness.cwd, ".t3code", "hosts", "bc250.md"))).toBe(false);
+    expect(fs.existsSync(path.join(harness.cwd, ".hal", "docs", "hosts", "bc250.md"))).toBe(false);
   });
 });

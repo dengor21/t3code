@@ -25,6 +25,7 @@ import {
   GENERAL_CHANGELOG_PATH,
   inferHostsFromPaths,
   renderInlineCodeList,
+  resolveGeneralChangeLogCandidatePaths,
   resolveProjectHosts,
 } from "../DocumentationUtils.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -39,7 +40,13 @@ const serverCommandId = (tag: string): CommandId =>
 function isDocumentationOnlyChange(files: ReadonlyArray<OrchestrationCheckpointFile>): boolean {
   return (
     files.length > 0 &&
-    files.every((file) => file.path === ".t3code" || file.path.startsWith(".t3code/"))
+    files.every(
+      (file) =>
+        file.path === ".hal" ||
+        file.path.startsWith(".hal/") ||
+        file.path === ".t3code" ||
+        file.path.startsWith(".t3code/"),
+    )
   );
 }
 
@@ -66,8 +73,8 @@ function extractEntries(existing: string): string {
 }
 
 function upsertEntryBlock(existingEntries: string, entryKey: string, block: string): string {
-  const startMarker = `<!-- t3code:turn:${entryKey}:start -->`;
-  const endMarker = `<!-- t3code:turn:${entryKey}:end -->`;
+  const startMarker = `<!-- hal:turn:${entryKey}:start -->`;
+  const endMarker = `<!-- hal:turn:${entryKey}:end -->`;
   const withoutExisting = existingEntries.replace(
     new RegExp(`${escapeRegExp(startMarker)}[\\s\\S]*?${escapeRegExp(endMarker)}\\n*`, "g"),
     "",
@@ -78,9 +85,9 @@ function upsertEntryBlock(existingEntries: string, entryKey: string, block: stri
 
 function renderGeneralDoc(entries: string): string {
   return [
-    "# T3code Change Log",
+    "# HAL Change Log",
     "",
-    "This file is maintained automatically by T3code.",
+    "This file is maintained automatically by HAL.",
     "",
     "## Entries",
     entries.trim(),
@@ -102,9 +109,9 @@ function renderDocumentationBlock(input: {
   hosts: ReadonlyArray<string>;
   ambiguous: boolean;
 }): string {
-  const startMarker = `<!-- t3code:turn:${input.entryKey}:start -->`;
-  const endMarker = `<!-- t3code:turn:${input.entryKey}:end -->`;
-  const metadataComment = `<!-- t3code:meta ${JSON.stringify({
+  const startMarker = `<!-- hal:turn:${input.entryKey}:start -->`;
+  const endMarker = `<!-- hal:turn:${input.entryKey}:end -->`;
+  const metadataComment = `<!-- hal:meta ${JSON.stringify({
     kind: "change",
     completedAt: input.completedAt,
     hosts: input.hosts,
@@ -172,18 +179,27 @@ const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const serverSettings = yield* ServerSettingsService;
 
-  const readWorkspaceFile = Effect.fn("readWorkspaceFile")(function* (input: {
-    cwd: string;
-    relativePath: string;
-  }) {
-    const resolved = yield* workspacePaths.resolveRelativePathWithinRoot({
-      workspaceRoot: input.cwd,
-      relativePath: input.relativePath,
-    });
-    return yield* fileSystem
-      .readFileString(resolved.absolutePath)
-      .pipe(Effect.orElseSucceed(() => ""));
-  });
+  const readFirstAvailableWorkspaceFile = Effect.fn("readFirstAvailableWorkspaceFile")(
+    function* (input: { cwd: string; relativePaths: ReadonlyArray<string> }) {
+      for (const relativePath of input.relativePaths) {
+        const resolved = yield* workspacePaths.resolveRelativePathWithinRoot({
+          workspaceRoot: input.cwd,
+          relativePath,
+        });
+        const exists = yield* fileSystem
+          .exists(resolved.absolutePath)
+          .pipe(Effect.orElseSucceed(() => false));
+        if (!exists) {
+          continue;
+        }
+        return yield* fileSystem
+          .readFileString(resolved.absolutePath)
+          .pipe(Effect.orElseSucceed(() => ""));
+      }
+
+      return "";
+    },
+  );
 
   const appendChangelogActivity = (input: {
     threadId: ThreadId;
@@ -292,9 +308,9 @@ const make = Effect.gen(function* () {
       modelSelection,
     });
 
-    const existingDoc = yield* readWorkspaceFile({
+    const existingDoc = yield* readFirstAvailableWorkspaceFile({
       cwd: project.workspaceRoot,
-      relativePath: GENERAL_CHANGELOG_PATH,
+      relativePaths: resolveGeneralChangeLogCandidatePaths(),
     });
     const block = renderDocumentationBlock({
       entryKey: event.payload.turnId,

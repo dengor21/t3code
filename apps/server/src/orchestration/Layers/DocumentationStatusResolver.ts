@@ -10,13 +10,15 @@ import {
 } from "../Services/DocumentationStatusResolver.ts";
 import { HostDocumentationGenerationRegistry } from "../Services/HostDocumentationGenerationRegistry.ts";
 import {
-  GENERAL_CHANGELOG_PATH,
   HOST_DOCS_DIR,
+  LEGACY_GENERAL_CHANGELOG_PATH,
   LEGACY_HOST_DOCS_DIR,
+  LEGACY_HOST_DOCS_FALLBACK_DIR,
   parseChangeLogEntries,
   parseHostDocumentationFrontmatter,
+  resolveGeneralChangeLogCandidatePaths,
+  resolveHostDocCandidatePaths,
   resolveProjectHosts,
-  slugHostName,
 } from "../DocumentationUtils.ts";
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -26,6 +28,21 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function readFirstAvailableFile(
+  candidatePaths: ReadonlyArray<string>,
+): Promise<{ path: string; markdown: string } | null> {
+  for (const candidatePath of candidatePaths) {
+    if (!(await pathExists(candidatePath))) {
+      continue;
+    }
+    return {
+      path: candidatePath,
+      markdown: await readFile(candidatePath, "utf8"),
+    };
+  }
+  return null;
 }
 
 function maxIso(left: string | null, right: string | null): string | null {
@@ -44,31 +61,50 @@ const make = Effect.gen(function* () {
   const resolve: DocumentationStatusResolverShape["resolve"] = (input) =>
     Effect.gen(function* () {
       const hosts = resolveProjectHosts(input.flakeMetadata);
-      const changeLogPath = join(input.workspaceRoot, GENERAL_CHANGELOG_PATH);
+      const changeLogCandidates = resolveGeneralChangeLogCandidatePaths().map((relativePath) =>
+        join(input.workspaceRoot, relativePath),
+      );
       const legacyDocsAbsolute = join(input.workspaceRoot, LEGACY_HOST_DOCS_DIR);
-      const changeLogMarkdown = (yield* Effect.promise(() => pathExists(changeLogPath)))
-        ? yield* Effect.promise(() => readFile(changeLogPath, "utf8"))
-        : "";
+      const legacyFallbackDocsAbsolute = join(input.workspaceRoot, LEGACY_HOST_DOCS_FALLBACK_DIR);
+      const changeLogFile = yield* Effect.promise(() =>
+        readFirstAvailableFile(changeLogCandidates),
+      );
       const changeEntries = parseChangeLogEntries({
-        markdown: changeLogMarkdown,
+        markdown: changeLogFile?.markdown ?? "",
         hosts,
       });
 
-      const legacyDocsDetected = (yield* Effect.promise(() => pathExists(legacyDocsAbsolute)))
-        ? (yield* Effect.promise(() => readdir(legacyDocsAbsolute).catch(() => []))).some((entry) =>
-            entry.endsWith(".md"),
-          )
-        : false;
+      const legacyDocsDetected =
+        ((yield* Effect.promise(() => pathExists(legacyDocsAbsolute)))
+          ? (yield* Effect.promise(() => readdir(legacyDocsAbsolute).catch(() => []))).some(
+              (entry) => entry.endsWith(".md"),
+            )
+          : false) ||
+        ((yield* Effect.promise(() => pathExists(legacyFallbackDocsAbsolute)))
+          ? (yield* Effect.promise(() => readdir(legacyFallbackDocsAbsolute).catch(() => []))).some(
+              (entry) => entry.endsWith(".md"),
+            )
+          : false) ||
+        changeLogFile?.path === join(input.workspaceRoot, LEGACY_GENERAL_CHANGELOG_PATH);
 
       const resolvedHosts = yield* Effect.forEach(
         hosts,
         (host) =>
           Effect.gen(function* () {
-            const docPath = `${HOST_DOCS_DIR}/${slugHostName(host.name)}.md`;
-            const absoluteDocPath = join(input.workspaceRoot, docPath);
-            const markdown = (yield* Effect.promise(() => pathExists(absoluteDocPath)))
-              ? yield* Effect.promise(() => readFile(absoluteDocPath, "utf8"))
-              : null;
+            const docCandidates = resolveHostDocCandidatePaths(host.name);
+            const docCandidatePaths = docCandidates.map((relativePath) =>
+              join(input.workspaceRoot, relativePath),
+            );
+            const docFile = yield* Effect.promise(() => readFirstAvailableFile(docCandidatePaths));
+            const resolvedDocPath =
+              docFile === null
+                ? (docCandidates[0] ?? `${HOST_DOCS_DIR}/${host.name}.md`)
+                : (docCandidates.find(
+                    (_relativePath, index) => docCandidatePaths[index] === docFile.path,
+                  ) ??
+                  docCandidates[0] ??
+                  `${HOST_DOCS_DIR}/${host.name}.md`);
+            const markdown = docFile?.markdown ?? null;
             const frontmatter = markdown ? parseHostDocumentationFrontmatter(markdown) : null;
             const latestHostSpecificChangeAt = changeEntries
               .filter((entry) => entry.hosts.includes(host.name))
@@ -100,7 +136,7 @@ const make = Effect.gen(function* () {
                       : "current";
             return {
               hostName: host.name,
-              docPath,
+              docPath: resolvedDocPath,
               status,
               generatedAt: frontmatter?.generatedAt ?? null,
               coversChangesThrough: frontmatter?.coversChangesThrough ?? null,

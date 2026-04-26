@@ -3,9 +3,9 @@
 The following readme is AI written for now.
 Real docs will follow.
 
-# T3 Code
+# HAL
 
-T3 Code is a local-first UI and runtime for coding agents.
+HAL is a local-first UI and runtime for coding agents.
 
 This fork has diverged heavily from the original project. It is no longer just a lightly modified upstream app. The current codebase combines:
 
@@ -57,7 +57,7 @@ The current architecture is documented in more detail in [.docs/architecture.md]
 - Bun `1.3.11`
 - Node `24.13.1` or newer
 - Codex CLI installed and available on `PATH`
-- Codex authenticated before running T3 Code
+- Codex authenticated before running HAL
 
 Optional, depending on which workflows you use:
 

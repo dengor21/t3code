@@ -146,7 +146,7 @@ function resolveCurrentScope() {
       hostName: DESIGNER_SCOPE.hostName,
       workspaceRoot: PROJECT_ROOT,
       flakeAttr: `nixosConfigurations.${DESIGNER_SCOPE.hostName}`,
-      hostDocPath: `.t3code/docs/hosts/${slugHostName(DESIGNER_SCOPE.hostName)}.md`,
+      hostDocPath: `.hal/docs/hosts/${slugHostName(DESIGNER_SCOPE.hostName)}.md`,
       rule: "Use this host by default unless the user explicitly broadens scope.",
     };
   }

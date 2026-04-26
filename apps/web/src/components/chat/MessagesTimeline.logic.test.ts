@@ -355,7 +355,7 @@ describe("deriveMessagesTimelineRows", () => {
                 kind: "host",
                 hostName: "nexus",
               },
-              hostDocPath: ".t3code/docs/hosts/nexus.md",
+              hostDocPath: ".hal/docs/hosts/nexus.md",
               createdAt: "2026-01-01T00:00:05Z",
             },
           },

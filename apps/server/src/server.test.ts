@@ -726,7 +726,7 @@ const buildAppUnderTest = (options?: {
         Layer.mock(DocumentationStatusResolver)({
           resolve: () =>
             Effect.succeed({
-              docsRoot: ".t3code/docs/hosts",
+              docsRoot: ".hal/docs/hosts",
               legacyDocsDetected: false,
               hosts: [],
             }),
@@ -737,7 +737,7 @@ const buildAppUnderTest = (options?: {
         Layer.mock(HostDocumentationService)({
           generateHostDocumentation: () =>
             Effect.succeed({
-              docPath: ".t3code/docs/hosts/default.md",
+              docPath: ".hal/docs/hosts/default.md",
               queuedAt: new Date(0).toISOString(),
               status: "queued" as const,
             }),

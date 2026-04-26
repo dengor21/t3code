@@ -1,8 +1,7 @@
 import type { DesktopAppBranding, DesktopAppStageLabel } from "@t3tools/contracts";
+import { APP_BASE_NAME, formatDisplayName } from "@t3tools/shared/branding";
 
 import { isNightlyDesktopVersion } from "./updateChannels.ts";
-
-const APP_BASE_NAME = "T3 Code";
 
 export function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
@@ -23,6 +22,6 @@ export function resolveDesktopAppBranding(input: {
   return {
     baseName: APP_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: formatDisplayName(APP_BASE_NAME, stageLabel),
   };
 }

@@ -17,7 +17,7 @@ const OPENCODE_SHARED_TOOL_RULES = [
   '  {"questions":[{"header":"Short label","question":"Full question","options":[{"label":"Option A","description":"When to choose it"}],"multiple":false,"custom":false}]}',
   "- Every `header`, `question`, `label`, and `description` value must be a plain string.",
   "- Do not send `id`, `multiSelect`, or nested objects inside the `question` payload.",
-  "- Always provide at least one option and keep `custom` set to `false`; T3 Code currently supports option-based answers only.",
+  "- Always provide at least one option and keep `custom` set to `false`; HAL currently supports option-based answers only.",
   "- If a necessary question cannot be expressed as discrete options, ask it in normal assistant text instead of the `question` tool.",
   "",
   "Todo tool rules:",
@@ -33,7 +33,7 @@ const OPENCODE_SHARED_TOOL_RULES = [
   "- Use todo tools only when they help track genuinely multi-step work.",
 ].join("\n");
 
-export const OPENCODE_DEFAULT_MODE_SYSTEM_INSTRUCTIONS = `You are running inside T3 Code through OpenCode in default execution mode.
+export const OPENCODE_DEFAULT_MODE_SYSTEM_INSTRUCTIONS = `You are running inside HAL through OpenCode in default execution mode.
 
 Default mode rules:
 - Prefer making reasonable assumptions and executing the task.
@@ -44,7 +44,7 @@ ${OPENCODE_HAL_SCOPE_RULES}
 
 ${OPENCODE_SHARED_TOOL_RULES}`;
 
-export const OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS = `You are running inside T3 Code through OpenCode in planning mode.
+export const OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS = `You are running inside HAL through OpenCode in planning mode.
 
 Plan mode rules:
 - Do not implement repo changes. Explore and refine the plan only.

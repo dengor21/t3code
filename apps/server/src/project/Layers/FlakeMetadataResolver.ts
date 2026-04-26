@@ -177,12 +177,12 @@ function parseLiteralHostBlock(contents: string): ParsedFlakeMetadataResult {
   };
 }
 
-function parseLiteralT3HostsBlock(contents: string): ParsedFlakeMetadataResult {
-  const blockMatch = /t3hosts\s*=\s*\{([\s\S]*?)\};/m.exec(contents);
+function parseLiteralHalHostsBlock(contents: string): ParsedFlakeMetadataResult {
+  const blockMatch = /halHosts\s*=\s*\{([\s\S]*?)\};/m.exec(contents);
   if (!blockMatch) {
     return {
       hosts: [],
-      diagnostics: ["No literal t3hosts block found in flake.nix."],
+      diagnostics: ["No literal halHosts block found in flake.nix."],
       source: "missing",
     };
   }
@@ -233,8 +233,8 @@ function parseLiteralT3HostsBlock(contents: string): ParsedFlakeMetadataResult {
     hosts: [],
     diagnostics: [
       sawEntry
-        ? "The literal t3hosts block was found, but no host entries had string name/target pairs."
-        : "No host entries were found inside the literal t3hosts block.",
+        ? "The literal halHosts block was found, but no host entries had string name/target pairs."
+        : "No host entries were found inside the literal halHosts block.",
     ],
     source: "error",
   };
@@ -261,7 +261,7 @@ function classifyNixEvalFailure(stderr: string, stdout: string): "missing" | "er
 async function resolveNixEvalHosts(
   cwd: string,
   nixCommand: string,
-  attributePath: ".#t3code.host" | ".#t3hosts",
+  attributePath: ".#t3code.host" | ".#halHosts",
 ): Promise<NixEvalResult> {
   try {
     const result = await runProcess(nixCommand, ["eval", "--json", attributePath], {
@@ -327,10 +327,10 @@ async function resolveFlakeMetadataFromCacheKey(
     });
   }
 
-  const t3hostsEval = await resolveNixEvalHosts(cwd, nixCommand, ".#t3hosts");
-  if (t3hostsEval.hosts.length > 0) {
+  const halHostsEval = await resolveNixEvalHosts(cwd, nixCommand, ".#halHosts");
+  if (halHostsEval.hosts.length > 0) {
     return toFlakeMetadata({
-      hosts: t3hostsEval.hosts,
+      hosts: halHostsEval.hosts,
       source: "nix-eval",
       flakePath,
     });
@@ -344,7 +344,7 @@ async function resolveFlakeMetadataFromCacheKey(
       diagnostics: [
         ...uniqueDiagnostics([
           ...t3codeHostEval.diagnostics,
-          ...t3hostsEval.diagnostics,
+          ...halHostsEval.diagnostics,
           "flake.nix was not found.",
         ]),
       ],
@@ -362,7 +362,7 @@ async function resolveFlakeMetadataFromCacheKey(
       });
     }
 
-    const parsedHosts = parseLiteralT3HostsBlock(contents);
+    const parsedHosts = parseLiteralHalHostsBlock(contents);
     if (parsedHosts.hosts.length > 0) {
       return toFlakeMetadata({
         hosts: parsedHosts.hosts,
@@ -378,7 +378,7 @@ async function resolveFlakeMetadataFromCacheKey(
       diagnostics: [
         ...uniqueDiagnostics([
           ...t3codeHostEval.diagnostics,
-          ...t3hostsEval.diagnostics,
+          ...halHostsEval.diagnostics,
           ...parsedHost.diagnostics,
           ...parsedHosts.diagnostics,
         ]),
@@ -392,7 +392,7 @@ async function resolveFlakeMetadataFromCacheKey(
       diagnostics: [
         ...uniqueDiagnostics([
           ...t3codeHostEval.diagnostics,
-          ...t3hostsEval.diagnostics,
+          ...halHostsEval.diagnostics,
           error instanceof Error
             ? `Failed to read flake.nix: ${error.message}`
             : "Failed to read flake.nix.",

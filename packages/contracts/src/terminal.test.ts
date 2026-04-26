@@ -63,7 +63,7 @@ describe("TerminalOpenInput", () => {
     const parsed = decodeSync(TerminalOpenInput, {
       threadId: "thread-1",
       cwd: "/tmp/project",
-      worktreePath: "/tmp/project/.t3/worktrees/feature-a",
+      worktreePath: "/tmp/project/.hal/worktrees/feature-a",
       cols: 100,
       rows: 24,
       env: {
@@ -75,7 +75,7 @@ describe("TerminalOpenInput", () => {
       T3CODE_PROJECT_ROOT: "/tmp/project",
       CUSTOM_FLAG: "1",
     });
-    expect(parsed.worktreePath).toBe("/tmp/project/.t3/worktrees/feature-a");
+    expect(parsed.worktreePath).toBe("/tmp/project/.hal/worktrees/feature-a");
   });
 
   it("rejects invalid env keys", () => {
@@ -219,8 +219,8 @@ describe("TerminalEvent", () => {
         snapshot: {
           threadId: "thread-1",
           terminalId: DEFAULT_TERMINAL_ID,
-          cwd: "/tmp/project/.t3/worktrees/feature-a",
-          worktreePath: "/tmp/project/.t3/worktrees/feature-a",
+          cwd: "/tmp/project/.hal/worktrees/feature-a",
+          worktreePath: "/tmp/project/.hal/worktrees/feature-a",
           status: "running",
           pid: 1234,
           history: "",

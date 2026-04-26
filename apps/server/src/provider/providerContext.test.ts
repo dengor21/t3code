@@ -110,7 +110,7 @@ describe("buildProviderTurnContext", () => {
         flakePath: "flake.nix",
         hostNames: ["nexus", "router"],
         documentationPaths: {
-          generalChanges: ".t3code/changes.md",
+          generalChanges: ".hal/changes.md",
         },
       },
     });
@@ -142,8 +142,8 @@ describe("buildProviderTurnContext", () => {
         flakePath: "flake.nix",
         hostFlakeAttr: "nixosConfigurations.bc250",
         documentationPaths: {
-          generalChanges: ".t3code/changes.md",
-          hostDoc: ".t3code/docs/hosts/bc250.md",
+          generalChanges: ".hal/changes.md",
+          hostDoc: ".hal/docs/hosts/bc250.md",
         },
       },
     });
@@ -185,8 +185,8 @@ describe("buildProviderTurnContext", () => {
         hostNames: ["nexus"],
         hostFlakeAttr: "nixosConfigurations.nexus",
         documentationPaths: {
-          generalChanges: ".t3code/changes.md",
-          hostDoc: ".t3code/docs/hosts/nexus.md",
+          generalChanges: ".hal/changes.md",
+          hostDoc: ".hal/docs/hosts/nexus.md",
         },
       },
     });

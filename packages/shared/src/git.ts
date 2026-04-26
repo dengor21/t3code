@@ -9,8 +9,11 @@ import type {
 import * as Effect from "effect/Effect";
 import * as Random from "effect/Random";
 
-export const WORKTREE_BRANCH_PREFIX = "t3code";
-const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
+export const WORKTREE_BRANCH_PREFIX = "hal";
+const LEGACY_WORKTREE_BRANCH_PREFIX = "t3code";
+const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
+  `^(?:${WORKTREE_BRANCH_PREFIX}|${LEGACY_WORKTREE_BRANCH_PREFIX})\\/[0-9a-f]{8}$`,
+);
 
 /**
  * Sanitize an arbitrary string into a valid, lowercase git branch fragment.

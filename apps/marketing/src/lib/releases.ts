@@ -1,9 +1,11 @@
-const REPO = "pingdotgg/t3code";
+import { APP_REPOSITORY_RELEASES_URL, APP_REPOSITORY_URL } from "../branding";
 
-export const RELEASES_URL = `https://github.com/${REPO}/releases`;
+const REPO = new URL(APP_REPOSITORY_URL).pathname.replace(/^\/+|\/+$/g, "");
+
+export const RELEASES_URL = APP_REPOSITORY_RELEASES_URL;
 
 const API_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
-const CACHE_KEY = "t3code-latest-release";
+const CACHE_KEY = "hal-latest-release";
 
 export interface ReleaseAsset {
   name: string;

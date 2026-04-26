@@ -162,7 +162,7 @@ function createBaseServerConfig(): ServerConfig {
       sessionCookieName: "t3_session",
     },
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.t3code-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.hal/userdata/keybindings.json",
     keybindings: [],
     issues: [],
     providers: [
@@ -181,7 +181,7 @@ function createBaseServerConfig(): ServerConfig {
     ],
     availableEditors: [],
     observability: {
-      logsDirectoryPath: "/repo/project/.t3/logs",
+      logsDirectoryPath: "/repo/project/.hal/userdata/logs",
       localTracingEnabled: true,
       otlpTracesEnabled: false,
       otlpMetricsEnabled: false,
@@ -2283,7 +2283,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             pullRequest: {
               number: 1359,
               title: "Add thread archiving and settings navigation",
-              url: "https://github.com/pingdotgg/t3code/pull/1359",
+              url: "https://github.com/dengor21/t3code/pull/1359",
               baseBranch: "main",
               headBranch: "archive-settings-overhaul",
               state: "open",
@@ -2295,7 +2295,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
             pullRequest: {
               number: 1359,
               title: "Add thread archiving and settings navigation",
-              url: "https://github.com/pingdotgg/t3code/pull/1359",
+              url: "https://github.com/dengor21/t3code/pull/1359",
               baseBranch: "main",
               headBranch: "archive-settings-overhaul",
               state: "open",
@@ -3912,7 +3912,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
           thread.id === THREAD_ID
             ? Object.assign({}, thread, {
                 branch: "feature/existing",
-                worktreePath: "/repo/.t3/worktrees/existing",
+                worktreePath: "/repo/.hal/worktrees/existing",
               })
             : thread,
         ),
@@ -5669,7 +5669,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       snapshot: createSnapshotWithPlanFollowUpPrompt({
         modelSelection: { provider: "codex", model: "gpt-5.3-codex-spark" },
         planMarkdown:
-          "# Imaginary Long-Range Plan: T3 Code Adaptive Orchestration and Safe-Delay Execution Initiative",
+          "# Imaginary Long-Range Plan: HAL Adaptive Orchestration and Safe-Delay Execution Initiative",
       }),
     });
 
@@ -5699,7 +5699,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
       snapshot: createSnapshotWithPlanFollowUpPrompt({
         modelSelection: { provider: "codex", model: "gpt-5.3-codex-spark" },
         planMarkdown:
-          "# Imaginary Long-Range Plan: T3 Code Adaptive Orchestration and Safe-Delay Execution Initiative",
+          "# Imaginary Long-Range Plan: HAL Adaptive Orchestration and Safe-Delay Execution Initiative",
       }),
     });
 

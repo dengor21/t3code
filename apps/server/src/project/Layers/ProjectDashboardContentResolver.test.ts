@@ -70,12 +70,12 @@ describe("ProjectDashboardContentResolver", () => {
 `,
     );
     writeFile(
-      path.join(cwd, ".t3code/changes.md"),
-      `# T3code Change Log
+      path.join(cwd, ".hal/changes.md"),
+      `# HAL Change Log
 
 ## Entries
-<!-- t3code:turn:turn-4:start -->
-<!-- t3code:meta {"kind":"change","completedAt":"2026-04-19T12:00:00.000Z","hosts":["bc250"],"ambiguous":false} -->
+<!-- hal:turn:turn-4:start -->
+<!-- hal:meta {"kind":"change","completedAt":"2026-04-19T12:00:00.000Z","hosts":["bc250"],"ambiguous":false} -->
 ### 2026-04-19T12:00:00.000Z - Add mpv to bc250
 
 bc250 now includes mpv.
@@ -83,9 +83,9 @@ bc250 now includes mpv.
 - Added mpv to the host package set
 
 Files: \`hosts/bc250/default.nix\`
-<!-- t3code:turn:turn-4:end -->
+<!-- hal:turn:turn-4:end -->
 
-<!-- t3code:turn:turn-3:start -->
+<!-- hal:turn:turn-3:start -->
 ### 2026-04-19T11:00:00.000Z - Update bc250 shell aliases
 
 Legacy entry without metadata.
@@ -93,10 +93,10 @@ Legacy entry without metadata.
 - Refreshed shell aliases for bc250
 
 Files: \`hosts/bc250/default.nix\`
-<!-- t3code:turn:turn-3:end -->
+<!-- hal:turn:turn-3:end -->
 
-<!-- t3code:turn:turn-2:start -->
-<!-- t3code:meta {"kind":"change","completedAt":"2026-04-19T10:00:00.000Z","hosts":[],"ambiguous":true} -->
+<!-- hal:turn:turn-2:start -->
+<!-- hal:meta {"kind":"change","completedAt":"2026-04-19T10:00:00.000Z","hosts":[],"ambiguous":true} -->
 ### 2026-04-19T10:00:00.000Z - Change shared flake defaults
 
 Adjusted shared flake settings.
@@ -104,9 +104,9 @@ Adjusted shared flake settings.
 - Updated a shared module
 
 Files: \`flake.nix\`
-<!-- t3code:turn:turn-2:end -->
+<!-- hal:turn:turn-2:end -->
 
-<!-- t3code:bootstrap:initial:start -->
+<!-- hal:bootstrap:initial:start -->
 ### 2026-04-18T09:00:00.000Z - Initial infrastructure snapshot
 
 Captured the initial flake state.
@@ -114,11 +114,11 @@ Captured the initial flake state.
 - Recorded the original host layout
 
 Files: \`flake.nix\`
-<!-- t3code:bootstrap:initial:end -->
+<!-- hal:bootstrap:initial:end -->
 `,
     );
     writeFile(
-      path.join(cwd, ".t3code/docs/hosts/bc250.md"),
+      path.join(cwd, ".hal/docs/hosts/bc250.md"),
       `---
 kind: host-doc
 host: bc250
@@ -135,7 +135,7 @@ generatorVersion: 1
 
 # Host: bc250
 
-This file is maintained manually by T3code.
+This file is maintained manually by HAL.
 
 ## Overview
 Current-state documentation for bc250.
@@ -412,7 +412,7 @@ Current-state documentation for bc250.
       "Change shared flake defaults",
     ]);
     expect(result.hostChanges[2]?.ambiguous).toBe(true);
-    expect(result.hostDoc?.path).toBe(".t3code/docs/hosts/bc250.md");
+    expect(result.hostDoc?.path).toBe(".hal/docs/hosts/bc250.md");
     expect(result.hostDoc?.status).toBe("current");
     expect(result.hostDoc?.markdown).toContain("# Host: bc250");
     expect(result.hostDoc?.markdown.startsWith("---")).toBe(false);
@@ -445,12 +445,12 @@ Current-state documentation for bc250.
       project: {
         ...makeProjectShell(workspaceRoot),
         documentationState: {
-          docsRoot: ".t3code/docs/hosts",
+          docsRoot: ".hal/docs/hosts",
           legacyDocsDetected: false,
           hosts: [
             {
               hostName: "bc250",
-              docPath: ".t3code/docs/hosts/bc250.md",
+              docPath: ".hal/docs/hosts/bc250.md",
               status: "current",
               generatedAt: "2026-04-19T13:00:00.000Z",
               coversChangesThrough: "2026-04-19T13:00:00.000Z",
@@ -458,7 +458,7 @@ Current-state documentation for bc250.
             },
             {
               hostName: "nexus",
-              docPath: ".t3code/docs/hosts/nexus.md",
+              docPath: ".hal/docs/hosts/nexus.md",
               status: "missing",
               generatedAt: null,
               coversChangesThrough: null,

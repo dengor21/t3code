@@ -277,7 +277,7 @@ function makeSshReachabilityCheck(host: FlakeHost | null) {
         severity: "blocking",
         result: "fail",
         summary: "SSH user is not configured for this host.",
-        detail: `Set t3hosts.${host.name}.sshUser so deployments and live previews know which SSH login to use for ${connection.targetHost}.`,
+        detail: `Set halHosts.${host.name}.sshUser so deployments and live previews know which SSH login to use for ${connection.targetHost}.`,
       });
     }
 
@@ -332,7 +332,7 @@ async function runRemoteLiveSwitchPreview(input: {
   if (connection.sshTarget === null) {
     return {
       stdout: "",
-      stderr: `Host ${input.host.name} is missing t3hosts.${input.host.name}.sshUser.`,
+      stderr: `Host ${input.host.name} is missing halHosts.${input.host.name}.sshUser.`,
       code: 125,
       signal: null,
       timedOut: false,

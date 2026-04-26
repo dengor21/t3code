@@ -149,7 +149,7 @@ function buildHostCreationPlanGuidance(workflow: HostCreationWorkflow): Readonly
       "- After secure import completes, use the sanitized findings summary as the source of truth for the next response.",
       "- Clearly separate observed current state from suggested improvements or intentional changes.",
       "- Preserve required system behavior by default; propose improvements as explicit, reviewable deltas.",
-      `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
+      `- Treat halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
       "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
       "- Avoid broad repo changes unless the plan clearly justifies them.",
     ];
@@ -159,7 +159,7 @@ function buildHostCreationPlanGuidance(workflow: HostCreationWorkflow): Readonly
     "- Ask hardware questions before recommending partitioning or install details.",
     "- After the hardware picture is clear, browse current official sources before recommending install or partitioning details and state the browsing date explicitly.",
     "- Prefer the NixOS manual, nixos-anywhere, Home Manager, and disko before community sources.",
-    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
+    `- Treat halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
     "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
     "- Avoid broad repo changes unless the plan clearly justifies them.",
   ];
@@ -175,7 +175,7 @@ function buildHostCreationImplementationGuidance(
       "- Never ask for passwords in conversation and never tell the user to type a password into a terminal.",
       "- If secure import findings are available, treat the sanitized findings summary as the source of truth for follow-up reasoning.",
       `- Keep writes scoped to ${workflow.hostName} unless the approved plan explicitly requires shared-module changes.`,
-      `- Ensure the implementation includes t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
+      `- Ensure the implementation includes halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
       "- Preserve observed system behavior unless the approved plan explicitly changes it.",
       "- Call out any intentional improvements or simplifications separately from parity-preserving translation work.",
       "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
@@ -187,7 +187,7 @@ function buildHostCreationImplementationGuidance(
   return [
     "- Treat the approved plan and prior planning decisions as the source of truth.",
     `- Keep writes scoped to ${workflow.hostName} unless the approved plan explicitly requires shared-module changes.`,
-    `- Ensure the implementation includes t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
+    `- Ensure the implementation includes halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
     "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
     "- Minimize blast radius and call out any cross-host impact from shared-module edits.",
   ];
@@ -196,7 +196,7 @@ function buildHostCreationImplementationGuidance(
 function buildHostRemovalPlanGuidance(workflow: HostRemovalWorkflow): ReadonlyArray<string> {
   return [
     "- Start by auditing this repo for every reference to the host before proposing deletions.",
-    `- Treat t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory removal anchors when they exist.`,
+    `- Treat halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory removal anchors when they exist.`,
     "- Identify deploy targets, documentation, secrets, shared modules, and automation references that may need cleanup.",
     "- Separate safe repo changes from manual follow-up steps such as decommissioning infrastructure, DNS, credentials, or monitoring.",
     "- Avoid broad repo changes unless the plan clearly justifies them.",
@@ -208,7 +208,7 @@ function buildHostRemovalImplementationGuidance(
 ): ReadonlyArray<string> {
   return [
     "- Treat the approved plan and prior planning decisions as the source of truth.",
-    `- Remove t3hosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix when the approved plan includes them.`,
+    `- Remove halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix when the approved plan includes them.`,
     "- Keep cleanup scoped to the approved host-related references and avoid deleting unrelated shared code.",
     "- Minimize blast radius and call out any manual follow-up that still remains after the repo changes land.",
   ];

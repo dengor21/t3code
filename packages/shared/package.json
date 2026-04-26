@@ -87,6 +87,10 @@
     "./runtimeHome": {
       "types": "./src/runtimeHome.ts",
       "import": "./src/runtimeHome.ts"
+    },
+    "./branding": {
+      "types": "./src/branding.ts",
+      "import": "./src/branding.ts"
     }
   },
   "scripts": {

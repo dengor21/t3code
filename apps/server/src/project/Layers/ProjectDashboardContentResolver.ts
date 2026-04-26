@@ -13,10 +13,11 @@ import { DocumentationStatusResolver } from "../../orchestration/Services/Docume
 import {
   GENERAL_CHANGELOG_PATH,
   HOST_DOCS_DIR,
+  LEGACY_GENERAL_CHANGELOG_PATH,
   parseChangeLogEntries,
-  stripMarkdownFrontmatter,
   resolveProjectHosts,
   slugHostName,
+  stripMarkdownFrontmatter,
 } from "../../orchestration/DocumentationUtils.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
@@ -237,9 +238,17 @@ const make = Effect.gen(function* () {
         relativePath: GENERAL_CHANGELOG_PATH,
         required: false,
       });
+      const legacyChangesFile =
+        changesFile === null
+          ? yield* readWorkspaceRelativeFile({
+              workspaceRoot: project.workspaceRoot,
+              relativePath: LEGACY_GENERAL_CHANGELOG_PATH,
+              required: false,
+            })
+          : null;
       const parsedEntries = sortEntriesDescending(
         parseChangeLogEntries({
-          markdown: changesFile?.contents ?? "",
+          markdown: changesFile?.contents ?? legacyChangesFile?.contents ?? "",
           hosts,
         }).map((entry) => ({
           id: entry.id,

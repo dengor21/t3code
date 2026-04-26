@@ -328,7 +328,7 @@ const makeOpenCodeTextGeneration = Effect.gen(function* () {
               : {}),
           });
           const session = await client.session.create({
-            title: `T3 Code ${input.operation}`,
+            title: `HAL ${input.operation}`,
             permission: [{ permission: "*", pattern: "*", action: "deny" }],
           });
           if (!session.data) {

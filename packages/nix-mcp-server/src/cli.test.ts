@@ -259,7 +259,7 @@ describe("nix MCP CLI", () => {
       hostName: "nexus",
       workspaceRoot,
       flakeAttr: "nixosConfigurations.nexus",
-      hostDocPath: ".t3code/docs/hosts/nexus.md",
+      hostDocPath: ".hal/docs/hosts/nexus.md",
       rule: "Use this host by default unless the user explicitly broadens scope.",
     });
   });
