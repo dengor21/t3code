@@ -39,7 +39,7 @@ HAL supports you in planning, changing, debugging and documenting Nix hosts.
 ![Fleet deployment](docs/fleet-deployment.png)
 
 ### Host thread
-![Host thread](docs/host-scoped-thread.png)
+![Host thread](docs/host-scoped-chat.png)
 
 ## Contributing
 
