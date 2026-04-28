@@ -133,6 +133,11 @@ import {
   ProjectWriteFileResult,
 } from "./project.ts";
 import {
+  ProjectBootstrapFlakeError,
+  ProjectBootstrapFlakeInput,
+  ProjectBootstrapFlakeResult,
+} from "./flakeOnboarding.ts";
+import {
   ProjectSecretsError,
   ProjectSecretsGetInput,
   ProjectSecretsSummary,
@@ -165,6 +170,7 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  projectsBootstrapFlake: "projects.bootstrapFlake",
   projectsGenerateHostDocumentation: "projects.generateHostDocumentation",
   projectsGetDashboardContent: "projects.getDashboardContent",
   projectsRebuildNixDesignerIndex: "projects.rebuildNixDesignerIndex",
@@ -282,6 +288,12 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+});
+
+export const WsProjectsBootstrapFlakeRpc = Rpc.make(WS_METHODS.projectsBootstrapFlake, {
+  payload: ProjectBootstrapFlakeInput,
+  success: ProjectBootstrapFlakeResult,
+  error: ProjectBootstrapFlakeError,
 });
 
 export const WsProjectsGenerateHostDocumentationRpc = Rpc.make(
@@ -713,6 +725,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsBootstrapFlakeRpc,
   WsProjectsGenerateHostDocumentationRpc,
   WsProjectsGetDashboardContentRpc,
   WsProjectsRebuildNixDesignerIndexRpc,

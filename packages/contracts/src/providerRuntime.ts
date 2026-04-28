@@ -12,7 +12,7 @@ import {
   TrimmedNonEmptyString,
   TurnId,
 } from "./baseSchemas.ts";
-import { ProviderKind } from "./orchestration.ts";
+import { ProviderKind, UiActionRequestedPayload } from "./orchestration.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
@@ -181,6 +181,7 @@ const ProviderRuntimeEventType = Schema.Literals([
   "hook.completed",
   "tool.progress",
   "tool.summary",
+  "ui.action.requested",
   "auth.status",
   "account.updated",
   "account.rate-limits.updated",
@@ -231,6 +232,7 @@ const HookProgressType = Schema.Literal("hook.progress");
 const HookCompletedType = Schema.Literal("hook.completed");
 const ToolProgressType = Schema.Literal("tool.progress");
 const ToolSummaryType = Schema.Literal("tool.summary");
+const UiActionRequestedType = Schema.Literal("ui.action.requested");
 const AuthStatusType = Schema.Literal("auth.status");
 const AccountUpdatedType = Schema.Literal("account.updated");
 const AccountRateLimitsUpdatedType = Schema.Literal("account.rate-limits.updated");
@@ -515,6 +517,8 @@ const ToolSummaryPayload = Schema.Struct({
   precedingToolUseIds: Schema.optional(Schema.Array(TrimmedNonEmptyStringSchema)),
 });
 export type ToolSummaryPayload = typeof ToolSummaryPayload.Type;
+
+export type ProviderUiActionRequestedPayload = typeof UiActionRequestedPayload.Type;
 
 const AuthStatusPayload = Schema.Struct({
   isAuthenticating: Schema.optional(Schema.Boolean),
@@ -863,6 +867,14 @@ const ProviderRuntimeToolSummaryEvent = Schema.Struct({
 });
 export type ProviderRuntimeToolSummaryEvent = typeof ProviderRuntimeToolSummaryEvent.Type;
 
+const ProviderRuntimeUiActionRequestedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: UiActionRequestedType,
+  payload: UiActionRequestedPayload,
+});
+export type ProviderRuntimeUiActionRequestedEvent =
+  typeof ProviderRuntimeUiActionRequestedEvent.Type;
+
 const ProviderRuntimeAuthStatusEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: AuthStatusType,
@@ -980,6 +992,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeHookCompletedEvent,
   ProviderRuntimeToolProgressEvent,
   ProviderRuntimeToolSummaryEvent,
+  ProviderRuntimeUiActionRequestedEvent,
   ProviderRuntimeAuthStatusEvent,
   ProviderRuntimeAccountUpdatedEvent,
   ProviderRuntimeAccountRateLimitsUpdatedEvent,

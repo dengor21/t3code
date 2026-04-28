@@ -80,6 +80,7 @@ function createTestClient() {
     projects: {
       searchEntries: vi.fn(async () => []),
       writeFile: vi.fn(async () => undefined),
+      bootstrapFlake: vi.fn(async () => undefined),
       getDashboardContent: vi.fn(async () => undefined),
       getSecretsSummary: vi.fn(async () => undefined),
       generateHostDocumentation: vi.fn(async () => undefined),

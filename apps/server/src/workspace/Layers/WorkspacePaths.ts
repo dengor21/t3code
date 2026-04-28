@@ -28,6 +28,20 @@ export const makeWorkspacePaths = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
+  const toWorkspaceRelativePath = (workspaceRoot: string, absolutePath: string): string | null => {
+    const relativeToRoot = toPosixRelativePath(path.relative(workspaceRoot, absolutePath));
+    if (
+      relativeToRoot.length === 0 ||
+      relativeToRoot === "." ||
+      relativeToRoot.startsWith("../") ||
+      relativeToRoot === ".." ||
+      path.isAbsolute(relativeToRoot)
+    ) {
+      return null;
+    }
+    return relativeToRoot;
+  };
+
   const normalizeWorkspaceRoot: WorkspacePathsShape["normalizeWorkspaceRoot"] = Effect.fn(
     "WorkspacePaths.normalizeWorkspaceRoot",
   )(function* (workspaceRoot, options) {
@@ -75,14 +89,8 @@ export const makeWorkspacePaths = Effect.gen(function* () {
       }
 
       const absolutePath = path.resolve(input.workspaceRoot, normalizedInputPath);
-      const relativeToRoot = toPosixRelativePath(path.relative(input.workspaceRoot, absolutePath));
-      if (
-        relativeToRoot.length === 0 ||
-        relativeToRoot === "." ||
-        relativeToRoot.startsWith("../") ||
-        relativeToRoot === ".." ||
-        path.isAbsolute(relativeToRoot)
-      ) {
+      const relativeToRoot = toWorkspaceRelativePath(input.workspaceRoot, absolutePath);
+      if (relativeToRoot === null) {
         return yield* new WorkspacePathOutsideRootError({
           workspaceRoot: input.workspaceRoot,
           relativePath: input.relativePath,
@@ -95,9 +103,43 @@ export const makeWorkspacePaths = Effect.gen(function* () {
       };
     });
 
+  const resolvePathWithinRoot: WorkspacePathsShape["resolvePathWithinRoot"] = Effect.fn(
+    "WorkspacePaths.resolvePathWithinRoot",
+  )(function* (input) {
+    const normalizedInputPath = input.path.trim();
+    if (!path.isAbsolute(normalizedInputPath)) {
+      return yield* resolveRelativePathWithinRoot({
+        workspaceRoot: input.workspaceRoot,
+        relativePath: normalizedInputPath,
+      });
+    }
+
+    const candidateRoots = [
+      input.workspaceRoot,
+      ...(input.additionalRoots ?? []).map((root) => root.trim()).filter((root) => root.length > 0),
+    ];
+    for (const candidateRoot of candidateRoots) {
+      const relativeToCandidate = toWorkspaceRelativePath(candidateRoot, normalizedInputPath);
+      if (relativeToCandidate === null) {
+        continue;
+      }
+
+      return yield* resolveRelativePathWithinRoot({
+        workspaceRoot: input.workspaceRoot,
+        relativePath: relativeToCandidate,
+      });
+    }
+
+    return yield* new WorkspacePathOutsideRootError({
+      workspaceRoot: input.workspaceRoot,
+      relativePath: input.path,
+    });
+  });
+
   return {
     normalizeWorkspaceRoot,
     resolveRelativePathWithinRoot,
+    resolvePathWithinRoot,
   } satisfies WorkspacePathsShape;
 });
 

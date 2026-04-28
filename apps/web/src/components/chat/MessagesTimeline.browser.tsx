@@ -267,4 +267,37 @@ describe("MessagesTimeline", () => {
       await screen.unmount();
     }
   });
+
+  it("shows the guided flake-creation CTA for empty workflow threads", async () => {
+    const onStartWorkflow = vi.fn();
+    const screen = await render(
+      <MessagesTimeline
+        {...buildProps()}
+        workflow={{
+          kind: "flake-creation",
+          hostScale: "2-5",
+          platformMatrix: "mixed",
+          homeManager: true,
+          moduleStyle: "explicit-modules",
+          moduleNamespace: "shared",
+          layoutPattern: "shared-modules",
+          status: "planning",
+        }}
+        onStartWorkflow={onStartWorkflow}
+        timelineEntries={[]}
+      />,
+    );
+
+    try {
+      await expect.element(page.getByText("Create flake")).toBeVisible();
+      await expect.element(page.getByText("Begin flake setup")).toBeVisible();
+      await expect
+        .element(page.getByText(/HAL already wrote the minimal bootstrap files/i))
+        .toBeVisible();
+      await page.getByRole("button", { name: "Begin flake setup" }).click();
+      expect(onStartWorkflow).toHaveBeenCalledTimes(1);
+    } finally {
+      await screen.unmount();
+    }
+  });
 });

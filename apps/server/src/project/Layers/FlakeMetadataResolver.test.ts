@@ -170,6 +170,33 @@ it.layer(NodeServices.layer)("FlakeMetadataResolverLive", (it) => {
     }).pipe(Effect.provide(FlakeMetadataResolverLive)),
   );
 
+  it.effect("treats an explicit empty halHosts block as valid empty metadata", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const cwd = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-flake-metadata-empty-halHosts-",
+      });
+
+      yield* writeFile(
+        `${cwd}/flake.nix`,
+        `{
+  outputs = { self }: {
+    halHosts = {};
+  };
+}
+`,
+      );
+
+      const resolver = yield* FlakeMetadataResolver;
+      const metadata = yield* resolver.resolve(cwd);
+
+      expect(["nix-eval", "parsed-flake"]).toContain(metadata.source);
+      expect(metadata.host).toBeNull();
+      expect(metadata.hosts).toEqual([]);
+      expect(metadata.diagnostics).toEqual([]);
+    }).pipe(Effect.provide(FlakeMetadataResolverLive)),
+  );
+
   it.effect("reports missing metadata when the flake has no t3code.host block", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

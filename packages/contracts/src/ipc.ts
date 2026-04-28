@@ -92,6 +92,7 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
+import type { ProjectBootstrapFlakeInput, ProjectBootstrapFlakeResult } from "./flakeOnboarding.ts";
 import type { ProjectSecretsGetInput, ProjectSecretsSummary } from "./projectSecrets.ts";
 import type {
   ServerConfig,
@@ -312,6 +313,7 @@ export interface EnvironmentApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    bootstrapFlake: (input: ProjectBootstrapFlakeInput) => Promise<ProjectBootstrapFlakeResult>;
     getDashboardContent: (
       input: ProjectGetDashboardContentInput,
     ) => Promise<ProjectDashboardContentResult>;

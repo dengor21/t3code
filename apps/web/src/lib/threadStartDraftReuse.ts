@@ -34,6 +34,17 @@ function workflowsEqual(
         (left.hostType ?? null) === (right.hostType ?? null) &&
         (left.status ?? null) === (right.status ?? null)
       );
+    case "flake-creation":
+      return (
+        right.kind === "flake-creation" &&
+        left.hostScale === right.hostScale &&
+        left.platformMatrix === right.platformMatrix &&
+        left.homeManager === right.homeManager &&
+        left.moduleStyle === right.moduleStyle &&
+        (left.moduleNamespace ?? null) === (right.moduleNamespace ?? null) &&
+        left.layoutPattern === right.layoutPattern &&
+        (left.status ?? null) === (right.status ?? null)
+      );
   }
 }
 

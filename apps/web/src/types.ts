@@ -18,6 +18,7 @@ import type {
   NixDesignerScope,
   ProviderInteractionMode,
   RuntimeMode,
+  RemoteHostAccessPolicy,
   ThreadWorkflow,
   ThreadChangeTracking,
 } from "@t3tools/contracts";
@@ -107,6 +108,7 @@ export interface Thread {
   title: string;
   modelSelection: ModelSelection;
   runtimeMode: RuntimeMode;
+  remoteHostAccessPolicy?: RemoteHostAccessPolicy | undefined;
   interactionMode: ProviderInteractionMode;
   session: ThreadSession | null;
   messages: ChatMessage[];
@@ -135,6 +137,7 @@ export interface ThreadShell {
   title: string;
   modelSelection: ModelSelection;
   runtimeMode: RuntimeMode;
+  remoteHostAccessPolicy?: RemoteHostAccessPolicy | undefined;
   interactionMode: ProviderInteractionMode;
   error: string | null;
   createdAt: string;
@@ -158,6 +161,7 @@ export interface SidebarThreadSummary {
   environmentId: EnvironmentId;
   projectId: ProjectId;
   title: string;
+  remoteHostAccessPolicy?: RemoteHostAccessPolicy | undefined;
   interactionMode: ProviderInteractionMode;
   session: ThreadSession | null;
   createdAt: string;

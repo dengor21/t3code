@@ -128,4 +128,62 @@ it.layer(TestLayer)("WorkspacePathsLive", (it) => {
       }),
     );
   });
+
+  describe("resolvePathWithinRoot", () => {
+    it.effect("resolves absolute paths inside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspacePaths = yield* WorkspacePaths;
+        const cwd = yield* makeTempDir();
+        const path = yield* Path.Path;
+
+        const resolved = yield* workspacePaths.resolvePathWithinRoot({
+          workspaceRoot: cwd,
+          path: path.join(cwd, "hosts", "chatserver", "secrets.yaml"),
+        });
+
+        expect(resolved).toEqual({
+          absolutePath: path.join(cwd, "hosts", "chatserver", "secrets.yaml"),
+          relativePath: "hosts/chatserver/secrets.yaml",
+        });
+      }),
+    );
+
+    it.effect("maps additional workspace roots back into the workspace tree", () =>
+      Effect.gen(function* () {
+        const workspacePaths = yield* WorkspacePaths;
+        const cwd = yield* makeTempDir();
+        const path = yield* Path.Path;
+
+        const resolved = yield* workspacePaths.resolvePathWithinRoot({
+          workspaceRoot: cwd,
+          path: "/nix/store/example-source/hosts/chatserver/secrets.yaml",
+          additionalRoots: ["/nix/store/example-source"],
+        });
+
+        expect(resolved).toEqual({
+          absolutePath: path.join(cwd, "hosts", "chatserver", "secrets.yaml"),
+          relativePath: "hosts/chatserver/secrets.yaml",
+        });
+      }),
+    );
+
+    it.effect("rejects absolute paths outside the workspace mapping roots", () =>
+      Effect.gen(function* () {
+        const workspacePaths = yield* WorkspacePaths;
+        const cwd = yield* makeTempDir();
+
+        const error = yield* workspacePaths
+          .resolvePathWithinRoot({
+            workspaceRoot: cwd,
+            path: "/nix/store/other-source/hosts/chatserver/secrets.yaml",
+            additionalRoots: ["/nix/store/example-source"],
+          })
+          .pipe(Effect.flip);
+
+        expect(error.message).toContain(
+          "Workspace file path must be relative to the project root: /nix/store/other-source/hosts/chatserver/secrets.yaml",
+        );
+      }),
+    );
+  });
 });

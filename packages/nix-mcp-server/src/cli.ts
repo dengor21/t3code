@@ -45,6 +45,8 @@ const DESIGNER_SCOPE = parseScopeLabel(process.env.T3_NIX_DESIGNER_SCOPE ?? "pro
 };
 const VALIDATION_BUDGET_LIMIT = Number(process.env.T3_NIX_VALIDATION_BUDGET ?? "5");
 const VALIDATION_TIMEOUT_MS = Number(process.env.T3_NIX_VALIDATION_TIMEOUT_MS ?? "30000");
+const REPO_STYLE_RELATIVE_PATH = ".hal/repo-style.json";
+const REPO_STYLE_URI = "hal://repo-style";
 
 let validationBudgetRemaining = VALIDATION_BUDGET_LIMIT;
 let loadedIndexPromise: Promise<LoadedIndex> | null = null;
@@ -122,6 +124,37 @@ async function getIndex(): Promise<LoadedIndex> {
   return loadedIndexPromise;
 }
 
+async function loadRepoStyle(): Promise<{
+  readonly exists: boolean;
+  readonly path: string;
+  readonly absolutePath: string;
+  readonly raw: string | null;
+  readonly repoStyle: unknown | null;
+}> {
+  const absolutePath = resolve(PROJECT_ROOT, REPO_STYLE_RELATIVE_PATH);
+  try {
+    const raw = await readFile(absolutePath, "utf8");
+    return {
+      exists: true,
+      path: REPO_STYLE_RELATIVE_PATH,
+      absolutePath,
+      raw,
+      repoStyle: JSON.parse(raw) as unknown,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return {
+        exists: false,
+        path: REPO_STYLE_RELATIVE_PATH,
+        absolutePath,
+        raw: null,
+        repoStyle: null,
+      };
+    }
+    throw error;
+  }
+}
+
 function ensurePathWithinWorkspace(candidatePath: string | undefined): string {
   const resolvedPath = resolve(PROJECT_ROOT, candidatePath ?? ".");
   if (resolvedPath !== PROJECT_ROOT && !resolvedPath.startsWith(`${PROJECT_ROOT}/`)) {
@@ -147,6 +180,7 @@ function resolveCurrentScope() {
       workspaceRoot: PROJECT_ROOT,
       flakeAttr: `nixosConfigurations.${DESIGNER_SCOPE.hostName}`,
       hostDocPath: `.hal/docs/hosts/${slugHostName(DESIGNER_SCOPE.hostName)}.md`,
+      repoStylePath: REPO_STYLE_RELATIVE_PATH,
       rule: "Use this host by default unless the user explicitly broadens scope.",
     };
   }
@@ -154,6 +188,7 @@ function resolveCurrentScope() {
   return {
     kind: "project" as const,
     workspaceRoot: PROJECT_ROOT,
+    repoStylePath: REPO_STYLE_RELATIVE_PATH,
     rule: "No host is locked. Ask before choosing a host-specific write or deployment target.",
   };
 }
@@ -219,6 +254,14 @@ function getToolDefinitions() {
     {
       name: "hal_current_scope",
       description: "Return the HAL runtime scope attached to this MCP session.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
+    {
+      name: "hal_repo_style",
+      description: "Return the HAL repo style file when present, including parsed content.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -299,6 +342,9 @@ async function handleToolCall(toolCall: ToolCallRequest) {
   switch (toolCall.name) {
     case "hal_current_scope":
       return toolContent(resolveCurrentScope());
+
+    case "hal_repo_style":
+      return toolContent(await loadRepoStyle());
 
     case "search_options": {
       const index = await getIndex();
@@ -394,6 +440,7 @@ async function handleRequest(request: JsonRpcRequest) {
           protocolVersion: "2024-11-05",
           capabilities: {
             tools: {},
+            resources: {},
           },
           serverInfo: {
             name: NIX_MCP_SERVER_NAME,
@@ -417,6 +464,48 @@ async function handleRequest(request: JsonRpcRequest) {
           await handleToolCall((request.params ?? {}) as unknown as ToolCallRequest),
         );
         return;
+
+      case "resources/list":
+        sendResult(request.id, {
+          resources: [
+            {
+              uri: REPO_STYLE_URI,
+              name: "HAL repo style",
+              description: "Guidance and scaffold conventions for this flake repository.",
+              mimeType: "application/json",
+            },
+          ],
+        });
+        return;
+
+      case "resources/read": {
+        const uri = String((request.params ?? {}).uri ?? "").trim();
+        if (uri !== REPO_STYLE_URI) {
+          sendError(request.id, -32602, `Resource '${uri}' is not supported.`);
+          return;
+        }
+        const repoStyle = await loadRepoStyle();
+        sendResult(request.id, {
+          contents: [
+            {
+              uri: REPO_STYLE_URI,
+              mimeType: "application/json",
+              text:
+                repoStyle.raw ??
+                JSON.stringify(
+                  {
+                    exists: false,
+                    path: repoStyle.path,
+                    absolutePath: repoStyle.absolutePath,
+                  },
+                  null,
+                  2,
+                ),
+            },
+          ],
+        });
+        return;
+      }
 
       default:
         sendError(request.id, -32601, `Method '${request.method}' is not supported.`);

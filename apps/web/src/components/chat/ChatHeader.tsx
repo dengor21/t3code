@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime";
 import { memo } from "react";
-import { buildHostWorkflowBadgeLabel } from "@t3tools/shared/hostWorkflow";
+import { buildThreadWorkflowBadgeLabel } from "@t3tools/shared/threadWorkflow";
 import GitActionsControl from "../GitActionsControl";
 import { type DraftId } from "~/composerDraftStore";
 import { DiffIcon, TerminalSquareIcon } from "lucide-react";
@@ -91,7 +91,7 @@ export const ChatHeader = memo(function ChatHeader({
         </Badge>
         {workflow && (
           <Badge variant="label" className="shrink-0 text-[10px]">
-            {buildHostWorkflowBadgeLabel(workflow)}
+            {buildThreadWorkflowBadgeLabel(workflow)}
           </Badge>
         )}
         {scopedHostName?.trim() && (

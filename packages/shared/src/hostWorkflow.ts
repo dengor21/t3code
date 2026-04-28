@@ -111,6 +111,8 @@ export function buildHostWorkflowThreadTitle(workflow: ThreadWorkflow): string {
       return buildHostCreationThreadTitle(workflow.hostName);
     case "host-removal":
       return buildHostRemovalThreadTitle(workflow.hostName);
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -120,6 +122,8 @@ export function buildHostWorkflowBadgeLabel(workflow: ThreadWorkflow): string {
       return HOST_CREATION_BADGE_LABEL;
     case "host-removal":
       return HOST_REMOVAL_BADGE_LABEL;
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -131,6 +135,8 @@ export function buildHostWorkflowStartLabel(workflow: ThreadWorkflow): string {
         : HOST_CREATION_START_LABEL;
     case "host-removal":
       return HOST_REMOVAL_START_LABEL;
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -150,6 +156,7 @@ function buildHostCreationPlanGuidance(workflow: HostCreationWorkflow): Readonly
       "- Clearly separate observed current state from suggested improvements or intentional changes.",
       "- Preserve required system behavior by default; propose improvements as explicit, reviewable deltas.",
       `- Treat halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
+      "- Consult .hal/repo-style.json when it exists before introducing new shared folders or module namespaces.",
       "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
       "- Avoid broad repo changes unless the plan clearly justifies them.",
     ];
@@ -160,6 +167,7 @@ function buildHostCreationPlanGuidance(workflow: HostCreationWorkflow): Readonly
     "- After the hardware picture is clear, browse current official sources before recommending install or partitioning details and state the browsing date explicitly.",
     "- Prefer the NixOS manual, nixos-anywhere, Home Manager, and disko before community sources.",
     `- Treat halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix as mandatory anchors in the final plan.`,
+    "- Consult .hal/repo-style.json when it exists before introducing new shared folders or module namespaces.",
     "- Discover optional scaffold files from this repo instead of assuming a fixed flake layout.",
     "- Avoid broad repo changes unless the plan clearly justifies them.",
   ];
@@ -178,6 +186,7 @@ function buildHostCreationImplementationGuidance(
       `- Ensure the implementation includes halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
       "- Preserve observed system behavior unless the approved plan explicitly changes it.",
       "- Call out any intentional improvements or simplifications separately from parity-preserving translation work.",
+      "- Consult .hal/repo-style.json when it exists before introducing or reshaping shared folders and namespaces.",
       "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
       "- Keep deployment and validation steps explicit, conservative, and easy to review.",
       "- Minimize blast radius and call out any cross-host impact from shared-module edits.",
@@ -188,6 +197,7 @@ function buildHostCreationImplementationGuidance(
     "- Treat the approved plan and prior planning decisions as the source of truth.",
     `- Keep writes scoped to ${workflow.hostName} unless the approved plan explicitly requires shared-module changes.`,
     `- Ensure the implementation includes halHosts.${workflow.hostName} and hosts/${workflow.hostName}/default.nix.`,
+    "- Consult .hal/repo-style.json when it exists before introducing or reshaping shared folders and namespaces.",
     "- Discover optional scaffold structure from the repo instead of assuming a fixed flake layout.",
     "- Minimize blast radius and call out any cross-host impact from shared-module edits.",
   ];
@@ -220,6 +230,8 @@ export function buildHostWorkflowPlanGuidance(workflow: ThreadWorkflow): Readonl
       return buildHostCreationPlanGuidance(workflow);
     case "host-removal":
       return buildHostRemovalPlanGuidance(workflow);
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -240,6 +252,8 @@ export function buildHostWorkflowPlanningOutcomeGuidance(
       return [
         "- Finish with a single decision-complete <proposed_plan> that is ready for implementation.",
       ];
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -251,6 +265,8 @@ export function buildHostWorkflowImplementationGuidance(
       return buildHostCreationImplementationGuidance(workflow);
     case "host-removal":
       return buildHostRemovalImplementationGuidance(workflow);
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -341,6 +357,8 @@ export function buildHostWorkflowStarterPrompt(workflow: ThreadWorkflow): string
       return buildHostCreationStarterPrompt(workflow);
     case "host-removal":
       return buildHostRemovalStarterPrompt(workflow);
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }
 
@@ -356,5 +374,7 @@ export function markHostWorkflowReadyToImplement(workflow: ThreadWorkflow): Thre
         ...workflow,
         status: "ready-to-implement",
       };
+    case "flake-creation":
+      throw new Error("Flake-creation workflows must use flakeWorkflow helpers.");
   }
 }

@@ -58,6 +58,7 @@ import { ProjectSetupScriptRunner } from "./project/Services/ProjectSetupScriptR
 import { ProjectDashboardContentResolver } from "./project/Services/ProjectDashboardContentResolver.ts";
 import { NixDesignerService } from "./project/Services/NixDesignerService.ts";
 import { ProjectSecretsService } from "./project/Services/ProjectSecretsService.ts";
+import { ProjectFlakeBootstrapService } from "./project/Services/ProjectFlakeBootstrapService.ts";
 import { DeploymentSafetyService } from "./project/Services/DeploymentSafetyService.ts";
 import { FlakeMetadataResolver } from "./project/Services/FlakeMetadataResolver.ts";
 import { HostDeploymentService } from "./project/Services/HostDeploymentService.ts";
@@ -175,6 +176,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const projectDashboardContentResolver = yield* ProjectDashboardContentResolver;
       const nixDesignerService = yield* NixDesignerService;
       const projectSecretsService = yield* ProjectSecretsService;
+      const projectFlakeBootstrapService = yield* ProjectFlakeBootstrapService;
       const flakeMetadataResolver = yield* FlakeMetadataResolver;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const documentationStatusResolver = yield* DocumentationStatusResolver;
@@ -857,6 +859,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 });
               }),
             ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsBootstrapFlake]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsBootstrapFlake,
+            projectFlakeBootstrapService.bootstrapFlake(input),
             { "rpc.aggregate": "workspace" },
           ),
         [WS_METHODS.projectsGenerateHostDocumentation]: (input) =>

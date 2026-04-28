@@ -7,7 +7,7 @@ import {
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
-import { buildHostWorkflowThreadTitle } from "@t3tools/shared/hostWorkflow";
+import { buildThreadWorkflowTitle } from "@t3tools/shared/threadWorkflow";
 import { type ChatMessage, type SessionPhase, type Thread, type ThreadSession } from "../types";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";
 import { Schema } from "effect";
@@ -31,7 +31,7 @@ export function buildLocalDraftThread(
   error: string | null,
 ): Thread {
   const title = draftThread.workflow
-    ? buildHostWorkflowThreadTitle(draftThread.workflow)
+    ? buildThreadWorkflowTitle(draftThread.workflow)
     : "New thread";
   return {
     id: threadId,

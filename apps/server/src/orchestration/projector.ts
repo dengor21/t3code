@@ -5,6 +5,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import {
+  DEFAULT_REMOTE_HOST_ACCESS_POLICY,
   OrchestrationCheckpointSummary,
   OrchestrationMessage,
   OrchestrationSession,
@@ -289,6 +290,8 @@ export function projectEvent(
             title: payload.title,
             modelSelection: payload.modelSelection,
             runtimeMode: payload.runtimeMode,
+            remoteHostAccessPolicy:
+              payload.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
             interactionMode: payload.interactionMode,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
@@ -364,6 +367,9 @@ export function projectEvent(
             ...(payload.title !== undefined ? { title: payload.title } : {}),
             ...(payload.modelSelection !== undefined
               ? { modelSelection: payload.modelSelection }
+              : {}),
+            ...(payload.remoteHostAccessPolicy !== undefined
+              ? { remoteHostAccessPolicy: payload.remoteHostAccessPolicy }
               : {}),
             ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
             ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),

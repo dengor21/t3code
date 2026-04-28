@@ -1,5 +1,6 @@
 import {
   type ApprovalRequestId,
+  DEFAULT_REMOTE_HOST_ACCESS_POLICY,
   DEFAULT_MODEL_BY_PROVIDER,
   type ClaudeAgentEffort,
   type EnvironmentId,
@@ -26,12 +27,12 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime";
+import { resolveHostCreationBootstrapMode } from "@t3tools/shared/hostWorkflow";
 import {
-  buildHostWorkflowStarterPrompt,
-  buildHostWorkflowThreadTitle,
-  markHostWorkflowReadyToImplement,
-  resolveHostCreationBootstrapMode,
-} from "@t3tools/shared/hostWorkflow";
+  buildThreadWorkflowStarterPrompt,
+  buildThreadWorkflowTitle,
+  markThreadWorkflowReadyToImplement,
+} from "@t3tools/shared/threadWorkflow";
 import { applyClaudePromptEffortPrefix, createModelSelection } from "@t3tools/shared/model";
 import { projectScriptCwd, projectScriptRuntimeEnv } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
@@ -2404,6 +2405,8 @@ export default function ChatView(props: ChatViewProps) {
       title: activeThread.title,
       modelSelection,
       runtimeMode,
+      remoteHostAccessPolicy:
+        activeThread.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
       interactionMode,
       branch: activeThreadBranch,
       worktreePath: activeThread.worktreePath,
@@ -2726,7 +2729,7 @@ export default function ChatView(props: ChatViewProps) {
         }
       }
       const title = activeThread.workflow
-        ? buildHostWorkflowThreadTitle(activeThread.workflow)
+        ? buildThreadWorkflowTitle(activeThread.workflow)
         : truncate(titleSeed);
       const threadCreateModelSelection = createModelSelection(
         ctxSelectedProvider,
@@ -2767,6 +2770,8 @@ export default function ChatView(props: ChatViewProps) {
                       title,
                       modelSelection: threadCreateModelSelection,
                       runtimeMode,
+                      remoteHostAccessPolicy:
+                        activeThread.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
                       interactionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
@@ -2955,6 +2960,8 @@ export default function ChatView(props: ChatViewProps) {
                         title: activeThread.title,
                         modelSelection: threadCreateModelSelection,
                         runtimeMode,
+                        remoteHostAccessPolicy:
+                          activeThread.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
                         interactionMode,
                         branch: activeThreadBranch,
                         worktreePath: activeThread.worktreePath,
@@ -3069,8 +3076,11 @@ export default function ChatView(props: ChatViewProps) {
     }
 
     await sendPreparedUserPrompt({
-      prompt: buildHostWorkflowStarterPrompt(activeThread.workflow),
-      failureMessage: "Failed to start the guided host workflow.",
+      prompt: buildThreadWorkflowStarterPrompt(activeThread.workflow),
+      failureMessage:
+        activeThread.workflow.kind === "flake-creation"
+          ? "Failed to start the guided flake workflow."
+          : "Failed to start the guided host workflow.",
     });
   }, [
     activeProject,
@@ -3356,7 +3366,7 @@ export default function ChatView(props: ChatViewProps) {
             type: "thread.meta.update",
             commandId: newCommandId(),
             threadId: threadIdForSend,
-            workflow: markHostWorkflowReadyToImplement(activeThread.workflow),
+            workflow: markThreadWorkflowReadyToImplement(activeThread.workflow),
           });
         }
 
@@ -3478,12 +3488,14 @@ export default function ChatView(props: ChatViewProps) {
         title: nextThreadTitle,
         modelSelection: nextThreadModelSelection,
         runtimeMode,
+        remoteHostAccessPolicy:
+          activeThread.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
         interactionMode: "default",
         branch: activeThreadBranch,
         worktreePath: activeThread.worktreePath,
         scopedHostName: activeThread.scopedHostName ?? null,
         workflow: activeThread.workflow
-          ? markHostWorkflowReadyToImplement(activeThread.workflow)
+          ? markThreadWorkflowReadyToImplement(activeThread.workflow)
           : null,
         createdAt,
       })

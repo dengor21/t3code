@@ -1,13 +1,16 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   clearThreadUi,
+  clearPendingFlakeUiAction,
   hydratePersistedProjectState,
+  markFlakeUiActionHandled,
   markThreadUnread,
   PERSISTED_STATE_KEY,
   type PersistedUiState,
   persistState,
+  queuePendingFlakeUiAction,
   reorderProjects,
   setProjectExpanded,
   setThreadChangedFilesExpanded,
@@ -23,6 +26,8 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     nixDesignerEnabledByProjectKey: {},
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
+    pendingFlakeUiActionByProjectKey: {},
+    handledFlakeUiActionIdsByThreadId: {},
     ...overrides,
   };
 }
@@ -53,6 +58,51 @@ describe("uiStateStore pure functions", () => {
     const next = markThreadUnread(initialState, threadId, null);
 
     expect(next).toBe(initialState);
+  });
+
+  it("queues, dedupes, and clears pending flake ui actions", () => {
+    const threadId = ThreadId.make("thread-1");
+    const queued = queuePendingFlakeUiAction(makeUiState(), {
+      environmentId: EnvironmentId.make("env-1"),
+      projectId: ProjectId.make("project-1"),
+      threadId,
+      actionId: "action-1",
+      kind: "open-host-deploy-dialog",
+      hostName: "nexus",
+    });
+
+    expect(queued.pendingFlakeUiActionByProjectKey["env-1:project-1"]).toMatchObject({
+      actionId: "action-1",
+      hostName: "nexus",
+    });
+
+    const deduped = queuePendingFlakeUiAction(queued, {
+      environmentId: EnvironmentId.make("env-1"),
+      projectId: ProjectId.make("project-1"),
+      threadId,
+      actionId: "action-1",
+      kind: "open-host-deploy-dialog",
+      hostName: "nexus",
+    });
+    expect(deduped).toBe(queued);
+
+    const cleared = clearPendingFlakeUiAction(
+      queued,
+      EnvironmentId.make("env-1"),
+      ProjectId.make("project-1"),
+      "action-1",
+    );
+    expect(cleared.pendingFlakeUiActionByProjectKey["env-1:project-1"]).toBeUndefined();
+  });
+
+  it("tracks handled flake ui action ids per thread and clears them with thread ui", () => {
+    const threadId = ThreadId.make("thread-1");
+    const handled = markFlakeUiActionHandled(makeUiState(), threadId, "action-1");
+    expect(handled.handledFlakeUiActionIdsByThreadId[threadId]).toEqual(["action-1"]);
+    expect(markFlakeUiActionHandled(handled, threadId, "action-1")).toBe(handled);
+
+    const cleared = clearThreadUi(handled, threadId);
+    expect(cleared.handledFlakeUiActionIdsByThreadId[threadId]).toBeUndefined();
   });
 
   it("reorderProjects moves a project to a target index", () => {

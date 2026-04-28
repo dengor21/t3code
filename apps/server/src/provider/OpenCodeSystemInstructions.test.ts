@@ -17,6 +17,8 @@ describe("OpenCodeSystemInstructions", () => {
     assert.equal(instructions, OPENCODE_DEFAULT_MODE_SYSTEM_INSTRUCTIONS);
     assert.ok(instructions.includes("OpenCode exposes a `question` tool."));
     assert.ok(instructions.includes("Do not call `request_user_input`."));
+    assert.ok(instructions.includes("Remote host access rules:"));
+    assert.ok(instructions.includes("Do not initiate direct remote host access from chat."));
     assert.ok(instructions.includes('"custom":false'));
     assert.ok(instructions.includes("Do not send `id`, `multiSelect`, or nested objects"));
     assert.ok(instructions.includes("OpenCode exposes `todowrite` and `todoread`"));
@@ -47,6 +49,7 @@ describe("OpenCodeSystemInstructions", () => {
       interactionMode: "default",
       providerContext: {
         projectKind: "generic",
+        remoteHostAccessPolicy: "hal-managed-only",
         scopedHostName: "nexus",
       },
     });

@@ -7,6 +7,12 @@ import {
   resolveHostCreationBootstrapMode,
   resolveHostCreationStages,
 } from "@t3tools/shared/hostWorkflow";
+import {
+  buildFlakeCreationImplementationGuidance,
+  buildFlakeCreationPlanGuidance,
+  buildFlakeCreationPlanningOutcomeGuidance,
+  FLAKE_CREATION_STAGES,
+} from "@t3tools/shared/flakeWorkflow";
 
 import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
 
@@ -15,6 +21,33 @@ const CODEX_HAL_SCOPE_TOOL_RULES = `HAL scope rules:
 - Do not ask which host is meant unless the runtime context has no host scope.
 - Before asking which host is meant, call hal_current_scope when that tool is available. If it returns kind=host, use that host.
 - Before modifying or deploying a different host, or shared configuration that may affect multiple hosts, call out the wider impact and require explicit scope expansion or approval.`;
+
+const CODEX_REMOTE_HOST_ACCESS_RULES = `Remote host access rules:
+- Do not initiate direct remote host access from chat. This includes ssh, scp, sftp, rsync, mosh, nixos-rebuild --target-host, nixos-anywhere, or direct deploy-rs commands against a target host.
+- Use HAL deployment actions instead of remote shell deployment commands.
+- When HAL deploy tools are available, use hal_open_host_deploy_dialog for a single clear host and hal_open_fleet_rollout for multi-host deploys.
+- If the deploy target is not one clear host, ask whether the user wants a single host deploy or a fleet rollout before proceeding.
+- HAL-managed SSH import workflows are exempt because they run outside the agent terminal.`;
+
+function buildHalDeployToolInstructions(providerContext?: ProviderTurnContext): string | null {
+  if (!providerContext || providerContext.projectKind !== "nix-flake") {
+    return null;
+  }
+
+  return [
+    "HAL deploy actions available in this session:",
+    "- `hal_open_host_deploy_dialog` opens HAL's host deploy dialog. Use it for a single clear host deploy.",
+    "- `hal_open_fleet_rollout` opens HAL's fleet rollout flow. Use it for multi-host deploys.",
+    "- These are HAL client actions, not local CLI commands or MCP resources. Invoke them by exact name even if they do not appear in shell tool listings.",
+    ...(providerContext.scopedHostName
+      ? [
+          `- This thread is scoped to host ${providerContext.scopedHostName}. For a deploy request targeting that host, call \`hal_open_host_deploy_dialog\` immediately; omitting hostName is valid.`,
+        ]
+      : [
+          "- If the user requests a deploy for one named host, call `hal_open_host_deploy_dialog` with that host.",
+        ]),
+  ].join("\n");
+}
 
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
@@ -156,6 +189,7 @@ function buildCodexWorkflowInstructions(input: {
   readonly providerContext?: ProviderTurnContext;
 }): string | null {
   const workflow = input.providerContext?.workflow;
+  const repoStylePath = input.providerContext?.flake?.documentationPaths?.repoStyle ?? null;
   if (!workflow) {
     return null;
   }
@@ -183,6 +217,11 @@ function buildCodexWorkflowInstructions(input: {
               : []),
             ...(workflow.osFamily ? [`- Target OS family: ${workflow.osFamily}.`] : []),
             ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
+            ...(repoStylePath
+              ? [
+                  `- Consult repo style guidance at ${repoStylePath} before reshaping shared structure.`,
+                ]
+              : []),
             ...buildHostWorkflowPlanGuidance(workflow),
             ...buildHostWorkflowPlanningOutcomeGuidance(workflow),
           ].join("\n")
@@ -197,6 +236,11 @@ function buildCodexWorkflowInstructions(input: {
               : []),
             ...(workflow.osFamily ? [`- Target OS family: ${workflow.osFamily}.`] : []),
             ...(workflow.hostType ? [`- Host type hint: ${workflow.hostType}.`] : []),
+            ...(repoStylePath
+              ? [
+                  `- Consult repo style guidance at ${repoStylePath} before reshaping shared structure.`,
+                ]
+              : []),
             ...buildHostWorkflowImplementationGuidance(workflow),
           ].join("\n");
     }
@@ -209,6 +253,11 @@ function buildCodexWorkflowInstructions(input: {
             "Workflow rules:",
             "- Work in stages and keep the plan sidebar current with update_plan.",
             ...stageLines,
+            ...(repoStylePath
+              ? [
+                  `- Consult repo style guidance at ${repoStylePath} before removing shared structure.`,
+                ]
+              : []),
             ...buildHostWorkflowPlanGuidance(workflow),
             "- Finish with a single decision-complete <proposed_plan> that is ready for implementation.",
           ].join("\n")
@@ -217,7 +266,63 @@ function buildCodexWorkflowInstructions(input: {
             "",
             "Execution rules:",
             "- Treat the approved proposed plan and any sourceProposedPlan reference as the source of truth.",
+            ...(repoStylePath
+              ? [
+                  `- Consult repo style guidance at ${repoStylePath} before removing shared structure.`,
+                ]
+              : []),
             ...buildHostWorkflowImplementationGuidance(workflow),
+          ].join("\n");
+    }
+    case "flake-creation": {
+      const stageLines = FLAKE_CREATION_STAGES.map((stage) => `- ${stage.key}: ${stage.label}`);
+      return input.interactionMode === "plan"
+        ? [
+            "This thread is running the flake-creation workflow for this project.",
+            "",
+            "Workflow rules:",
+            "- HAL already bootstrapped a minimal flake before this thread started.",
+            "- Work in stages and keep the plan sidebar current with update_plan.",
+            ...stageLines,
+            `- Selected layout pattern: ${workflow.layoutPattern}.`,
+            `- Planned host scale: ${workflow.hostScale}.`,
+            `- Planned platform matrix: ${workflow.platformMatrix}.`,
+            `- Home Manager: ${workflow.homeManager ? "enabled" : "disabled"}.`,
+            `- Module style: ${workflow.moduleStyle}.`,
+            ...(workflow.moduleNamespace
+              ? [`- Module namespace: ${workflow.moduleNamespace}.`]
+              : []),
+            ...(repoStylePath ? [`- Consult repo style guidance at ${repoStylePath}.`] : []),
+            ...(repoStylePath
+              ? [
+                  "- The repo style guide defines the local halHosts and deploy.nodes bootstrap contract. Read it before searching nearby repos for shape hints.",
+                ]
+              : []),
+            ...buildFlakeCreationPlanGuidance(workflow),
+            ...buildFlakeCreationPlanningOutcomeGuidance(),
+          ].join("\n")
+        : [
+            "This thread is implementing an approved flake-creation plan for this project.",
+            "",
+            "Execution rules:",
+            "- Treat the approved proposed plan and any sourceProposedPlan reference as the source of truth.",
+            `- Selected layout pattern: ${workflow.layoutPattern}.`,
+            `- Planned host scale: ${workflow.hostScale}.`,
+            `- Planned platform matrix: ${workflow.platformMatrix}.`,
+            `- Home Manager: ${workflow.homeManager ? "enabled" : "disabled"}.`,
+            `- Module style: ${workflow.moduleStyle}.`,
+            ...(workflow.moduleNamespace
+              ? [`- Module namespace: ${workflow.moduleNamespace}.`]
+              : []),
+            ...(repoStylePath
+              ? [`- Keep ${repoStylePath} synchronized with structural changes.`]
+              : []),
+            ...(repoStylePath
+              ? [
+                  "- Use the repo style guide as the source of truth for halHosts and deploy.nodes instead of inferring structure from neighboring repos.",
+                ]
+              : []),
+            ...buildFlakeCreationImplementationGuidance(workflow),
           ].join("\n");
     }
   }
@@ -229,15 +334,16 @@ export function buildCodexDeveloperInstructions(input: {
 }): string {
   const base =
     input.interactionMode === "plan"
-      ? `${CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}`
-      : `${CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}`;
+      ? `${CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}\n\n${CODEX_REMOTE_HOST_ACCESS_RULES}`
+      : `${CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS}\n\n${CODEX_HAL_SCOPE_TOOL_RULES}\n\n${CODEX_REMOTE_HOST_ACCESS_RULES}`;
   const hostScopeInstructions = buildScopedHostInstructionBlock(input.providerContext);
+  const halDeployToolInstructions = buildHalDeployToolInstructions(input.providerContext);
   const workflowInstructions = buildCodexWorkflowInstructions(input);
-  if (!hostScopeInstructions && !workflowInstructions) {
+  if (!hostScopeInstructions && !halDeployToolInstructions && !workflowInstructions) {
     return base;
   }
 
-  return [base, hostScopeInstructions, workflowInstructions]
+  return [base, hostScopeInstructions, halDeployToolInstructions, workflowInstructions]
     .filter((section): section is string => typeof section === "string" && section.length > 0)
     .join("\n\n");
 }

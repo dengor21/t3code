@@ -164,4 +164,30 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.payload.usage.maxTokens).toBe(200000);
     expect(parsed.payload.usage.usedTokens).toBe(31251);
   });
+
+  it("decodes ui.action.requested for HAL deploy handoff", () => {
+    const parsed = decodeRuntimeEvent({
+      type: "ui.action.requested",
+      eventId: "event-ui-action-1",
+      provider: "codex",
+      createdAt: "2026-02-28T00:00:05.000Z",
+      threadId: "thread-1",
+      turnId: "turn-1",
+      payload: {
+        kind: "open-host-deploy-dialog",
+        actionId: "action-1",
+        hostName: "nexus",
+      },
+    });
+
+    expect(parsed.type).toBe("ui.action.requested");
+    if (parsed.type !== "ui.action.requested") {
+      throw new Error("expected ui.action.requested");
+    }
+    expect(parsed.payload.kind).toBe("open-host-deploy-dialog");
+    if (parsed.payload.kind !== "open-host-deploy-dialog") {
+      throw new Error("expected open-host-deploy-dialog payload");
+    }
+    expect(parsed.payload.hostName).toBe("nexus");
+  });
 });

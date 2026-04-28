@@ -7,6 +7,13 @@ import {
 } from "./model.ts";
 import { FlakeMetadata, ProjectDocumentationState, RepositoryIdentity } from "./environment.ts";
 import {
+  FlakeOnboardingHostScale,
+  FlakeOnboardingLayoutPattern,
+  FlakeOnboardingModuleNamespace,
+  FlakeOnboardingModuleStyle,
+  FlakeOnboardingPlatformMatrix,
+} from "./flakeOnboarding.ts";
+import {
   ApprovalRequestId,
   CheckpointRef,
   CommandId,
@@ -46,8 +53,11 @@ export const ProviderSandboxMode = Schema.Literals([
   "danger-full-access",
 ]);
 export type ProviderSandboxMode = typeof ProviderSandboxMode.Type;
+export const RemoteHostAccessPolicy = Schema.Literals(["hal-managed-only", "direct-allowed"]);
+export type RemoteHostAccessPolicy = typeof RemoteHostAccessPolicy.Type;
 
 export const DEFAULT_PROVIDER_KIND: ProviderKind = "codex";
+export const DEFAULT_REMOTE_HOST_ACCESS_POLICY: RemoteHostAccessPolicy = "hal-managed-only";
 
 export const CodexModelSelection = Schema.Struct({
   provider: Schema.Literal("codex"),
@@ -275,6 +285,8 @@ export const HostWorkflowStatus = Schema.Literals([
 export type HostWorkflowStatus = typeof HostWorkflowStatus.Type;
 export const HostCreationWorkflowStatus = HostWorkflowStatus;
 export type HostCreationWorkflowStatus = HostWorkflowStatus;
+export const FlakeCreationWorkflowStatus = HostWorkflowStatus;
+export type FlakeCreationWorkflowStatus = HostWorkflowStatus;
 
 export const HostCreationWorkflow = Schema.Struct({
   kind: Schema.Literal("host-creation"),
@@ -297,7 +309,23 @@ export const HostRemovalWorkflow = Schema.Struct({
 });
 export type HostRemovalWorkflow = typeof HostRemovalWorkflow.Type;
 
-export const ThreadWorkflow = Schema.Union([HostCreationWorkflow, HostRemovalWorkflow]);
+export const FlakeCreationWorkflow = Schema.Struct({
+  kind: Schema.Literal("flake-creation"),
+  hostScale: FlakeOnboardingHostScale,
+  platformMatrix: FlakeOnboardingPlatformMatrix,
+  homeManager: Schema.Boolean,
+  moduleStyle: FlakeOnboardingModuleStyle,
+  moduleNamespace: Schema.optional(Schema.NullOr(FlakeOnboardingModuleNamespace)),
+  layoutPattern: FlakeOnboardingLayoutPattern,
+  status: Schema.optional(FlakeCreationWorkflowStatus),
+});
+export type FlakeCreationWorkflow = typeof FlakeCreationWorkflow.Type;
+
+export const ThreadWorkflow = Schema.Union([
+  HostCreationWorkflow,
+  HostRemovalWorkflow,
+  FlakeCreationWorkflow,
+]);
 export type ThreadWorkflow = typeof ThreadWorkflow.Type;
 
 export const OrchestrationCheckpointFile = Schema.Struct({
@@ -367,6 +395,9 @@ export const OrchestrationThread = Schema.Struct({
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_REMOTE_HOST_ACCESS_POLICY)),
+  ),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
@@ -425,6 +456,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_REMOTE_HOST_ACCESS_POLICY)),
+  ),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
@@ -540,6 +574,9 @@ const ThreadCreateCommand = Schema.Struct({
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_REMOTE_HOST_ACCESS_POLICY)),
+  ),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
@@ -576,6 +613,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy),
   workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
 });
 
@@ -600,6 +638,9 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_REMOTE_HOST_ACCESS_POLICY)),
+  ),
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
@@ -916,6 +957,9 @@ export const ThreadCreatedPayload = Schema.Struct({
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_REMOTE_HOST_ACCESS_POLICY)),
+  ),
   interactionMode: ProviderInteractionMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_PROVIDER_INTERACTION_MODE)),
   ),
@@ -951,9 +995,23 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy),
   workflow: Schema.optional(Schema.NullOr(ThreadWorkflow)),
   updatedAt: IsoDateTime,
 });
+
+export const UiActionRequestedPayload = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("open-host-deploy-dialog"),
+    actionId: TrimmedNonEmptyString,
+    hostName: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("open-fleet-rollout"),
+    actionId: TrimmedNonEmptyString,
+  }),
+]);
+export type UiActionRequestedPayload = typeof UiActionRequestedPayload.Type;
 
 export const ThreadRuntimeModeSetPayload = Schema.Struct({
   threadId: ThreadId,

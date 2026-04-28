@@ -6,12 +6,10 @@ import { ThreadId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
 import * as CodexRpc from "effect-codex-app-server/rpc";
 
-import {
-  CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
-  CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
-} from "../CodexDeveloperInstructions.ts";
+import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
 import {
   buildTurnStartParams,
+  handleHalDynamicToolCall,
   isRecoverableThreadResumeError,
   openCodexThread,
 } from "./CodexSessionRuntime.ts";
@@ -25,18 +23,45 @@ function makeThreadOpenResponse(
     modelProvider: "openai",
     approvalPolicy: "never",
     approvalsReviewer: "user",
-    sandbox: { type: "danger-full-access" },
+    sandbox: { type: "dangerFullAccess" },
     thread: {
+      cliVersion: "0.0.0-test",
+      cwd: "/tmp/project",
+      ephemeral: false,
       id: threadId,
-      createdAt: "2026-04-18T00:00:00.000Z",
-      source: { session: "cli" },
+      createdAt: 1_713_398_400,
+      modelProvider: "openai",
+      preview: "",
+      source: "cli",
       turns: [],
-      status: {
-        state: "idle",
-        activeFlags: [],
-      },
+      status: { type: "idle" },
+      updatedAt: 1_713_398_400,
     },
   } as unknown as CodexRpc.ClientRequestResponsesByMethod["thread/start"];
+}
+
+function firstResponseText(
+  response: ReturnType<typeof handleHalDynamicToolCall>["response"],
+): string | undefined {
+  const firstItem = response.contentItems[0];
+  return firstItem?.type === "inputText" ? firstItem.text : undefined;
+}
+
+function dynamicToolNames(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object" || !("dynamicTools" in payload)) {
+    return [];
+  }
+  const dynamicTools = (payload as { dynamicTools?: unknown }).dynamicTools;
+  if (!Array.isArray(dynamicTools)) {
+    return [];
+  }
+  return dynamicTools.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || !("name" in entry)) {
+      return [];
+    }
+    const name = (entry as { name?: unknown }).name;
+    return typeof name === "string" ? [name] : [];
+  });
 }
 
 describe("buildTurnStartParams", () => {
@@ -71,7 +96,9 @@ describe("buildTurnStartParams", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "plan",
+          }),
         },
       },
     });
@@ -116,7 +143,9 @@ describe("buildTurnStartParams", () => {
         settings: {
           model: "gpt-5.3-codex",
           reasoning_effort: "medium",
-          developer_instructions: CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
+          developer_instructions: buildCodexDeveloperInstructions({
+            interactionMode: "default",
+          }),
         },
       },
     });
@@ -147,9 +176,10 @@ describe("buildTurnStartParams", () => {
     );
     assert.ok(
       developerInstructions.includes(
-        "Unless the user explicitly broadens the request, treat nexus as the default host",
+        "The scoped host is the default for investigation, planning, implementation, and answers.",
       ),
     );
+    assert.ok(developerInstructions.includes("Remote host access rules:"));
   });
 
   it("omits collaboration mode when interaction mode is absent", () => {
@@ -224,6 +254,107 @@ describe("isRecoverableThreadResumeError", () => {
   });
 });
 
+describe("handleHalDynamicToolCall", () => {
+  it("opens a scoped host deploy dialog when hostName is omitted", () => {
+    const handled = handleHalDynamicToolCall({
+      payload: {
+        tool: "hal_open_host_deploy_dialog",
+        arguments: {},
+        callId: "call-1",
+        threadId: "provider-thread-1",
+        turnId: "turn-1",
+      },
+      providerContext: {
+        projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
+        scopedHostName: "nexus",
+        flake: {
+          hostNames: ["nexus", "router"],
+        },
+      },
+    });
+
+    assert.equal(handled.response.success, true);
+    assert.deepStrictEqual(handled.uiActionPayload, {
+      kind: "open-host-deploy-dialog",
+      actionId: handled.uiActionPayload?.actionId,
+      hostName: "nexus",
+    });
+  });
+
+  it("rejects host deploy when project scope does not identify a host", () => {
+    const handled = handleHalDynamicToolCall({
+      payload: {
+        tool: "hal_open_host_deploy_dialog",
+        arguments: {},
+        callId: "call-1",
+        threadId: "provider-thread-1",
+        turnId: "turn-1",
+      },
+      providerContext: {
+        projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
+        flake: {
+          hostNames: ["nexus", "router"],
+        },
+      },
+    });
+
+    assert.equal(handled.response.success, false);
+    assert.equal(handled.uiActionPayload, undefined);
+    assert.ok(
+      firstResponseText(handled.response)?.includes("single host deploy or a fleet rollout"),
+    );
+  });
+
+  it("opens fleet rollout for project-scoped flake threads", () => {
+    const handled = handleHalDynamicToolCall({
+      payload: {
+        tool: "hal_open_fleet_rollout",
+        arguments: {},
+        callId: "call-1",
+        threadId: "provider-thread-1",
+        turnId: "turn-1",
+      },
+      providerContext: {
+        projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
+        flake: {
+          hostNames: ["nexus", "router"],
+        },
+      },
+    });
+
+    assert.equal(handled.response.success, true);
+    assert.deepStrictEqual(handled.uiActionPayload, {
+      kind: "open-fleet-rollout",
+      actionId: handled.uiActionPayload?.actionId,
+    });
+  });
+
+  it("rejects unknown HAL tool names cleanly", () => {
+    const handled = handleHalDynamicToolCall({
+      payload: {
+        tool: "hal_unknown_tool",
+        arguments: {},
+        callId: "call-1",
+        threadId: "provider-thread-1",
+        turnId: "turn-1",
+      },
+      providerContext: {
+        projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
+        flake: {
+          hostNames: ["nexus"],
+        },
+      },
+    });
+
+    assert.equal(handled.response.success, false);
+    assert.ok(firstResponseText(handled.response)?.includes("Unknown HAL tool"));
+  });
+});
+
 describe("openCodexThread", () => {
   it("falls back to thread/start when resume fails recoverably", async () => {
     const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
@@ -244,6 +375,18 @@ describe("openCodexThread", () => {
         }
         return Effect.succeed(started as CodexRpc.ClientRequestResponsesByMethod[M]);
       },
+      requestRaw: <M extends "thread/start" | "thread/resume">(method: M, payload: unknown) => {
+        calls.push({ method, payload });
+        if (method === "thread/resume") {
+          return Effect.fail(
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32603,
+              errorMessage: "thread not found",
+            }),
+          );
+        }
+        return Effect.succeed(started);
+      },
     };
 
     const opened = await Effect.runPromise(
@@ -263,6 +406,63 @@ describe("openCodexThread", () => {
       calls.map((call) => call.method),
       ["thread/resume", "thread/start"],
     );
+    assert.deepStrictEqual(dynamicToolNames(calls[0]?.payload), [
+      "hal_open_host_deploy_dialog",
+      "hal_open_fleet_rollout",
+    ]);
+    assert.deepStrictEqual(dynamicToolNames(calls[1]?.payload), [
+      "hal_open_host_deploy_dialog",
+      "hal_open_fleet_rollout",
+    ]);
+  });
+
+  it("retries thread resume without dynamic tools when the server rejects the field", async () => {
+    const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+    const resumed = makeThreadOpenResponse("resumed-thread");
+    const client = {
+      request: <M extends "thread/start" | "thread/resume">(
+        method: M,
+        payload: CodexRpc.ClientRequestParamsByMethod[M],
+      ) => {
+        calls.push({ method, payload });
+        return Effect.succeed(resumed as CodexRpc.ClientRequestResponsesByMethod[M]);
+      },
+      requestRaw: <M extends "thread/start" | "thread/resume">(method: M, payload: unknown) => {
+        calls.push({ method, payload });
+        if (method === "thread/resume" && calls.length === 1) {
+          return Effect.fail(
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32602,
+              errorMessage: "unknown field `dynamicTools`",
+            }),
+          );
+        }
+        return Effect.succeed(resumed);
+      },
+    };
+
+    const opened = await Effect.runPromise(
+      openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "resume-thread",
+      }),
+    );
+
+    assert.equal(opened.thread.id, "resumed-thread");
+    assert.deepStrictEqual(
+      calls.map((call) => call.method),
+      ["thread/resume", "thread/resume"],
+    );
+    assert.deepStrictEqual(dynamicToolNames(calls[0]?.payload), [
+      "hal_open_host_deploy_dialog",
+      "hal_open_fleet_rollout",
+    ]);
+    assert.deepStrictEqual(dynamicToolNames(calls[1]?.payload), []);
   });
 
   it("propagates non-recoverable resume failures", async () => {
@@ -282,6 +482,17 @@ describe("openCodexThread", () => {
         return Effect.succeed(
           makeThreadOpenResponse("fresh-thread") as CodexRpc.ClientRequestResponsesByMethod[M],
         );
+      },
+      requestRaw: <M extends "thread/start" | "thread/resume">(method: M, _payload: unknown) => {
+        if (method === "thread/resume") {
+          return Effect.fail(
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32603,
+              errorMessage: "timed out waiting for server",
+            }),
+          );
+        }
+        return Effect.succeed(makeThreadOpenResponse("fresh-thread"));
       },
     };
 

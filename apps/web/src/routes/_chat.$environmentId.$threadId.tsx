@@ -17,10 +17,16 @@ import {
   stripDiffSearchParams,
 } from "../diffRouteSearch";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { findLatestPendingFlakeUiAction } from "../lib/flakeUiActions";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
 import { createThreadSelectorByRef } from "../storeSelectors";
-import { resolveThreadRouteRef, buildThreadRouteParams } from "../threadRoutes";
+import { useUiStateStore } from "../uiStateStore";
+import {
+  buildFlakeRouteParams,
+  resolveThreadRouteRef,
+  buildThreadRouteParams,
+} from "../threadRoutes";
 import { RightPanelSheet } from "../components/RightPanelSheet";
 import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from "~/components/ui/sidebar";
 
@@ -29,6 +35,7 @@ const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = "chat_diff_sidebar_width";
 const DIFF_INLINE_DEFAULT_WIDTH = "clamp(28rem,48vw,44rem)";
 const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 26 * 16;
 const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208;
+const EMPTY_HANDLED_FLAKE_UI_ACTION_IDS: readonly string[] = [];
 
 const DiffLoadingFallback = (props: { mode: DiffPanelMode }) => {
   return (
@@ -167,6 +174,13 @@ function ChatThreadRouteView() {
   const environmentHasAnyThreads = environmentHasServerThreads || environmentHasDraftThreads;
   const diffOpen = search.diff === "1";
   const shouldUseDiffSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
+  const queuePendingFlakeUiAction = useUiStateStore((store) => store.queuePendingFlakeUiAction);
+  const markFlakeUiActionHandled = useUiStateStore((store) => store.markFlakeUiActionHandled);
+  const handledFlakeUiActionIds = useUiStateStore(
+    (store) =>
+      (threadRef ? store.handledFlakeUiActionIdsByThreadId[threadRef.threadId] : undefined) ??
+      EMPTY_HANDLED_FLAKE_UI_ACTION_IDS,
+  );
   const currentThreadKey = threadRef ? `${threadRef.environmentId}:${threadRef.threadId}` : null;
   const [diffPanelMountState, setDiffPanelMountState] = useState(() => ({
     threadKey: currentThreadKey,
@@ -228,6 +242,39 @@ function ChatThreadRouteView() {
     }
     finalizePromotedDraftThreadByRef(threadRef);
   }, [draftThread?.promotedTo, serverThreadStarted, threadRef]);
+
+  useEffect(() => {
+    if (!threadRef || !serverThread) {
+      return;
+    }
+    const nextAction = findLatestPendingFlakeUiAction({
+      activities: serverThread.activities,
+      environmentId: threadRef.environmentId,
+      projectId: serverThread.projectId,
+      threadId: threadRef.threadId,
+      handledActionIds: handledFlakeUiActionIds,
+    });
+    if (!nextAction) {
+      return;
+    }
+
+    markFlakeUiActionHandled(threadRef.threadId, nextAction.actionId);
+    queuePendingFlakeUiAction(nextAction);
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams({
+        environmentId: threadRef.environmentId,
+        projectId: serverThread.projectId,
+      }),
+    });
+  }, [
+    handledFlakeUiActionIds,
+    markFlakeUiActionHandled,
+    navigate,
+    queuePendingFlakeUiAction,
+    serverThread,
+    threadRef,
+  ]);
 
   if (!threadRef || !bootstrapComplete || !routeThreadExists) {
     return null;

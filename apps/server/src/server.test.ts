@@ -127,6 +127,10 @@ import {
   type ProjectSecretsServiceShape,
 } from "./project/Services/ProjectSecretsService.ts";
 import {
+  ProjectFlakeBootstrapService,
+  type ProjectFlakeBootstrapServiceShape,
+} from "./project/Services/ProjectFlakeBootstrapService.ts";
+import {
   DeployRsResolver,
   type DeployRsResolverShape,
 } from "./project/Services/DeployRsResolver.ts";
@@ -432,6 +436,7 @@ const makeDefaultOrchestrationThreadShell = (
     title: "Default Thread",
     modelSelection: defaultModelSelection,
     runtimeMode: "full-access",
+    remoteHostAccessPolicy: "hal-managed-only",
     interactionMode: "default",
     branch: null,
     worktreePath: null,
@@ -586,6 +591,7 @@ const buildAppUnderTest = (options?: {
     projectDashboardContentResolver?: Partial<ProjectDashboardContentResolverShape>;
     nixDesignerService?: Partial<NixDesignerServiceShape>;
     projectSecretsService?: Partial<ProjectSecretsServiceShape>;
+    projectFlakeBootstrapService?: Partial<ProjectFlakeBootstrapServiceShape>;
     deploymentSafetyService?: Partial<DeploymentSafetyServiceShape>;
     hostDeploymentService?: Partial<HostDeploymentServiceShape>;
     fleetDeploymentService?: Partial<FleetDeploymentServiceShape>;
@@ -794,48 +800,71 @@ const buildAppUnderTest = (options?: {
       ),
     );
 
-    const appLayer = servedRoutesLayer.pipe(
-      Layer.provide(
-        Layer.mock(BrowserTraceCollector)({
-          record: () => Effect.void,
-          ...options?.layers?.browserTraceCollector,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerLifecycleEvents)({
-          publish: (event) => Effect.succeed({ ...(event as any), sequence: 1 }),
-          snapshot: Effect.succeed({ sequence: 0, events: [] }),
-          stream: Stream.empty,
-          ...options?.layers?.serverLifecycleEvents,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerRuntimeStartup)({
-          awaitCommandReady: Effect.void,
-          markHttpListening: Effect.void,
-          enqueueCommand: (effect) => effect,
-          ...options?.layers?.serverRuntimeStartup,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ServerEnvironment)({
-          getEnvironmentId: Effect.succeed(testEnvironmentDescriptor.environmentId),
-          getDescriptor: Effect.succeed(testEnvironmentDescriptor),
-          ...options?.layers?.serverEnvironment,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProjectDashboardContentResolver)({
-          resolveDashboardContent: () =>
-            Effect.succeed({
-              mode: "flake",
-              selectedHostName: null,
-              flakeSource: {
-                path: "flake.nix",
-                language: "nix",
-                contents: "",
-              },
-              nixDesigner: {
+    const appLayer = servedRoutesLayer
+      .pipe(
+        Layer.provide(
+          Layer.mock(BrowserTraceCollector)({
+            record: () => Effect.void,
+            ...options?.layers?.browserTraceCollector,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerLifecycleEvents)({
+            publish: (event) => Effect.succeed({ ...(event as any), sequence: 1 }),
+            snapshot: Effect.succeed({ sequence: 0, events: [] }),
+            stream: Stream.empty,
+            ...options?.layers?.serverLifecycleEvents,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerRuntimeStartup)({
+            awaitCommandReady: Effect.void,
+            markHttpListening: Effect.void,
+            enqueueCommand: (effect) => effect,
+            ...options?.layers?.serverRuntimeStartup,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ServerEnvironment)({
+            getEnvironmentId: Effect.succeed(testEnvironmentDescriptor.environmentId),
+            getDescriptor: Effect.succeed(testEnvironmentDescriptor),
+            ...options?.layers?.serverEnvironment,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectDashboardContentResolver)({
+            resolveDashboardContent: () =>
+              Effect.succeed({
+                mode: "flake",
+                selectedHostName: null,
+                flakeSource: {
+                  path: "flake.nix",
+                  language: "nix",
+                  contents: "",
+                },
+                nixDesigner: {
+                  status: "missing",
+                  revision: null,
+                  builtAt: null,
+                  optionCount: 0,
+                  packageCount: 0,
+                  lastError: null,
+                  staleReason: null,
+                },
+                generalChanges: [],
+                hostChanges: [],
+                hostDoc: null,
+                hostSummaries: [],
+                latestMaintenance: null,
+                secrets: null,
+              }),
+            ...options?.layers?.projectDashboardContentResolver,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(NixDesignerService)({
+            getStatus: () =>
+              Effect.succeed({
                 status: "missing",
                 revision: null,
                 builtAt: null,
@@ -843,212 +872,205 @@ const buildAppUnderTest = (options?: {
                 packageCount: 0,
                 lastError: null,
                 staleReason: null,
-              },
-              generalChanges: [],
-              hostChanges: [],
-              hostDoc: null,
-              hostSummaries: [],
-              latestMaintenance: null,
-              secrets: null,
-            }),
-          ...options?.layers?.projectDashboardContentResolver,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(NixDesignerService)({
-          getStatus: () =>
-            Effect.succeed({
-              status: "missing",
-              revision: null,
-              builtAt: null,
-              optionCount: 0,
-              packageCount: 0,
-              lastError: null,
-              staleReason: null,
-            }),
-          ensureIndex: () =>
-            Effect.succeed({
-              status: "ready",
-              revision: "test-revision",
-              builtAt: new Date(0).toISOString(),
-              optionCount: 0,
-              packageCount: 0,
-              lastError: null,
-              staleReason: null,
-            }),
-          rebuildIndex: () =>
-            Effect.succeed({
-              status: "ready",
-              revision: "test-revision",
-              builtAt: new Date(0).toISOString(),
-              optionCount: 0,
-              packageCount: 0,
-              lastError: null,
-              staleReason: null,
-            }),
-          createDescriptor: () =>
-            Effect.succeed({
-              id: "t3-nix-designer",
-              transport: "stdio",
-              command: process.execPath,
-              args: ["/tmp/nix-designer-mcp.js"],
-            }),
-          ...options?.layers?.nixDesignerService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(ProjectSecretsService)({
-          getSummary: () =>
-            Effect.succeed({
-              provider: "none" as const,
-              detectionSummary: null,
-              hostInventories: [],
-              updatedAt: new Date(0).toISOString(),
-            }),
-          ...options?.layers?.projectSecretsService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(DeploymentSafetyService)({
-          preview: () =>
-            Effect.succeed({
-              report: {
+              }),
+            ensureIndex: () =>
+              Effect.succeed({
+                status: "ready",
+                revision: "test-revision",
+                builtAt: new Date(0).toISOString(),
+                optionCount: 0,
+                packageCount: 0,
+                lastError: null,
+                staleReason: null,
+              }),
+            rebuildIndex: () =>
+              Effect.succeed({
+                status: "ready",
+                revision: "test-revision",
+                builtAt: new Date(0).toISOString(),
+                optionCount: 0,
+                packageCount: 0,
+                lastError: null,
+                staleReason: null,
+              }),
+            createDescriptor: () =>
+              Effect.succeed({
+                id: "t3-nix-designer",
+                transport: "stdio",
+                command: process.execPath,
+                args: ["/tmp/nix-designer-mcp.js"],
+              }),
+            ...options?.layers?.nixDesignerService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectSecretsService)({
+            getSummary: () =>
+              Effect.succeed({
+                provider: "none" as const,
+                detectionSummary: null,
+                hostInventories: [],
+                updatedAt: new Date(0).toISOString(),
+              }),
+            ...options?.layers?.projectSecretsService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(ProjectFlakeBootstrapService)({
+            bootstrapFlake: (input) =>
+              Effect.succeed({
+                projectId: input.projectId,
+                layoutPattern: "shared-modules" as const,
+                flakePath: "flake.nix",
+                repoStylePath: ".hal/repo-style.json",
+                createdSkeletonPaths: [".hal", "hosts", "profiles"],
+              }),
+            ...options?.layers?.projectFlakeBootstrapService,
+          }),
+        ),
+      )
+      .pipe(
+        Layer.provide(
+          Layer.mock(DeploymentSafetyService)({
+            preview: () =>
+              Effect.succeed({
+                report: {
+                  activationStrategy: "switch",
+                  acknowledgedWarnings: false,
+                  canProceed: true,
+                  blockingFailureCount: 0,
+                  warningCount: 0,
+                  checks: [],
+                  updatedAt: new Date(0).toISOString(),
+                },
+              }),
+            buildPostflightReport: () =>
+              Effect.succeed({
                 activationStrategy: "switch",
-                acknowledgedWarnings: false,
-                canProceed: true,
-                blockingFailureCount: 0,
-                warningCount: 0,
                 checks: [],
                 updatedAt: new Date(0).toISOString(),
-              },
-            }),
-          buildPostflightReport: () =>
-            Effect.succeed({
-              activationStrategy: "switch",
-              checks: [],
-              updatedAt: new Date(0).toISOString(),
-            }),
-          ...options?.layers?.deploymentSafetyService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(HostDeploymentService)({
-          start: () =>
-            Effect.succeed({
-              disposition: "started" as const,
-              deployment: makeHostDeploymentSummary(),
-            }),
-          get: () => Effect.succeed(null),
-          listByProjectId: () => Effect.succeed(new Map()),
-          stop: () => Effect.succeed(null),
-          openTerminal: () => Effect.succeed(makeHostDeploymentTerminalSnapshot()),
-          resizeTerminal: () => Effect.void,
-          subscribeTerminalEvents: () => Stream.empty,
-          ...options?.layers?.hostDeploymentService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(FleetDeploymentService)({
-          start: () =>
-            Effect.succeed({
-              disposition: "started" as const,
-              rollout: makeFleetDeploymentSummary(),
-            }),
-          get: () => Effect.succeed(null),
-          stop: () => Effect.succeed(null),
-          ...options?.layers?.fleetDeploymentService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(HostDriftService)({
-          refresh: () =>
-            Effect.succeed({
-              disposition: "started" as const,
-              summary: makeHostDriftSummary(),
-            }),
-          get: () => Effect.succeed(null),
-          listByProjectId: () => Effect.succeed(new Map()),
-          cancel: () => Effect.succeed(null),
-          submitSecret: () =>
-            Effect.succeed({
-              accepted: false,
-              status: "idle" as const,
-            }),
-          reconcile: () =>
-            Effect.succeed({
-              threadId: defaultThreadId,
-            }),
-          openTerminal: () => Effect.succeed(makeHostDriftTerminalSnapshot()),
-          resizeTerminal: () => Effect.void,
-          subscribeTerminalEvents: () => Stream.empty,
-          ...options?.layers?.hostDriftService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(HostImportService)({
-          start: () =>
-            Effect.succeed({
-              disposition: "started" as const,
-              summary: makeHostImportSummary(),
-            }),
-          get: () => Effect.succeed(null),
-          cancel: () => Effect.succeed(null),
-          submitSecret: () =>
-            Effect.succeed({
-              accepted: false,
-              status: "idle" as const,
-            }),
-          openTerminal: () => Effect.succeed(makeHostImportTerminalSnapshot()),
-          resizeTerminal: () => Effect.void,
-          subscribeTerminalEvents: () => Stream.empty,
-          ...options?.layers?.hostImportService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(FlakeMaintenanceService)({
-          start: () =>
-            Effect.succeed({
-              disposition: "started" as const,
-              maintenance: makeFlakeMaintenanceSummary(),
-            }),
-          get: () => Effect.succeed(null),
-          stop: () => Effect.succeed(null),
-          openTerminal: () => Effect.succeed(makeFlakeMaintenanceTerminalSnapshot()),
-          resizeTerminal: () => Effect.void,
-          subscribeTerminalEvents: () => Stream.empty,
-          ...options?.layers?.flakeMaintenanceService,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(DeployRsResolver)({
-          resolveHostDeployments: () => Effect.succeed(new Map()),
-          ...options?.layers?.deployRsResolver,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(FlakeMetadataResolver)({
-          resolve: () =>
-            Effect.succeed({
-              host: null,
-              hosts: [],
-              source: "missing",
-              flakePath: "flake.nix",
-              diagnostics: [],
-            }),
-          ...options?.layers?.flakeMetadataResolver,
-        }),
-      ),
-      Layer.provide(
-        Layer.mock(RepositoryIdentityResolver)({
-          resolve: () => Effect.succeed(null),
-          ...options?.layers?.repositoryIdentityResolver,
-        }),
-      ),
-      Layer.provideMerge(authTestLayer),
-      Layer.provide(workspaceAndProjectServicesLayer),
-      Layer.provideMerge(FetchHttpClient.layer),
-      Layer.provide(layerConfig),
-    );
+              }),
+            ...options?.layers?.deploymentSafetyService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(HostDeploymentService)({
+            start: () =>
+              Effect.succeed({
+                disposition: "started" as const,
+                deployment: makeHostDeploymentSummary(),
+              }),
+            get: () => Effect.succeed(null),
+            listByProjectId: () => Effect.succeed(new Map()),
+            stop: () => Effect.succeed(null),
+            openTerminal: () => Effect.succeed(makeHostDeploymentTerminalSnapshot()),
+            resizeTerminal: () => Effect.void,
+            subscribeTerminalEvents: () => Stream.empty,
+            ...options?.layers?.hostDeploymentService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(FleetDeploymentService)({
+            start: () =>
+              Effect.succeed({
+                disposition: "started" as const,
+                rollout: makeFleetDeploymentSummary(),
+              }),
+            get: () => Effect.succeed(null),
+            stop: () => Effect.succeed(null),
+            ...options?.layers?.fleetDeploymentService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(HostDriftService)({
+            refresh: () =>
+              Effect.succeed({
+                disposition: "started" as const,
+                summary: makeHostDriftSummary(),
+              }),
+            get: () => Effect.succeed(null),
+            listByProjectId: () => Effect.succeed(new Map()),
+            cancel: () => Effect.succeed(null),
+            submitSecret: () =>
+              Effect.succeed({
+                accepted: false,
+                status: "idle" as const,
+              }),
+            reconcile: () =>
+              Effect.succeed({
+                threadId: defaultThreadId,
+              }),
+            openTerminal: () => Effect.succeed(makeHostDriftTerminalSnapshot()),
+            resizeTerminal: () => Effect.void,
+            subscribeTerminalEvents: () => Stream.empty,
+            ...options?.layers?.hostDriftService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(HostImportService)({
+            start: () =>
+              Effect.succeed({
+                disposition: "started" as const,
+                summary: makeHostImportSummary(),
+              }),
+            get: () => Effect.succeed(null),
+            cancel: () => Effect.succeed(null),
+            submitSecret: () =>
+              Effect.succeed({
+                accepted: false,
+                status: "idle" as const,
+              }),
+            openTerminal: () => Effect.succeed(makeHostImportTerminalSnapshot()),
+            resizeTerminal: () => Effect.void,
+            subscribeTerminalEvents: () => Stream.empty,
+            ...options?.layers?.hostImportService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(FlakeMaintenanceService)({
+            start: () =>
+              Effect.succeed({
+                disposition: "started" as const,
+                maintenance: makeFlakeMaintenanceSummary(),
+              }),
+            get: () => Effect.succeed(null),
+            stop: () => Effect.succeed(null),
+            openTerminal: () => Effect.succeed(makeFlakeMaintenanceTerminalSnapshot()),
+            resizeTerminal: () => Effect.void,
+            subscribeTerminalEvents: () => Stream.empty,
+            ...options?.layers?.flakeMaintenanceService,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(DeployRsResolver)({
+            resolveHostDeployments: () => Effect.succeed(new Map()),
+            ...options?.layers?.deployRsResolver,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(FlakeMetadataResolver)({
+            resolve: () =>
+              Effect.succeed({
+                host: null,
+                hosts: [],
+                source: "missing",
+                flakePath: "flake.nix",
+                diagnostics: [],
+              }),
+            ...options?.layers?.flakeMetadataResolver,
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(RepositoryIdentityResolver)({
+            resolve: () => Effect.succeed(null),
+            ...options?.layers?.repositoryIdentityResolver,
+          }),
+        ),
+        Layer.provideMerge(authTestLayer),
+        Layer.provide(workspaceAndProjectServicesLayer),
+        Layer.provideMerge(FetchHttpClient.layer),
+        Layer.provide(layerConfig),
+      );
 
     yield* Layer.build(appLayer);
     return config;
@@ -2707,6 +2729,57 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         result.failure.message,
         "Workspace file path must stay within the project root.",
       );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("routes websocket rpc projects.bootstrapFlake", () =>
+    Effect.gen(function* () {
+      let receivedInput: Parameters<ProjectFlakeBootstrapServiceShape["bootstrapFlake"]>[0] | null =
+        null;
+
+      yield* buildAppUnderTest({
+        layers: {
+          projectFlakeBootstrapService: {
+            bootstrapFlake: (input) =>
+              Effect.sync(() => {
+                receivedInput = input;
+                return {
+                  projectId: input.projectId,
+                  layoutPattern: "fleet-layered" as const,
+                  flakePath: "flake.nix",
+                  repoStylePath: ".hal/repo-style.json",
+                  createdSkeletonPaths: [".hal", "hosts", "profiles/base"],
+                };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectsBootstrapFlake]({
+            projectId: ProjectId.make("project-bootstrap"),
+            hostScale: "6+",
+            platformMatrix: "mixed",
+            homeManager: true,
+            moduleStyle: "explicit-modules",
+            moduleNamespace: "fleet",
+          }),
+        ),
+      );
+
+      assert.equal(response.layoutPattern, "fleet-layered");
+      assert.equal(response.repoStylePath, ".hal/repo-style.json");
+      assert.deepEqual(response.createdSkeletonPaths, [".hal", "hosts", "profiles/base"]);
+      assert.deepEqual(receivedInput, {
+        projectId: ProjectId.make("project-bootstrap"),
+        hostScale: "6+",
+        platformMatrix: "mixed",
+        homeManager: true,
+        moduleStyle: "explicit-modules",
+        moduleNamespace: "fleet",
+      });
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

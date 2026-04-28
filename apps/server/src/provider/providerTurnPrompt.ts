@@ -10,6 +10,13 @@ import {
   buildHostWorkflowPlanGuidance,
   resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
+import {
+  buildFlakeCreationImplementationGuidance,
+  buildFlakeCreationPlanGuidance,
+  buildFlakeCreationPlanningOutcomeGuidance,
+  FLAKE_DEPLOY_NODES_ATTR_PATH,
+  FLAKE_HAL_HOSTS_ATTR_PATH,
+} from "@t3tools/shared/flakeWorkflow";
 
 import { buildScopedHostInstructionBlock } from "./hostScopeInstructions.ts";
 import { buildThreadScopeCapsule } from "./threadScopeCapsule.ts";
@@ -41,6 +48,19 @@ function toThreadWorkflow(workflow: ProviderTurnContext["workflow"]): ThreadWork
         ...(workflow.hostType !== undefined ? { hostType: workflow.hostType } : {}),
         ...(workflow.status !== undefined ? { status: workflow.status } : {}),
       };
+    case "flake-creation":
+      return {
+        kind: "flake-creation",
+        hostScale: workflow.hostScale,
+        platformMatrix: workflow.platformMatrix,
+        homeManager: workflow.homeManager,
+        moduleStyle: workflow.moduleStyle,
+        ...(workflow.moduleNamespace !== undefined
+          ? { moduleNamespace: workflow.moduleNamespace }
+          : {}),
+        layoutPattern: workflow.layoutPattern,
+        ...(workflow.status !== undefined ? { status: workflow.status } : {}),
+      };
   }
 }
 
@@ -60,6 +80,14 @@ function buildFlakeContextLines(providerContext: ProviderTurnContext): ReadonlyA
   }
   if (providerContext.flake?.documentationPaths?.hostDoc) {
     lines.push(`- Host documentation path: ${providerContext.flake.documentationPaths.hostDoc}.`);
+  }
+  if (providerContext.flake?.documentationPaths?.repoStyle) {
+    lines.push(
+      `- Repository style guide path: ${providerContext.flake.documentationPaths.repoStyle}.`,
+    );
+    lines.push(
+      `- The repository style guide includes the local ${FLAKE_HAL_HOSTS_ATTR_PATH} and ${FLAKE_DEPLOY_NODES_ATTR_PATH} bootstrap contract.`,
+    );
   }
   return lines;
 }
@@ -118,7 +146,65 @@ function buildWorkflowContextLines(input: {
             "- Keep the thread planning-only until implementation is explicitly approved.",
             ...buildHostWorkflowPlanningOutcomeGuidance(workflow),
           ];
+    case "flake-creation":
+      return implementationMode
+        ? [
+            "- This thread is implementing the approved flake-creation plan for this project.",
+            `- Selected layout pattern: ${workflow.layoutPattern}.`,
+            `- Planned host scale: ${workflow.hostScale}.`,
+            `- Planned platform matrix: ${workflow.platformMatrix}.`,
+            `- Home Manager: ${workflow.homeManager ? "enabled" : "disabled"}.`,
+            `- Module style: ${workflow.moduleStyle}.`,
+            ...(workflow.moduleNamespace
+              ? [`- Module namespace: ${workflow.moduleNamespace}.`]
+              : []),
+            ...buildFlakeCreationImplementationGuidance(workflow),
+          ]
+        : [
+            "- This thread is planning the initial flake scaffold for this project.",
+            "- HAL already created a minimal bootstrap flake before the workflow started.",
+            `- Selected layout pattern: ${workflow.layoutPattern}.`,
+            `- Planned host scale: ${workflow.hostScale}.`,
+            `- Planned platform matrix: ${workflow.platformMatrix}.`,
+            `- Home Manager: ${workflow.homeManager ? "enabled" : "disabled"}.`,
+            `- Module style: ${workflow.moduleStyle}.`,
+            ...(workflow.moduleNamespace
+              ? [`- Module namespace: ${workflow.moduleNamespace}.`]
+              : []),
+            ...buildFlakeCreationPlanGuidance(workflow),
+            "- Keep the thread planning-only until implementation is explicitly approved.",
+            ...buildFlakeCreationPlanningOutcomeGuidance(),
+          ];
   }
+}
+
+function buildRemoteHostAccessLines(providerContext: ProviderTurnContext): ReadonlyArray<string> {
+  const policy = providerContext.remoteHostAccessPolicy ?? "hal-managed-only";
+  return [
+    `- Remote host access policy: ${policy}.`,
+    "- Do not initiate direct remote host access from chat. This includes ssh, scp, sftp, rsync, mosh, nixos-rebuild --target-host, nixos-anywhere, or direct deploy-rs commands against a target host.",
+    "- Use HAL-managed deployment actions instead of remote shell deployment commands.",
+    "- If the request is to deploy but the target is not one clear host, ask whether the user wants a single host deploy or a fleet rollout before proceeding.",
+    "- HAL-managed SSH import workflows are exempt because they run outside the agent terminal.",
+  ];
+}
+
+function buildHalDeployActionLines(providerContext: ProviderTurnContext): ReadonlyArray<string> {
+  if (providerContext.projectKind !== "nix-flake") {
+    return [];
+  }
+
+  return [
+    "- HAL deploy actions are available in this session for flake-backed deploy requests.",
+    "- Use `hal_open_host_deploy_dialog` for a single clear host deploy.",
+    "- Use `hal_open_fleet_rollout` for multi-host deploys.",
+    "- These are HAL client actions, not local CLI commands or MCP resources. Invoke them by exact name even if they do not appear in shell tool listings.",
+    ...(providerContext.scopedHostName
+      ? [
+          `- This thread is scoped to host ${providerContext.scopedHostName}. For deploy requests targeting that host, call \`hal_open_host_deploy_dialog\` immediately; omitting hostName is valid.`,
+        ]
+      : []),
+  ];
 }
 
 export function buildProviderTurnPromptPreamble(input: {
@@ -139,6 +225,13 @@ export function buildProviderTurnPromptPreamble(input: {
   const hostScopeBlock = buildScopedHostInstructionBlock(input.providerContext);
   if (hostScopeBlock) {
     sections.push(hostScopeBlock);
+  }
+  sections.push(
+    ["Remote host access:", ...buildRemoteHostAccessLines(input.providerContext)].join("\n"),
+  );
+  const halDeployActionLines = buildHalDeployActionLines(input.providerContext);
+  if (halDeployActionLines.length > 0) {
+    sections.push(["HAL deploy actions:", ...halDeployActionLines].join("\n"));
   }
   const flakeContextLines = buildFlakeContextLines(input.providerContext);
   if (flakeContextLines.length > 0) {

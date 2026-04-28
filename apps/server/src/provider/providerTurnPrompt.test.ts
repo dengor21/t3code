@@ -14,6 +14,7 @@ describe("providerTurnPrompt", () => {
       interactionMode: "plan",
       providerContext: {
         projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
         scopedHostName: "nexus",
         flake: {
           flakePath: "flake.nix",
@@ -21,6 +22,7 @@ describe("providerTurnPrompt", () => {
           documentationPaths: {
             generalChanges: "docs/general-changes.md",
             hostDoc: "docs/hosts/nexus.md",
+            repoStyle: ".hal/repo-style.json",
           },
         },
         workflow: {
@@ -42,9 +44,28 @@ describe("providerTurnPrompt", () => {
     assert.ok(preamble?.includes("host: nexus"));
     assert.ok(preamble?.includes("scope_status: locked"));
     assert.ok(preamble?.includes("host_flake_attr: nixosConfigurations.nexus"));
+    assert.ok(preamble?.includes("repo_style: .hal/repo-style.json"));
     assert.ok(preamble?.includes("Host scope:"));
+    assert.ok(preamble?.includes("Remote host access:"));
+    assert.ok(preamble?.includes("Remote host access policy: hal-managed-only."));
+    assert.ok(preamble?.includes("HAL deploy actions:"));
+    assert.ok(
+      preamble?.includes(
+        "HAL deploy actions are available in this session for flake-backed deploy requests.",
+      ),
+    );
+    assert.ok(
+      preamble?.includes("Use `hal_open_host_deploy_dialog` for a single clear host deploy."),
+    );
+    assert.ok(preamble?.includes("Use `hal_open_fleet_rollout` for multi-host deploys."));
     assert.ok(preamble?.includes("This thread is scoped to host nexus."));
     assert.ok(preamble?.includes("This workspace is a Nix flake repository."));
+    assert.ok(preamble?.includes("Repository style guide path: .hal/repo-style.json."));
+    assert.ok(
+      preamble?.includes(
+        "The repository style guide includes the local halHosts and deploy.nodes bootstrap contract.",
+      ),
+    );
     assert.ok(
       preamble?.includes(
         "planning creation of host nexus by importing an existing system over SSH.",
@@ -67,6 +88,7 @@ describe("providerTurnPrompt", () => {
       interactionMode: "default",
       providerContext: {
         projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
         workflow: {
           kind: "host-removal",
           hostName: "nexus",
@@ -85,6 +107,7 @@ describe("providerTurnPrompt", () => {
     const preamble = buildProviderTurnPromptPreamble({
       providerContext: {
         projectKind: "generic",
+        remoteHostAccessPolicy: "hal-managed-only",
         scopedHostName: "router",
       },
     });
@@ -96,6 +119,7 @@ describe("providerTurnPrompt", () => {
         "",
         '<hal_context version="1">',
         "project_kind: generic",
+        "remote_host_access_policy: hal-managed-only",
         "scope: host",
         "host: router",
         "scope_status: locked",
@@ -108,7 +132,54 @@ describe("providerTurnPrompt", () => {
         "- The scoped host is the default for investigation, planning, implementation, and answers.",
         "- Before asking which host is meant, use router. If tools are available, call hal_current_scope before asking the user.",
         "- Before touching other hosts or shared cross-host configuration, call out the wider impact explicitly and require scope expansion or approval.",
+        "",
+        "Remote host access:",
+        "- Remote host access policy: hal-managed-only.",
+        "- Do not initiate direct remote host access from chat. This includes ssh, scp, sftp, rsync, mosh, nixos-rebuild --target-host, nixos-anywhere, or direct deploy-rs commands against a target host.",
+        "- Use HAL-managed deployment actions instead of remote shell deployment commands.",
+        "- If the request is to deploy but the target is not one clear host, ask whether the user wants a single host deploy or a fleet rollout before proceeding.",
+        "- HAL-managed SSH import workflows are exempt because they run outside the agent terminal.",
       ].join("\n"),
+    );
+  });
+
+  it("builds a flake-creation planning preamble", () => {
+    const preamble = buildProviderTurnPromptPreamble({
+      interactionMode: "plan",
+      providerContext: {
+        projectKind: "nix-flake",
+        remoteHostAccessPolicy: "hal-managed-only",
+        flake: {
+          flakePath: "flake.nix",
+          documentationPaths: {
+            generalChanges: ".hal/changes.md",
+            repoStyle: ".hal/repo-style.json",
+          },
+        },
+        workflow: {
+          kind: "flake-creation",
+          hostScale: "6+",
+          platformMatrix: "mixed",
+          homeManager: true,
+          moduleStyle: "explicit-modules",
+          moduleNamespace: "fleet",
+          layoutPattern: "fleet-layered",
+          status: "planning",
+        },
+      },
+    });
+
+    assert.ok(
+      preamble?.includes("This thread is planning the initial flake scaffold for this project."),
+    );
+    assert.ok(preamble?.includes("HAL already created a minimal bootstrap flake"));
+    assert.ok(preamble?.includes("Selected layout pattern: fleet-layered."));
+    assert.ok(preamble?.includes("Module namespace: fleet."));
+    assert.ok(preamble?.includes("Keep halHosts and deploy.nodes present in flake.nix."));
+    assert.ok(
+      preamble?.includes(
+        "Use .hal/repo-style.json as the local source of truth for the halHosts contract.",
+      ),
     );
   });
 });

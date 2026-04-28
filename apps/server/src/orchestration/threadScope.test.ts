@@ -56,6 +56,7 @@ const baseThread: OrchestrationThread = {
     model: "gpt-5-codex",
   },
   runtimeMode: "full-access",
+  remoteHostAccessPolicy: "hal-managed-only",
   interactionMode: "default",
   branch: null,
   worktreePath: null,

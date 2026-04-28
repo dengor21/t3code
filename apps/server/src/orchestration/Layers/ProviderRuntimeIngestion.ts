@@ -277,6 +277,24 @@ function runtimeEventToActivities(
       ];
     }
 
+    case "ui.action.requested": {
+      return [
+        {
+          id: event.eventId,
+          createdAt: event.createdAt,
+          tone: "tool",
+          kind: "ui.action.requested",
+          summary:
+            event.payload.kind === "open-host-deploy-dialog"
+              ? `Opened HAL deploy flow for ${event.payload.hostName}`
+              : "Opened HAL fleet rollout flow",
+          payload: event.payload,
+          turnId: toTurnId(event.turnId) ?? null,
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "turn.plan.updated": {
       return [
         {

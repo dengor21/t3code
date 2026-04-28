@@ -80,9 +80,17 @@
       "types": "./src/hostWorkflow.ts",
       "import": "./src/hostWorkflow.ts"
     },
+    "./flakeWorkflow": {
+      "types": "./src/flakeWorkflow.ts",
+      "import": "./src/flakeWorkflow.ts"
+    },
     "./threadScope": {
       "types": "./src/threadScope.ts",
       "import": "./src/threadScope.ts"
+    },
+    "./threadWorkflow": {
+      "types": "./src/threadWorkflow.ts",
+      "import": "./src/threadWorkflow.ts"
     },
     "./runtimeHome": {
       "types": "./src/runtimeHome.ts",

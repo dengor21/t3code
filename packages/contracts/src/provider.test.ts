@@ -179,6 +179,7 @@ describe("ProviderSendTurnInput", () => {
       providerContext: {
         projectKind: "nix-flake",
         workspaceRoot: "/workspace/flake",
+        remoteHostAccessPolicy: "hal-managed-only",
         scopedHostName: "nexus",
         flake: {
           flakePath: "flake.nix",
@@ -203,6 +204,7 @@ describe("ProviderSendTurnInput", () => {
 
     expect(parsed.providerContext?.projectKind).toBe("nix-flake");
     expect(parsed.providerContext?.workspaceRoot).toBe("/workspace/flake");
+    expect(parsed.providerContext?.remoteHostAccessPolicy).toBe("hal-managed-only");
     expect(parsed.providerContext?.scopedHostName).toBe("nexus");
     expect(parsed.providerContext?.flake?.flakePath).toBe("flake.nix");
     expect(parsed.providerContext?.flake?.hostNames).toEqual(["nexus", "router"]);

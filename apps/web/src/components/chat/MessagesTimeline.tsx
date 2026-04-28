@@ -7,10 +7,12 @@ import {
 } from "@t3tools/contracts";
 import {
   HOST_CREATION_WORKFLOW_KIND,
-  buildHostWorkflowBadgeLabel,
-  buildHostWorkflowStartLabel,
   resolveHostCreationBootstrapMode,
 } from "@t3tools/shared/hostWorkflow";
+import {
+  buildThreadWorkflowBadgeLabel,
+  buildThreadWorkflowStartLabel,
+} from "@t3tools/shared/threadWorkflow";
 import {
   createContext,
   memo,
@@ -286,14 +288,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <div className="w-full rounded-xl border border-border/60 bg-card/40 px-4 py-3 text-left">
               <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
                 <Badge variant="label" className="text-[10px]">
-                  {buildHostWorkflowBadgeLabel(workflow)}
+                  {buildThreadWorkflowBadgeLabel(workflow)}
                 </Badge>
-                <Badge variant="outline" className="text-[10px]">
-                  Host: {workflow.hostName}
-                </Badge>
+                {"hostName" in workflow ? (
+                  <Badge variant="outline" className="text-[10px]">
+                    Host: {workflow.hostName}
+                  </Badge>
+                ) : null}
               </div>
               <p className="text-center text-sm text-muted-foreground">
-                {workflow.kind === HOST_CREATION_WORKFLOW_KIND ? (
+                {workflow.kind === "flake-creation" ? (
+                  <>
+                    Start the guided flake-creation workflow. HAL already wrote the minimal
+                    bootstrap files, and the agent will confirm the scaffold, preserve the chosen
+                    layout pattern, and ask only the follow-up questions that materially affect the
+                    repo structure.
+                  </>
+                ) : workflow.kind === HOST_CREATION_WORKFLOW_KIND ? (
                   resolveHostCreationBootstrapMode(workflow.bootstrapMode) ===
                   "existing-via-ssh" ? (
                     <>
@@ -324,7 +335,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               {onStartWorkflow && (
                 <div className="mt-3 flex justify-center">
                   <Button size="sm" onClick={onStartWorkflow}>
-                    {buildHostWorkflowStartLabel(workflow)}
+                    {buildThreadWorkflowStartLabel(workflow)}
                   </Button>
                 </div>
               )}

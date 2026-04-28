@@ -92,6 +92,22 @@ export interface WorkspacePathsShape {
     { absolutePath: string; relativePath: string },
     WorkspacePathOutsideRootError
   >;
+
+  /**
+   * Resolve an absolute or relative path into the workspace root.
+   *
+   * Absolute paths may be accepted when they live inside the workspace root or
+   * within one of the additional roots that should map back into the workspace
+   * tree.
+   */
+  readonly resolvePathWithinRoot: (input: {
+    workspaceRoot: string;
+    path: string;
+    additionalRoots?: ReadonlyArray<string>;
+  }) => Effect.Effect<
+    { absolutePath: string; relativePath: string },
+    WorkspacePathOutsideRootError
+  >;
 }
 
 /**

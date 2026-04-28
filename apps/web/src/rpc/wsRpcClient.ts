@@ -67,6 +67,7 @@ export interface WsRpcClient {
   readonly projects: {
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
+    readonly bootstrapFlake: RpcUnaryMethod<typeof WS_METHODS.projectsBootstrapFlake>;
     readonly getDashboardContent: RpcUnaryMethod<typeof WS_METHODS.projectsGetDashboardContent>;
     readonly rebuildNixDesignerIndex: RpcUnaryMethod<
       typeof WS_METHODS.projectsRebuildNixDesignerIndex
@@ -204,6 +205,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
+      bootstrapFlake: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsBootstrapFlake](input)),
       getDashboardContent: (input) =>
         transport.request((client) => client[WS_METHODS.projectsGetDashboardContent](input)),
       rebuildNixDesignerIndex: (input) =>

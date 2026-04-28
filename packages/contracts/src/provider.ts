@@ -14,6 +14,7 @@ import {
   HostCreationWorkflowOsFamily,
   HostWorkflowStatus,
   ModelSelection,
+  RemoteHostAccessPolicy,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
   ProviderApprovalDecision,
@@ -25,6 +26,13 @@ import {
   ProviderUserInputAnswers,
   RuntimeMode,
 } from "./orchestration.ts";
+import {
+  FlakeOnboardingHostScale,
+  FlakeOnboardingLayoutPattern,
+  FlakeOnboardingModuleNamespace,
+  FlakeOnboardingModuleStyle,
+  FlakeOnboardingPlatformMatrix,
+} from "./flakeOnboarding.ts";
 import { NixDesignerScope } from "./nixDesigner.ts";
 
 export const McpServerDescriptor = Schema.Struct({
@@ -51,6 +59,7 @@ export type ProviderProjectKind = typeof ProviderProjectKind.Type;
 export const ProviderFlakeDocumentationPaths = Schema.Struct({
   generalChanges: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   hostDoc: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  repoStyle: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 export type ProviderFlakeDocumentationPaths = typeof ProviderFlakeDocumentationPaths.Type;
 
@@ -80,12 +89,23 @@ export const ProviderWorkflowContext = Schema.Union([
     hostType: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     status: Schema.optional(HostWorkflowStatus),
   }),
+  Schema.Struct({
+    kind: Schema.Literal("flake-creation"),
+    hostScale: FlakeOnboardingHostScale,
+    platformMatrix: FlakeOnboardingPlatformMatrix,
+    homeManager: Schema.Boolean,
+    moduleStyle: FlakeOnboardingModuleStyle,
+    moduleNamespace: Schema.optional(Schema.NullOr(FlakeOnboardingModuleNamespace)),
+    layoutPattern: FlakeOnboardingLayoutPattern,
+    status: Schema.optional(HostWorkflowStatus),
+  }),
 ]);
 export type ProviderWorkflowContext = typeof ProviderWorkflowContext.Type;
 
 export const ProviderTurnContext = Schema.Struct({
   projectKind: Schema.optional(ProviderProjectKind),
   workspaceRoot: Schema.optional(TrimmedNonEmptyString),
+  remoteHostAccessPolicy: Schema.optional(RemoteHostAccessPolicy),
   scopedHostName: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   flake: Schema.optional(ProviderFlakeContext),
   workflow: Schema.optional(ProviderWorkflowContext),

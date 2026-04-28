@@ -239,6 +239,7 @@ function mapThread(thread: OrchestrationThread, environmentId: EnvironmentId): T
     title: thread.title,
     modelSelection: normalizeModelSelection(thread.modelSelection),
     runtimeMode: thread.runtimeMode,
+    remoteHostAccessPolicy: thread.remoteHostAccessPolicy,
     interactionMode: thread.interactionMode,
     session: thread.session ? mapSession(thread.session) : null,
     messages: thread.messages.map((message) => mapMessage(environmentId, message)),
@@ -277,6 +278,7 @@ function mapThreadShell(
     title: thread.title,
     modelSelection: normalizeModelSelection(thread.modelSelection),
     runtimeMode: thread.runtimeMode,
+    remoteHostAccessPolicy: thread.remoteHostAccessPolicy,
     interactionMode: thread.interactionMode,
     error: sanitizeThreadErrorMessage(thread.session?.lastError),
     createdAt: thread.createdAt,
@@ -299,6 +301,7 @@ function mapThreadShell(
     environmentId,
     projectId: thread.projectId,
     title: thread.title,
+    remoteHostAccessPolicy: thread.remoteHostAccessPolicy,
     interactionMode: thread.interactionMode,
     session,
     createdAt: thread.createdAt,
@@ -333,6 +336,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     title: thread.title,
     modelSelection: thread.modelSelection,
     runtimeMode: thread.runtimeMode,
+    remoteHostAccessPolicy: thread.remoteHostAccessPolicy,
     interactionMode: thread.interactionMode,
     error: thread.error,
     createdAt: thread.createdAt,
@@ -451,6 +455,17 @@ function threadWorkflowsEqual(
         left.hostName === right.hostName &&
         (left.target ?? null) === (right.target ?? null) &&
         (left.hostType ?? null) === (right.hostType ?? null) &&
+        (left.status ?? null) === (right.status ?? null)
+      );
+    case "flake-creation":
+      return (
+        right.kind === "flake-creation" &&
+        left.hostScale === right.hostScale &&
+        left.platformMatrix === right.platformMatrix &&
+        left.homeManager === right.homeManager &&
+        left.moduleStyle === right.moduleStyle &&
+        (left.moduleNamespace ?? null) === (right.moduleNamespace ?? null) &&
+        left.layoutPattern === right.layoutPattern &&
         (left.status ?? null) === (right.status ?? null)
       );
   }

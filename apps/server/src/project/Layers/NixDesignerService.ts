@@ -16,6 +16,7 @@ import {
 
 import { ServerConfig } from "../../config.ts";
 import { runProcess } from "../../processRunner.ts";
+import { loadNixFlakeMetadataJson } from "../nixFlakeMetadata.ts";
 import { loadNixOptionsJson } from "../nixDesignerOptionsOutput.ts";
 import {
   NixDesignerService,
@@ -103,6 +104,18 @@ function normalizeStatus(input: {
   };
 }
 
+function errorStatus(message: string): ProjectDashboardNixDesigner {
+  return {
+    status: "error",
+    revision: null,
+    builtAt: null,
+    optionCount: 0,
+    packageCount: 0,
+    lastError: message,
+    staleReason: null,
+  };
+}
+
 const make = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig;
   const indexRootDir = join(serverConfig.providerStatusCacheDir, "nix-designer");
@@ -129,17 +142,7 @@ const make = Effect.gen(function* () {
 
   const resolveRevision = (workspaceRoot: string) =>
     Effect.tryPromise({
-      try: async () => {
-        const result = await runProcess("nix", ["flake", "metadata", "--json", workspaceRoot], {
-          cwd: workspaceRoot,
-          timeoutMs: 60_000,
-          maxBufferBytes: 8 * 1024 * 1024,
-        });
-        if ((result.code ?? 1) !== 0) {
-          throw new Error(result.stderr.trim() || "Failed to resolve flake metadata.");
-        }
-        return resolveLockedNixpkgsRevision(JSON.parse(result.stdout));
-      },
+      try: async () => resolveLockedNixpkgsRevision(await loadNixFlakeMetadataJson(workspaceRoot)),
       catch: (cause) => toServiceError("Failed to resolve locked nixpkgs revision.", cause),
     });
 
@@ -176,7 +179,7 @@ const make = Effect.gen(function* () {
         manifest: existing.manifest,
         revision: lockedRevision.revision,
       });
-    });
+    }).pipe(Effect.catch((failure) => Effect.succeed(errorStatus(failure.message))));
 
   const rebuildIndex: NixDesignerServiceShape["rebuildIndex"] = (input) =>
     Effect.gen(function* () {

@@ -10,6 +10,14 @@ const OPENCODE_HAL_SCOPE_RULES = [
   "- Before modifying or deploying a different host, or shared configuration that may affect multiple hosts, call out the wider impact and require explicit scope expansion or approval.",
 ].join("\n");
 
+const OPENCODE_REMOTE_HOST_ACCESS_RULES = [
+  "Remote host access rules:",
+  "- Do not initiate direct remote host access from chat. This includes ssh, scp, sftp, rsync, mosh, nixos-rebuild --target-host, nixos-anywhere, or direct deploy-rs commands against a target host.",
+  "- Use HAL-managed deployment actions instead of remote shell deployment commands.",
+  "- If the deploy target is not one clear host, ask whether the user wants a single host deploy or a fleet rollout before proceeding.",
+  "- HAL-managed SSH import workflows are exempt because they run outside the agent terminal.",
+].join("\n");
+
 const OPENCODE_SHARED_TOOL_RULES = [
   "Question tool rules:",
   "- OpenCode exposes a `question` tool. Do not call `request_user_input`.",
@@ -42,6 +50,8 @@ Default mode rules:
 
 ${OPENCODE_HAL_SCOPE_RULES}
 
+${OPENCODE_REMOTE_HOST_ACCESS_RULES}
+
 ${OPENCODE_SHARED_TOOL_RULES}`;
 
 export const OPENCODE_PLAN_MODE_SYSTEM_INSTRUCTIONS = `You are running inside HAL through OpenCode in planning mode.
@@ -53,6 +63,8 @@ Plan mode rules:
 - Finish with a single decision-complete <proposed_plan> block that is ready for implementation.
 
 ${OPENCODE_HAL_SCOPE_RULES}
+
+${OPENCODE_REMOTE_HOST_ACCESS_RULES}
 
 ${OPENCODE_SHARED_TOOL_RULES}`;
 

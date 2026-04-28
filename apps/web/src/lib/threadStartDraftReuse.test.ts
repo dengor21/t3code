@@ -147,4 +147,34 @@ describe("shouldReuseDraftForThreadStart", () => {
       }),
     ).toBe(true);
   });
+
+  it("reuses a matching flake-creation draft", () => {
+    expect(
+      shouldReuseDraftForThreadStart({
+        requestedScopedHostName: null,
+        requestedWorkflow: {
+          kind: "flake-creation",
+          hostScale: "2-5",
+          platformMatrix: "mixed",
+          homeManager: true,
+          moduleStyle: "explicit-modules",
+          moduleNamespace: "shared",
+          layoutPattern: "shared-modules",
+          status: "planning",
+        },
+        existingScopedHostName: null,
+        existingWorkflow: {
+          kind: "flake-creation",
+          hostScale: "2-5",
+          platformMatrix: "mixed",
+          homeManager: true,
+          moduleStyle: "explicit-modules",
+          moduleNamespace: "shared",
+          layoutPattern: "shared-modules",
+          status: "planning",
+        },
+        existingPrompt: "   ",
+      }),
+    ).toBe(true);
+  });
 });

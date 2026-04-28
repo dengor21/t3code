@@ -28,6 +28,8 @@ import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { buildCodexDeveloperInstructions } from "../CodexDeveloperInstructions.ts";
+import { evaluateActionScope } from "../../orchestration/scopePolicy.ts";
+import { normalizeHostName, type ResolvedThreadScope } from "../../orchestration/threadScope.ts";
 
 const PROVIDER = "codex" as const;
 
@@ -46,6 +48,71 @@ const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
   "unknown thread",
   "does not exist",
 ];
+const HAL_OPEN_HOST_DEPLOY_DIALOG_TOOL = "hal_open_host_deploy_dialog";
+const HAL_OPEN_FLEET_ROLLOUT_TOOL = "hal_open_fleet_rollout";
+
+const HalOpenHostDeployDialogArgs = Schema.Struct({
+  hostName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+});
+
+const HalOpenFleetRolloutArgs = Schema.Struct({});
+
+const CodexThreadStartParamsWithDynamicTools = EffectCodexSchema.V2ThreadStartParams.pipe(
+  Schema.fieldsAssign({
+    dynamicTools: Schema.optionalKey(
+      Schema.Array(EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec),
+    ),
+  }),
+);
+
+const CodexThreadResumeParamsWithDynamicTools = EffectCodexSchema.V2ThreadResumeParams.pipe(
+  Schema.fieldsAssign({
+    dynamicTools: Schema.optionalKey(
+      Schema.Array(EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec),
+    ),
+  }),
+);
+
+type CodexThreadStartParamsWithDynamicTools = typeof CodexThreadStartParamsWithDynamicTools.Type;
+type CodexThreadResumeParamsWithDynamicTools = typeof CodexThreadResumeParamsWithDynamicTools.Type;
+type BuiltCodexThreadStartParams = {
+  readonly cwd: string;
+  readonly approvalPolicy: NonNullable<EffectCodexSchema.V2ThreadStartParams["approvalPolicy"]>;
+  readonly sandbox: NonNullable<EffectCodexSchema.V2ThreadStartParams["sandbox"]>;
+  readonly dynamicTools: ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec>;
+  readonly model?: NonNullable<EffectCodexSchema.V2ThreadStartParams["model"]>;
+  readonly serviceTier?: NonNullable<EffectCodexSchema.V2ThreadStartParams["serviceTier"]>;
+};
+
+const HAL_DYNAMIC_TOOL_SPECS: ReadonlyArray<EffectCodexSchema.V2ThreadStartParams__DynamicToolSpec> =
+  [
+    {
+      name: HAL_OPEN_HOST_DEPLOY_DIALOG_TOOL,
+      description:
+        "Open HAL's deploy dialog for a single flake host. Use when the user wants to deploy one clear host.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          hostName: {
+            anyOf: [{ type: "string" }, { type: "null" }],
+            description:
+              "Optional host name. Omit it when the thread is already scoped to the target host.",
+          },
+        },
+      },
+    },
+    {
+      name: HAL_OPEN_FLEET_ROLLOUT_TOOL,
+      description:
+        "Open HAL's fleet rollout flow for a multi-host deploy. Use when the user wants to deploy multiple hosts.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+    },
+  ] as const;
 
 export const CodexResumeCursorSchema = Schema.Struct({
   threadId: Schema.String,
@@ -199,6 +266,60 @@ interface PendingUserInput {
   readonly answers: Deferred.Deferred<ProviderUserInputAnswers>;
 }
 
+function providerContextToResolvedScope(
+  providerContext: ProviderTurnContext | undefined,
+): ResolvedThreadScope {
+  const scopedHostName = normalizeHostName(providerContext?.scopedHostName ?? null);
+  if (scopedHostName !== null) {
+    return {
+      kind: "host",
+      projectId: "runtime-context",
+      workspaceRoot: providerContext?.workspaceRoot ?? process.cwd(),
+      hostName: scopedHostName,
+      locked: true,
+      source: "scopedHostName",
+    };
+  }
+  return {
+    kind: "project",
+    projectId: "runtime-context",
+    workspaceRoot: providerContext?.workspaceRoot ?? process.cwd(),
+    locked: false,
+    source: "default",
+  };
+}
+
+function dynamicToolCallResponse(
+  text: string,
+  success: boolean,
+): EffectCodexSchema.DynamicToolCallResponse {
+  return {
+    success,
+    contentItems: [
+      {
+        type: "inputText",
+        text,
+      },
+    ],
+  };
+}
+
+function resolveKnownHostName(
+  providerContext: ProviderTurnContext,
+  requestedHostName: string,
+): string | null {
+  const normalizedRequestedHostName = normalizeHostName(requestedHostName);
+  if (normalizedRequestedHostName === null) {
+    return null;
+  }
+
+  const matchedHostName =
+    providerContext.flake?.hostNames?.find(
+      (hostName) => normalizeHostName(hostName) === normalizedRequestedHostName,
+    ) ?? null;
+  return matchedHostName;
+}
+
 type CodexServerNotification = {
   readonly [M in CodexRpc.ServerNotificationMethod]: {
     readonly method: M;
@@ -262,12 +383,13 @@ function buildThreadStartParams(input: {
   readonly runtimeMode: RuntimeMode;
   readonly model: string | undefined;
   readonly serviceTier: EffectCodexSchema.V2ThreadStartParams__ServiceTier | undefined;
-}): EffectCodexSchema.V2ThreadStartParams {
+}): BuiltCodexThreadStartParams {
   const config = runtimeModeToThreadConfig(input.runtimeMode);
   return {
     cwd: input.cwd,
     approvalPolicy: config.approvalPolicy,
     sandbox: config.sandbox,
+    dynamicTools: [...HAL_DYNAMIC_TOOL_SPECS],
     ...(input.model ? { model: input.model } : {}),
     ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
   };
@@ -363,6 +485,158 @@ export function buildTurnStartParams(input: {
   );
 }
 
+export function handleHalDynamicToolCall(input: {
+  readonly payload: EffectCodexSchema.ServerRequest__DynamicToolCallParams;
+  readonly providerContext: ProviderTurnContext | undefined;
+}): {
+  readonly response: EffectCodexSchema.DynamicToolCallResponse;
+  readonly uiActionPayload?:
+    | {
+        readonly kind: "open-host-deploy-dialog";
+        readonly actionId: string;
+        readonly hostName: string;
+      }
+    | {
+        readonly kind: "open-fleet-rollout";
+        readonly actionId: string;
+      };
+} {
+  const providerContext = input.providerContext;
+  const remoteHostAccessPolicy = providerContext?.remoteHostAccessPolicy;
+  if (
+    remoteHostAccessPolicy !== "hal-managed-only" &&
+    remoteHostAccessPolicy !== "direct-allowed"
+  ) {
+    return {
+      response: dynamicToolCallResponse(
+        "HAL deploy actions are unavailable in this thread. Ask the user to use a sanctioned HAL workflow.",
+        false,
+      ),
+    };
+  }
+
+  if (!providerContext || providerContext.projectKind !== "nix-flake") {
+    return {
+      response: dynamicToolCallResponse(
+        "HAL deploy actions are only available in flake-backed projects. Ask the user to use a sanctioned HAL workflow.",
+        false,
+      ),
+    };
+  }
+
+  const scope = providerContextToResolvedScope(providerContext);
+
+  switch (input.payload.tool) {
+    case HAL_OPEN_HOST_DEPLOY_DIALOG_TOOL: {
+      let decodedArgs: typeof HalOpenHostDeployDialogArgs.Type;
+      try {
+        decodedArgs = Schema.decodeUnknownSync(HalOpenHostDeployDialogArgs)(
+          input.payload.arguments,
+        );
+      } catch {
+        return {
+          response: dynamicToolCallResponse(
+            "HAL host deploy requires arguments shaped like { hostName?: string }.",
+            false,
+          ),
+        };
+      }
+
+      const requestedHostName = decodedArgs.hostName?.trim() || providerContext.scopedHostName;
+      if (!requestedHostName) {
+        return {
+          response: dynamicToolCallResponse(
+            "No deploy host is scoped for this thread. Ask the user whether they want a single host deploy or a fleet rollout.",
+            false,
+          ),
+        };
+      }
+
+      const knownHostName = resolveKnownHostName(providerContext, requestedHostName);
+      if (knownHostName === null) {
+        return {
+          response: dynamicToolCallResponse(
+            `HAL cannot open a deploy flow for '${requestedHostName}' because it is not a known flake host in this project.`,
+            false,
+          ),
+        };
+      }
+
+      const policyDecision = evaluateActionScope({
+        scope,
+        action: {
+          kind: "deploy-host",
+          hostName: knownHostName,
+        },
+      });
+      if (policyDecision.kind !== "allow") {
+        return {
+          response: dynamicToolCallResponse(
+            `${policyDecision.reason} Ask the user to broaden scope explicitly or use a sanctioned HAL workflow.`,
+            false,
+          ),
+        };
+      }
+
+      return {
+        response: dynamicToolCallResponse(
+          `Opened HAL deploy flow for host ${knownHostName}. Review preflight checks.`,
+          true,
+        ),
+        uiActionPayload: {
+          kind: "open-host-deploy-dialog",
+          actionId: randomUUID(),
+          hostName: knownHostName,
+        },
+      };
+    }
+
+    case HAL_OPEN_FLEET_ROLLOUT_TOOL: {
+      try {
+        Schema.decodeUnknownSync(HalOpenFleetRolloutArgs)(input.payload.arguments);
+      } catch {
+        return {
+          response: dynamicToolCallResponse("HAL fleet rollout does not accept arguments.", false),
+        };
+      }
+
+      const policyDecision = evaluateActionScope({
+        scope,
+        action: {
+          kind: "deploy-fleet",
+        },
+      });
+      if (policyDecision.kind !== "allow") {
+        return {
+          response: dynamicToolCallResponse(
+            `${policyDecision.reason} Ask the user to confirm fleet rollout scope explicitly.`,
+            false,
+          ),
+        };
+      }
+
+      return {
+        response: dynamicToolCallResponse(
+          "Opened HAL fleet rollout flow. Review preflight checks and host selection.",
+          true,
+        ),
+        uiActionPayload: {
+          kind: "open-fleet-rollout",
+          actionId: randomUUID(),
+        },
+      };
+    }
+
+    default:
+      return {
+        response: dynamicToolCallResponse(
+          `Unknown HAL tool '${input.payload.tool}'. Ask the user to use a sanctioned HAL workflow.`,
+          false,
+        ),
+      };
+  }
+}
+
 function classifyCodexStderrLine(rawLine: string): { readonly message: string } | null {
   const line = rawLine.replaceAll(ANSI_ESCAPE_REGEX, "").trim();
   if (!line) {
@@ -402,6 +676,10 @@ interface CodexThreadOpenClient {
     method: M,
     payload: CodexRpc.ClientRequestParamsByMethod[M],
   ) => Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
+  readonly requestRaw: <M extends CodexThreadOpenMethod>(
+    method: M,
+    payload: unknown,
+  ) => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
 }
 
 export const openCodexThread = (input: {
@@ -420,27 +698,57 @@ export const openCodexThread = (input: {
     model: input.requestedModel,
     serviceTier: input.serviceTier,
   });
+  const decodeThreadOpenResponse = <M extends CodexThreadOpenMethod>(method: M, payload: unknown) =>
+    Schema.decodeUnknownEffect(
+      method === "thread/start"
+        ? EffectCodexSchema.V2ThreadStartResponse
+        : EffectCodexSchema.V2ThreadResumeResponse,
+    )(payload).pipe(
+      Effect.mapError((error) => toProtocolParseError(`Invalid ${method} response payload`, error)),
+    ) as Effect.Effect<CodexRpc.ClientRequestResponsesByMethod[M], CodexErrors.CodexAppServerError>;
 
   if (resumeThreadId === undefined) {
-    return input.client.request("thread/start", startParams);
+    return input.client
+      .requestRaw("thread/start", startParams)
+      .pipe(Effect.flatMap((payload) => decodeThreadOpenResponse("thread/start", payload)));
   }
 
-  return input.client
-    .request("thread/resume", {
-      threadId: resumeThreadId,
-      ...startParams,
-    })
-    .pipe(
-      Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-          threadId: input.threadId,
-          requestedRuntimeMode: input.runtimeMode,
-          resumeThreadId,
-          recoverable: true,
-          cause: error.message,
-        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+  const resumeWithDynamicTools = {
+    threadId: resumeThreadId,
+    ...startParams,
+  } satisfies CodexThreadResumeParamsWithDynamicTools;
+
+  const resumeWithoutDynamicTools = {
+    threadId: resumeThreadId,
+    approvalPolicy: startParams.approvalPolicy,
+    sandbox: startParams.sandbox,
+    ...(startParams.cwd ? { cwd: startParams.cwd } : {}),
+    ...(startParams.model ? { model: startParams.model } : {}),
+    ...(startParams.serviceTier ? { serviceTier: startParams.serviceTier } : {}),
+  } satisfies CodexRpc.ClientRequestParamsByMethod["thread/resume"];
+
+  return input.client.requestRaw("thread/resume", resumeWithDynamicTools).pipe(
+    Effect.flatMap((payload) => decodeThreadOpenResponse("thread/resume", payload)),
+    Effect.catchIf(
+      (error) => {
+        const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+        return message.includes("dynamictools") || message.includes("unknown field");
+      },
+      () => input.client.request("thread/resume", resumeWithoutDynamicTools),
+    ),
+    Effect.catchIf(isRecoverableThreadResumeError, (error) =>
+      Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+        threadId: input.threadId,
+        requestedRuntimeMode: input.runtimeMode,
+        resumeThreadId,
+        recoverable: true,
+        cause: error.message,
+      }).pipe(
+        Effect.andThen(input.client.requestRaw("thread/start", startParams)),
+        Effect.flatMap((payload) => decodeThreadOpenResponse("thread/start", payload)),
       ),
-    );
+    ),
+  );
 };
 
 function readNotificationThreadId(notification: CodexServerNotification): string | undefined {
@@ -680,6 +988,7 @@ export const makeCodexSessionRuntime = (
     const pendingUserInputsRef = yield* Ref.make(new Map<ApprovalRequestId, PendingUserInput>());
     const collabReceiverTurnsRef = yield* Ref.make(new Map<string, TurnId>());
     const closedRef = yield* Ref.make(false);
+    const currentProviderContextRef = yield* Ref.make<ProviderTurnContext | undefined>(undefined);
 
     const child = yield* spawner
       .spawn(
@@ -1050,6 +1359,41 @@ export const makeCodexSessionRuntime = (
       }),
     );
 
+    yield* client.handleServerRequest("item/tool/call", (payload) =>
+      Effect.gen(function* () {
+        const turnId = TurnId.make(payload.turnId);
+        const itemId = ProviderItemId.make(payload.callId);
+
+        yield* emitEvent({
+          kind: "request",
+          threadId: options.threadId,
+          method: "item/tool/call",
+          turnId,
+          itemId,
+          payload,
+        });
+
+        const providerContext = yield* Ref.get(currentProviderContextRef);
+        const handled = handleHalDynamicToolCall({
+          payload,
+          providerContext,
+        });
+
+        if (handled.uiActionPayload) {
+          yield* emitEvent({
+            kind: "notification",
+            threadId: options.threadId,
+            method: "ui/action/requested",
+            turnId,
+            itemId,
+            payload: handled.uiActionPayload,
+          });
+        }
+
+        return handled.response;
+      }),
+    );
+
     yield* client.handleUnknownServerRequest((method) =>
       Effect.fail(CodexErrors.CodexAppServerRequestError.methodNotFound(method)),
     );
@@ -1142,7 +1486,10 @@ export const makeCodexSessionRuntime = (
       const requestedModel = normalizeCodexModelSlug(options.model);
 
       const opened = yield* openCodexThread({
-        client,
+        client: {
+          request: client.request,
+          requestRaw: client.raw.request,
+        },
         threadId: options.threadId,
         runtimeMode: options.runtimeMode,
         cwd: options.cwd,
@@ -1197,6 +1544,7 @@ export const makeCodexSessionRuntime = (
       getSession: Ref.get(sessionRef),
       sendTurn: (input) =>
         Effect.gen(function* () {
+          yield* Ref.set(currentProviderContextRef, input.providerContext);
           const providerThreadId = yield* readProviderThreadId;
           const normalizedModel = normalizeCodexModelSlug(
             input.model ?? (yield* Ref.get(sessionRef)).model,

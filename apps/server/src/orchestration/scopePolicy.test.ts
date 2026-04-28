@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateActionScope, type HostFilePattern } from "./scopePolicy.ts";
+import {
+  detectDirectRemoteCommands,
+  evaluateActionScope,
+  isDirectRemoteCommand,
+  type HostFilePattern,
+} from "./scopePolicy.ts";
 import type { ResolvedThreadScope } from "./threadScope.ts";
 
 const hostScope: ResolvedThreadScope = {
@@ -106,5 +111,16 @@ describe("scopePolicy", () => {
         },
       }).kind,
     ).toBe("require-explicit-approval");
+  });
+
+  it("detects direct remote host commands without changing runtime behavior yet", () => {
+    expect(isDirectRemoteCommand("ssh root@nexus")).toBe(true);
+    expect(isDirectRemoteCommand("nixos-rebuild switch --target-host root@nexus")).toBe(true);
+    expect(isDirectRemoteCommand("deploy .#nexus")).toBe(true);
+    expect(isDirectRemoteCommand("nix flake check")).toBe(false);
+    expect(detectDirectRemoteCommands("scp file root@nexus:/tmp && mosh nexus")).toMatchObject([
+      { kind: "scp" },
+      { kind: "mosh" },
+    ]);
   });
 });

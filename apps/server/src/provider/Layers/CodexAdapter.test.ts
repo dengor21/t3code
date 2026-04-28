@@ -350,6 +350,7 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
           attachments: [],
           providerContext: {
             projectKind: "nix-flake",
+            remoteHostAccessPolicy: "hal-managed-only",
             workspaceRoot: "/workspace/flake",
             scopedHostName: "nexus",
             flake: {
@@ -361,19 +362,12 @@ sessionErrorLayer("CodexAdapterLive session errors", (it) => {
         }),
       );
 
-      assert.deepStrictEqual(runtime.sendTurnImpl.mock.calls[0]?.[0], {
-        input: "hello",
-        providerContext: {
-          projectKind: "nix-flake",
-          workspaceRoot: "/workspace/flake",
-          scopedHostName: "nexus",
-          flake: {
-            documentationPaths: {
-              generalChanges: ".hal/changes.md",
-            },
-          },
-        },
-      });
+      const runtimeInput = runtime.sendTurnImpl.mock.calls[0]?.[0];
+      assert.equal(runtimeInput?.providerContext?.remoteHostAccessPolicy, "hal-managed-only");
+      assert.equal(runtimeInput?.providerContext?.scopedHostName, "nexus");
+      assert.ok(runtimeInput?.input?.includes("Use the following HAL runtime context"));
+      assert.ok(runtimeInput?.input?.includes("Remote host access policy: hal-managed-only."));
+      assert.ok(runtimeInput?.input?.includes("User request:\nhello"));
     }),
   );
 });
@@ -403,6 +397,39 @@ function startLifecycleRuntime() {
 }
 
 lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
+  it.effect("maps HAL ui action notifications to canonical ui.action.requested events", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const nextEventFiber = yield* Stream.runHead(adapter.streamEvents).pipe(Effect.forkChild);
+
+      yield* runtime.emit({
+        id: asEventId("evt-ui-action"),
+        kind: "notification",
+        provider: "codex",
+        createdAt: new Date().toISOString(),
+        method: "ui/action/requested",
+        threadId: asThreadId("thread-1"),
+        turnId: asTurnId("turn-1"),
+        payload: {
+          kind: "open-host-deploy-dialog",
+          actionId: "action-1",
+          hostName: "nexus",
+        },
+      });
+
+      const nextEvent = yield* Fiber.join(nextEventFiber);
+      assert.ok(Option.isSome(nextEvent));
+      assert.equal(nextEvent.value.type, "ui.action.requested");
+      if (nextEvent.value.type === "ui.action.requested") {
+        assert.deepStrictEqual(nextEvent.value.payload, {
+          kind: "open-host-deploy-dialog",
+          actionId: "action-1",
+          hostName: "nexus",
+        });
+      }
+    }),
+  );
+
   it.effect("maps completed agent message items to canonical item.completed events", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();

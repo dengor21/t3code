@@ -4,6 +4,7 @@ import type {
   OrchestrationEvent,
   OrchestrationReadModel,
 } from "@t3tools/contracts";
+import { DEFAULT_REMOTE_HOST_ACCESS_POLICY } from "@t3tools/contracts";
 import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
@@ -228,6 +229,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           title: command.title,
           modelSelection: command.modelSelection,
           runtimeMode: command.runtimeMode,
+          remoteHostAccessPolicy:
+            command.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
           interactionMode: command.interactionMode,
           branch: command.branch,
           worktreePath: command.worktreePath,
@@ -326,6 +329,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.title !== undefined ? { title: command.title } : {}),
           ...(command.modelSelection !== undefined
             ? { modelSelection: command.modelSelection }
+            : {}),
+          ...(command.remoteHostAccessPolicy !== undefined
+            ? { remoteHostAccessPolicy: command.remoteHostAccessPolicy }
             : {}),
           ...(command.branch !== undefined ? { branch: command.branch } : {}),
           ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),

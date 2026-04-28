@@ -3,9 +3,13 @@ import {
   type DeploymentCheck,
   type DeploymentPostflightReport,
   type DeploymentPreflightReport,
+  FLAKE_ONBOARDING_MODULE_NAMESPACE_PATTERN,
   type FleetDeploymentHostStatus,
   type FleetDeploymentStatus,
   type FlakeHost,
+  type FlakeOnboardingHostScale,
+  type FlakeOnboardingModuleStyle,
+  type FlakeOnboardingPlatformMatrix,
   type FlakeMaintenanceStatus,
   type GitStatusResult,
   type HostSecretInventory,
@@ -24,11 +28,17 @@ import {
   type SecretsProviderKind,
 } from "@t3tools/contracts";
 import { scopedProjectKey } from "@t3tools/client-runtime";
+import FlakeOnboardingPanel from "../components/FlakeOnboardingPanel";
 import {
   isValidHostCreationHostName,
   normalizeHostCreationHostName,
   resolveHostCreationTarget,
 } from "@t3tools/shared/hostWorkflow";
+import {
+  deriveFlakeOnboardingSkeletonPaths,
+  normalizeFlakeModuleNamespace,
+  resolveFlakeOnboardingLayoutPattern,
+} from "@t3tools/shared/flakeWorkflow";
 import { designerFromScopedHostName } from "@t3tools/shared/threadScope";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -854,16 +864,32 @@ function FlakeDashboardRouteView() {
       selectEnvironmentState(store, projectRef?.environmentId ?? null).projectIds.length > 0,
   );
   const project = useStore(useMemo(() => createProjectSelectorByRef(projectRef), [projectRef]));
+  const pendingFlakeUiAction = useUiStateStore((store) =>
+    projectRef
+      ? store.pendingFlakeUiActionByProjectKey[
+          `${projectRef.environmentId}:${projectRef.projectId}`
+        ]
+      : undefined,
+  );
   const nixDesignerEnabled = useUiStateStore((store) =>
     projectUiKey ? (store.nixDesignerEnabledByProjectKey[projectUiKey] ?? false) : false,
   );
   const setProjectNixDesignerEnabled = useUiStateStore(
     (store) => store.setProjectNixDesignerEnabled,
   );
+  const clearPendingFlakeUiAction = useUiStateStore((store) => store.clearPendingFlakeUiAction);
   const { handleNewThread } = useNewThreadHandler();
   const [pendingDocGenerationsByHost, setPendingDocGenerationsByHost] = useState<
     Record<string, PendingHostDocGeneration>
   >({});
+  const [bootstrapFlakePending, setBootstrapFlakePending] = useState(false);
+  const [onboardingHostScale, setOnboardingHostScale] = useState<FlakeOnboardingHostScale>("1");
+  const [onboardingPlatformMatrix, setOnboardingPlatformMatrix] =
+    useState<FlakeOnboardingPlatformMatrix>("nixos");
+  const [onboardingHomeManager, setOnboardingHomeManager] = useState(false);
+  const [onboardingModuleStyle, setOnboardingModuleStyle] =
+    useState<FlakeOnboardingModuleStyle>("inline-first");
+  const [onboardingModuleNamespace, setOnboardingModuleNamespace] = useState("");
   const [createHostDialogOpen, setCreateHostDialogOpen] = useState(false);
   const [createHostName, setCreateHostName] = useState("");
   const [createHostBootstrapMode, setCreateHostBootstrapMode] =
@@ -908,6 +934,50 @@ function FlakeDashboardRouteView() {
   });
   const routeEnvironmentId = projectRef?.environmentId ?? null;
   const routeProjectId = project?.id ?? null;
+  const isFlakeOnboardingActive = project?.flakeMetadata?.source === "missing";
+  const normalizedOnboardingModuleNamespace =
+    normalizeFlakeModuleNamespace(onboardingModuleNamespace);
+  const onboardingModuleNamespaceError =
+    normalizedOnboardingModuleNamespace !== null &&
+    !FLAKE_ONBOARDING_MODULE_NAMESPACE_PATTERN.test(normalizedOnboardingModuleNamespace)
+      ? "Use lowercase letters, numbers, dots, underscores, or hyphens."
+      : null;
+  const onboardingLayoutPattern = useMemo(
+    () =>
+      resolveFlakeOnboardingLayoutPattern({
+        hostScale: onboardingHostScale,
+        platformMatrix: onboardingPlatformMatrix,
+        homeManager: onboardingHomeManager,
+        moduleStyle: onboardingModuleStyle,
+        moduleNamespace: normalizedOnboardingModuleNamespace,
+      }),
+    [
+      normalizedOnboardingModuleNamespace,
+      onboardingHomeManager,
+      onboardingHostScale,
+      onboardingModuleStyle,
+      onboardingPlatformMatrix,
+    ],
+  );
+  const onboardingSkeletonPaths = useMemo(
+    () =>
+      deriveFlakeOnboardingSkeletonPaths({
+        hostScale: onboardingHostScale,
+        platformMatrix: onboardingPlatformMatrix,
+        homeManager: onboardingHomeManager,
+        moduleStyle: onboardingModuleStyle,
+        moduleNamespace: normalizedOnboardingModuleNamespace,
+      }),
+    [
+      normalizedOnboardingModuleNamespace,
+      onboardingHomeManager,
+      onboardingHostScale,
+      onboardingModuleStyle,
+      onboardingPlatformMatrix,
+    ],
+  );
+  const dashboardQueriesEnabled =
+    bootstrapComplete && projectRef !== null && project !== null && !isFlakeOnboardingActive;
   const designerScope = useMemo(
     () => (nixDesignerEnabled ? ({ kind: "project" } as const) : null),
     [nixDesignerEnabled],
@@ -917,6 +987,7 @@ function FlakeDashboardRouteView() {
     [designerScope],
   );
   const previousDashboardViewRef = useRef<FlakeDashboardView | undefined>(search.view);
+  const lastHandledPendingFlakeUiActionIdRef = useRef<string | null>(null);
 
   const resetDeployDialogOptions = useCallback(() => {
     setDeployOnServer(false);
@@ -1100,7 +1171,7 @@ function FlakeDashboardRouteView() {
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
-      enabled: bootstrapComplete && projectRef !== null && project !== null,
+      enabled: dashboardQueriesEnabled,
     }),
     refetchInterval: hasPendingDocGenerations ? 2_000 : false,
   });
@@ -1108,12 +1179,7 @@ function FlakeDashboardRouteView() {
     projectSecretsSummaryQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
-      enabled:
-        bootstrapComplete &&
-        projectRef !== null &&
-        project !== null &&
-        search.view === "secrets" &&
-        requestedHostName === null,
+      enabled: dashboardQueriesEnabled && search.view === "secrets" && requestedHostName === null,
     }),
   );
 
@@ -1122,11 +1188,7 @@ function FlakeDashboardRouteView() {
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
-      enabled:
-        bootstrapComplete &&
-        projectRef !== null &&
-        project !== null &&
-        (matchedRouteHostName ?? requestedHostName) !== null,
+      enabled: dashboardQueriesEnabled && (matchedRouteHostName ?? requestedHostName) !== null,
     }),
     refetchInterval: search.view === "deploy" ? 2_000 : false,
   });
@@ -1137,9 +1199,7 @@ function FlakeDashboardRouteView() {
       projectId: project?.id ?? null,
       hostName: matchedRouteHostName ?? requestedHostName,
       enabled:
-        bootstrapComplete &&
-        projectRef !== null &&
-        project !== null &&
+        dashboardQueriesEnabled &&
         (matchedRouteHostName ?? requestedHostName) !== null &&
         search.view === "drift",
     }),
@@ -1150,11 +1210,7 @@ function FlakeDashboardRouteView() {
     flakeMaintenanceQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
-      enabled:
-        bootstrapComplete &&
-        projectRef !== null &&
-        project !== null &&
-        search.view === "maintenance",
+      enabled: dashboardQueriesEnabled && search.view === "maintenance",
     }),
   );
 
@@ -1162,7 +1218,7 @@ function FlakeDashboardRouteView() {
     ...fleetDeploymentQueryOptions({
       environmentId: projectRef?.environmentId ?? null,
       projectId: project?.id ?? null,
-      enabled: bootstrapComplete && projectRef !== null && project !== null,
+      enabled: dashboardQueriesEnabled,
     }),
     refetchInterval: search.view === "rollout" ? 2_000 : false,
   });
@@ -1180,9 +1236,7 @@ function FlakeDashboardRouteView() {
         : null,
       acknowledgeWarnings: deployAcknowledgeWarnings,
       enabled:
-        bootstrapComplete &&
-        projectRef !== null &&
-        project !== null &&
+        dashboardQueriesEnabled &&
         deployDialogHostName !== null &&
         (!deployMagicRollback ||
           deployConfirmTimeoutSecondsInput.trim().length === 0 ||
@@ -1603,6 +1657,93 @@ function FlakeDashboardRouteView() {
     });
   }, [project, projectRef, queryClient]);
 
+  const invalidateOnboardingQueries = useCallback(() => {
+    return Promise.all([
+      invalidateDashboardQueries(),
+      invalidateHostDeploymentQueries(),
+      invalidateHostDriftQueries(),
+      invalidateFleetDeploymentQueries(),
+      invalidateFlakeMaintenanceQueries(),
+    ]);
+  }, [
+    invalidateDashboardQueries,
+    invalidateFleetDeploymentQueries,
+    invalidateFlakeMaintenanceQueries,
+    invalidateHostDeploymentQueries,
+    invalidateHostDriftQueries,
+  ]);
+
+  const handleBootstrapFlake = useCallback(async () => {
+    if (
+      !projectRef ||
+      !project ||
+      bootstrapFlakePending ||
+      onboardingModuleNamespaceError !== null
+    ) {
+      return;
+    }
+
+    const api = readEnvironmentApi(projectRef.environmentId);
+    if (!api) {
+      toastManager.add({
+        type: "error",
+        title: "Flake onboarding is unavailable",
+      });
+      return;
+    }
+
+    setBootstrapFlakePending(true);
+    try {
+      const result = await api.projects.bootstrapFlake({
+        projectId: project.id,
+        hostScale: onboardingHostScale,
+        platformMatrix: onboardingPlatformMatrix,
+        homeManager: onboardingHomeManager,
+        moduleStyle: onboardingModuleStyle,
+        moduleNamespace: normalizedOnboardingModuleNamespace,
+      });
+
+      await invalidateOnboardingQueries();
+
+      await handleNewThread(projectRef, {
+        ...(resolveThreadDesigner(null) ? { designer: resolveThreadDesigner(null) } : {}),
+        scopedHostName: null,
+        interactionMode: "plan",
+        workflow: {
+          kind: "flake-creation",
+          hostScale: onboardingHostScale,
+          platformMatrix: onboardingPlatformMatrix,
+          homeManager: onboardingHomeManager,
+          moduleStyle: onboardingModuleStyle,
+          moduleNamespace: normalizedOnboardingModuleNamespace,
+          layoutPattern: result.layoutPattern,
+          status: "planning",
+        },
+      });
+    } catch (error) {
+      toastManager.add({
+        type: "error",
+        title: "Failed to bootstrap flake",
+        description: error instanceof Error ? error.message : "An error occurred.",
+      });
+    } finally {
+      setBootstrapFlakePending(false);
+    }
+  }, [
+    bootstrapFlakePending,
+    handleNewThread,
+    invalidateOnboardingQueries,
+    normalizedOnboardingModuleNamespace,
+    onboardingHomeManager,
+    onboardingHostScale,
+    onboardingModuleNamespaceError,
+    onboardingModuleStyle,
+    onboardingPlatformMatrix,
+    project,
+    projectRef,
+    resolveThreadDesigner,
+  ]);
+
   const handleGenerateHostDoc = useCallback(
     async (host: FlakeHost) => {
       if (
@@ -1700,6 +1841,66 @@ function FlakeDashboardRouteView() {
     resetDeployDialogOptions();
     setDeployDialogHostName(null);
   }, [deployingHostName, project, projectRef, queryClient, resetDeployDialogOptions]);
+
+  useEffect(() => {
+    if (!projectRef || !project || !bootstrapComplete || !pendingFlakeUiAction) {
+      if (!pendingFlakeUiAction) {
+        lastHandledPendingFlakeUiActionIdRef.current = null;
+      }
+      return;
+    }
+    if (lastHandledPendingFlakeUiActionIdRef.current === pendingFlakeUiAction.actionId) {
+      return;
+    }
+    lastHandledPendingFlakeUiActionIdRef.current = pendingFlakeUiAction.actionId;
+
+    if (pendingFlakeUiAction.kind === "open-host-deploy-dialog") {
+      if (
+        routeHostsByName.size > 0 &&
+        !routeHostsByName.has(pendingFlakeUiAction.hostName.toLowerCase())
+      ) {
+        toastManager.add({
+          type: "error",
+          title: `Unknown deploy host ${pendingFlakeUiAction.hostName}`,
+          description: "HAL could not resolve that host in the active flake project.",
+        });
+        clearPendingFlakeUiAction(
+          projectRef.environmentId,
+          projectRef.projectId,
+          pendingFlakeUiAction.actionId,
+        );
+        return;
+      }
+
+      clearPendingFlakeUiAction(
+        projectRef.environmentId,
+        projectRef.projectId,
+        pendingFlakeUiAction.actionId,
+      );
+      handleOpenDeployDialog(pendingFlakeUiAction.hostName);
+      return;
+    }
+
+    clearPendingFlakeUiAction(
+      projectRef.environmentId,
+      projectRef.projectId,
+      pendingFlakeUiAction.actionId,
+    );
+    void navigate({
+      to: "/$environmentId/flake/$projectId",
+      params: buildFlakeRouteParams(projectRef),
+      search: { view: "rollout" },
+    });
+  }, [
+    bootstrapComplete,
+    clearPendingFlakeUiAction,
+    handleOpenDeployDialog,
+    navigate,
+    pendingFlakeUiAction,
+    project,
+    projectRef,
+    routeHostsByName,
+  ]);
 
   const handleConfirmDeployment = useCallback(async () => {
     if (!projectRef || !project || !deployDialogHostName) {
@@ -2573,6 +2774,52 @@ function FlakeDashboardRouteView() {
 
   if (!projectRef || !bootstrapComplete || !project) {
     return null;
+  }
+
+  if (isFlakeOnboardingActive) {
+    return (
+      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
+          <header className="flex items-center gap-2 border-b border-border px-3 py-2 sm:px-5 sm:py-3">
+            <SidebarTrigger className="size-7 shrink-0 md:hidden" />
+            <span className="text-sm font-medium text-foreground md:text-muted-foreground/60">
+              Flake onboarding
+            </span>
+          </header>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8">
+              <FlakeOnboardingPanel
+                projectName={project.name}
+                projectCwd={project.cwd}
+                nixDesignerEnabled={nixDesignerEnabled}
+                onNixDesignerEnabledChange={(enabled) => {
+                  if (!projectUiKey) {
+                    return;
+                  }
+                  setProjectNixDesignerEnabled(projectUiKey, enabled);
+                }}
+                hostScale={onboardingHostScale}
+                onHostScaleChange={setOnboardingHostScale}
+                platformMatrix={onboardingPlatformMatrix}
+                onPlatformMatrixChange={setOnboardingPlatformMatrix}
+                homeManager={onboardingHomeManager}
+                onHomeManagerChange={setOnboardingHomeManager}
+                moduleStyle={onboardingModuleStyle}
+                onModuleStyleChange={setOnboardingModuleStyle}
+                moduleNamespace={onboardingModuleNamespace}
+                onModuleNamespaceChange={setOnboardingModuleNamespace}
+                moduleNamespaceError={onboardingModuleNamespaceError}
+                layoutPattern={onboardingLayoutPattern}
+                skeletonPaths={onboardingSkeletonPaths}
+                pending={bootstrapFlakePending}
+                onSubmit={() => void handleBootstrapFlake()}
+              />
+            </div>
+          </div>
+        </div>
+      </SidebarInset>
+    );
   }
 
   return (

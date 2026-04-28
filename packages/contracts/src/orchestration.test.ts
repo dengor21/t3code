@@ -598,6 +598,7 @@ it.effect("defaults thread designer scope to null for historical rows", () =>
       checkpoints: [],
       session: null,
     });
+    assert.strictEqual(parsed.remoteHostAccessPolicy, "hal-managed-only");
     assert.strictEqual(parsed.designer, null);
   }),
 );
@@ -629,7 +630,30 @@ it.effect("decodes thread shell designer scope when present", () =>
       hasPendingUserInput: false,
       hasActionableProposedPlan: false,
     });
+    assert.strictEqual(parsed.remoteHostAccessPolicy, "hal-managed-only");
     assert.deepStrictEqual(parsed.designer, { kind: "project" });
+  }),
+);
+
+it.effect("decodes thread.created payload with explicit remote host access policy", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadCreatedPayload({
+      threadId: "thread-1",
+      projectId: "project-1",
+      title: "Thread title",
+      modelSelection: {
+        provider: "codex",
+        model: "gpt-5.4",
+      },
+      runtimeMode: "full-access",
+      remoteHostAccessPolicy: "direct-allowed",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.remoteHostAccessPolicy, "direct-allowed");
   }),
 );
 

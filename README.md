@@ -14,7 +14,7 @@ If you find this and like any specific version, I suggest you save that for the 
 ## Why?
 
 I was thinking about a tool like this for some time now. When T3 Code was released, it turned out to be the perfect basis for this.
-I am building HAL to make my, and maybe your, life easier. 
+I am building HAL to make my, and maybe your, life easier.
 HAL supports you in planning, changing, debugging and documenting Nix hosts.
 
 ## Main features
@@ -30,15 +30,19 @@ HAL supports you in planning, changing, debugging and documenting Nix hosts.
 ## Screenshots
 
 ### Flake dashboard
+
 ![Flake dashboard](docs/flake-dashboard.png)
 
 ### Single host deployment overview
+
 ![Host deployment](docs/single-host-deployment.png)
 
 ### Fleet deployment
+
 ![Fleet deployment](docs/fleet-deployment.png)
 
 ### Host thread
+
 ![Host thread](docs/host-scoped-chat.png)
 
 ## Contributing

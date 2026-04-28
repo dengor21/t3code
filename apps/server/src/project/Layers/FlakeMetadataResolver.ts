@@ -229,12 +229,18 @@ function parseLiteralHalHostsBlock(contents: string): ParsedFlakeMetadataResult 
     };
   }
 
+  if (!sawEntry) {
+    return {
+      hosts: [],
+      diagnostics: [],
+      source: "parsed-flake",
+    };
+  }
+
   return {
     hosts: [],
     diagnostics: [
-      sawEntry
-        ? "The literal halHosts block was found, but no host entries had string name/target pairs."
-        : "No host entries were found inside the literal halHosts block.",
+      "The literal halHosts block was found, but no host entries had string name/target pairs.",
     ],
     source: "error",
   };
@@ -283,10 +289,26 @@ async function resolveNixEvalHosts(
       };
     }
 
-    const hosts = decodeHosts(JSON.parse(result.stdout) as unknown);
+    const decoded = JSON.parse(result.stdout) as unknown;
+    const hosts = decodeHosts(decoded);
     if (hosts.length > 0) {
       return {
         hosts,
+        diagnostics: [],
+        source: "nix-eval",
+      };
+    }
+
+    if (
+      attributePath === ".#halHosts" &&
+      ((Array.isArray(decoded) && decoded.length === 0) ||
+        (typeof decoded === "object" &&
+          decoded !== null &&
+          !Array.isArray(decoded) &&
+          Object.keys(decoded).length === 0))
+    ) {
+      return {
+        hosts: [],
         diagnostics: [],
         source: "nix-eval",
       };
@@ -336,6 +358,14 @@ async function resolveFlakeMetadataFromCacheKey(
     });
   }
 
+  if (halHostsEval.source === "nix-eval" && halHostsEval.diagnostics.length === 0) {
+    return toFlakeMetadata({
+      hosts: [],
+      source: "nix-eval",
+      flakePath,
+    });
+  }
+
   if (!(await fileExists(flakePath))) {
     return toFlakeMetadata({
       hosts: [],
@@ -366,6 +396,14 @@ async function resolveFlakeMetadataFromCacheKey(
     if (parsedHosts.hosts.length > 0) {
       return toFlakeMetadata({
         hosts: parsedHosts.hosts,
+        source: "parsed-flake",
+        flakePath,
+      });
+    }
+
+    if (parsedHosts.source === "parsed-flake" && parsedHosts.diagnostics.length === 0) {
+      return toFlakeMetadata({
+        hosts: [],
         source: "parsed-flake",
         flakePath,
       });

@@ -25,6 +25,7 @@ import {
   ProviderApprovalDecision,
   ThreadId,
   ProviderSendTurnInput,
+  UiActionRequestedPayload,
 } from "@t3tools/contracts";
 import { Effect, Exit, Fiber, FileSystem, Layer, Queue, Schema, Scope, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -44,6 +45,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
+import { applyProviderTurnPromptPreamble } from "../providerTurnPrompt.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -638,6 +640,20 @@ function mapToRuntimeEvents(
           ...(payload ? { decision: payload.decision } : {}),
           ...(event.payload !== undefined ? { resolution: event.payload } : {}),
         },
+      },
+    ];
+  }
+
+  if (event.method === "ui/action/requested") {
+    const payload = readPayload(UiActionRequestedPayload, event.payload);
+    if (!payload) {
+      return [];
+    }
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "ui.action.requested",
+        payload,
       },
     ];
   }
@@ -1585,31 +1601,41 @@ const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   });
 
   const sendTurn: CodexAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+    const preparedInput = applyProviderTurnPromptPreamble(input);
     const codexAttachments = yield* Effect.forEach(
-      input.attachments ?? [],
-      (attachment) => resolveAttachment(input, attachment),
+      preparedInput.attachments ?? [],
+      (attachment) => resolveAttachment(preparedInput, attachment),
       { concurrency: 1 },
     );
 
-    const session = yield* requireSession(input.threadId);
+    const session = yield* requireSession(preparedInput.threadId);
     return yield* session.runtime
       .sendTurn({
-        ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.modelSelection?.provider === "codex"
-          ? { model: input.modelSelection.model }
+        ...(preparedInput.input !== undefined ? { input: preparedInput.input } : {}),
+        ...(preparedInput.modelSelection?.provider === "codex"
+          ? { model: preparedInput.modelSelection.model }
           : {}),
-        ...(input.modelSelection?.provider === "codex" &&
-        input.modelSelection.options?.reasoningEffort !== undefined
-          ? { effort: input.modelSelection.options.reasoningEffort }
+        ...(preparedInput.modelSelection?.provider === "codex" &&
+        preparedInput.modelSelection.options?.reasoningEffort !== undefined
+          ? { effort: preparedInput.modelSelection.options.reasoningEffort }
           : {}),
-        ...(input.modelSelection?.provider === "codex" && input.modelSelection.options?.fastMode
+        ...(preparedInput.modelSelection?.provider === "codex" &&
+        preparedInput.modelSelection.options?.fastMode
           ? { serviceTier: "fast" }
           : {}),
-        ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
-        ...(input.providerContext !== undefined ? { providerContext: input.providerContext } : {}),
+        ...(preparedInput.interactionMode !== undefined
+          ? { interactionMode: preparedInput.interactionMode }
+          : {}),
+        ...(preparedInput.providerContext !== undefined
+          ? { providerContext: preparedInput.providerContext }
+          : {}),
         ...(codexAttachments.length > 0 ? { attachments: codexAttachments } : {}),
       })
-      .pipe(Effect.mapError((cause) => mapCodexRuntimeError(input.threadId, "turn/start", cause)));
+      .pipe(
+        Effect.mapError((cause) =>
+          mapCodexRuntimeError(preparedInput.threadId, "turn/start", cause),
+        ),
+      );
   });
 
   const requireSession = Effect.fn("requireSession")(function* (threadId: ThreadId) {

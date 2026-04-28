@@ -661,7 +661,7 @@ function OpenCommandPaletteDialog() {
       kind: "submenu",
       value: "action:add-project",
       searchTerms: ["add flake", "folder", "directory", "browse", "environment"],
-      title: "Add flake",
+      title: "Start flake onboarding",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <FolderPlusIcon className={ADDON_ICON_CLASS} />,
       groups: addProjectEnvironmentGroups,
@@ -671,7 +671,7 @@ function OpenCommandPaletteDialog() {
       kind: "action",
       value: "action:add-project",
       searchTerms: ["add flake", "folder", "directory", "browse"],
-      title: "Add flake",
+      title: "Start flake onboarding",
       icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
       keepOpen: true,
       run: async () => {
@@ -1039,7 +1039,8 @@ function OpenCommandPaletteDialog() {
               ? { emptyStateMessage: "Relative paths require an active flake." }
               : willCreateProjectPath
                 ? {
-                    emptyStateMessage: "Press Enter to create this folder and add it as a flake.",
+                    emptyStateMessage:
+                      "Press Enter to create this folder and start flake onboarding.",
                   }
                 : {})}
           />

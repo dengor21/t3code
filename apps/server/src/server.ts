@@ -67,6 +67,7 @@ import { EphemeralWorkflowSecretVaultLive } from "./project/Layers/EphemeralWork
 import { ProjectDashboardContentResolverLive } from "./project/Layers/ProjectDashboardContentResolver.ts";
 import { NixDesignerServiceLive } from "./project/Layers/NixDesignerService.ts";
 import { ProjectSecretsServiceLive } from "./project/Layers/ProjectSecretsService.ts";
+import { ProjectFlakeBootstrapServiceLive } from "./project/Layers/ProjectFlakeBootstrapService.ts";
 import { RepositoryIdentityResolverLive } from "./project/Layers/RepositoryIdentityResolver.ts";
 import { WorkspaceEntriesLive } from "./workspace/Layers/WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./workspace/Layers/WorkspaceFileSystem.ts";
@@ -322,6 +323,7 @@ const RuntimeDependenciesLive = ReactorLayerLive.pipe(
 
 const RuntimeProjectServicesLive = Layer.empty.pipe(
   Layer.provideMerge(NixDesignerServiceLive),
+  Layer.provideMerge(ProjectFlakeBootstrapServiceLive),
   Layer.provideMerge(HostDeploymentLayerLive),
   Layer.provideMerge(FleetDeploymentLayerLive),
   Layer.provideMerge(HostDriftServiceLive),
@@ -357,7 +359,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   websocketRpcRouteLayer,
 ).pipe(Layer.provide(browserApiCorsLayer));
 
-export const makeServerLayer = Layer.unwrap(
+const makeServerLayerInternal = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
 
@@ -411,5 +413,17 @@ export const makeServerLayer = Layer.unwrap(
   }),
 );
 
+export const makeServerLayer = makeServerLayerInternal as Layer.Layer<
+  Layer.Success<typeof makeServerLayerInternal>,
+  Layer.Error<typeof makeServerLayerInternal>,
+  ServerConfig
+>;
+
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer);
+const runServerInternal = Layer.launch(makeServerLayer);
+
+export const runServer = runServerInternal as Effect.Effect<
+  Effect.Success<typeof runServerInternal>,
+  Effect.Error<typeof runServerInternal>,
+  ServerConfig
+>;

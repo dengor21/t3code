@@ -1,6 +1,5 @@
 import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
-import { isAbsolute, relative as relativePath } from "node:path";
 
 import type {
   FlakeHost,
@@ -16,6 +15,7 @@ import { ProjectionSnapshotQuery } from "../../orchestration/Services/Projection
 import { runProcess } from "../../processRunner.ts";
 import { WorkspacePaths } from "../../workspace/Services/WorkspacePaths.ts";
 import { FlakeMetadataResolver } from "../Services/FlakeMetadataResolver.ts";
+import { decodeNixFlakeSourcePath, loadNixFlakeMetadataJson } from "../nixFlakeMetadata.ts";
 import {
   ProjectSecretsService,
   type ProjectSecretsServiceShape,
@@ -39,7 +39,7 @@ interface NixEvalOutcome {
 }
 
 interface SecretPathResolution {
-  readonly rawPath: string;
+  readonly evaluatedPath: string;
   readonly workspaceRelativePath: string | null;
   readonly absolutePath: string | null;
 }
@@ -155,6 +155,18 @@ function decodeSecretSourcePath(value: unknown): string | null {
   return trimToNull(value);
 }
 
+function formatOutsideWorkspaceSource(input: {
+  readonly secretName: string;
+  readonly evaluatedPath: string;
+  readonly workspacePath: string | null;
+}): string {
+  return [
+    `${input.secretName}: source path is outside the workspace`,
+    `evaluatedPath: ${input.evaluatedPath}`,
+    `workspacePath: ${input.workspacePath ?? "unresolved"}`,
+  ].join("\n");
+}
+
 function decodeSecretEntries<R>(input: {
   readonly secretsValue: unknown;
   readonly defaultSopsFile: string | null;
@@ -207,6 +219,13 @@ export const ProjectSecretsServiceLive = Layer.effect(
     ): Effect.Effect<CachedProjectSecretsSummary, never, never> =>
       Effect.gen(function* () {
         const flakeMetadata = yield* flakeMetadataResolver.resolve(workspaceRoot);
+        const flakeSourceRoot = yield* Effect.promise(async () => {
+          try {
+            return decodeNixFlakeSourcePath(await loadNixFlakeMetadataJson(workspaceRoot));
+          } catch {
+            return null;
+          }
+        });
         const hosts =
           flakeMetadata.hosts.length > 0
             ? flakeMetadata.hosts
@@ -227,40 +246,24 @@ export const ProjectSecretsServiceLive = Layer.effect(
               return null;
             }
 
-            let candidateRelativePath = trimmed;
-            if (isAbsolute(trimmed)) {
-              const relativeCandidate = relativePath(workspaceRoot, trimmed);
-              if (
-                relativeCandidate === "" ||
-                relativeCandidate.startsWith("..") ||
-                isAbsolute(relativeCandidate)
-              ) {
-                return {
-                  rawPath: trimmed,
-                  workspaceRelativePath: null,
-                  absolutePath: null,
-                } satisfies SecretPathResolution;
-              }
-              candidateRelativePath = relativeCandidate;
-            }
-
             const resolved = yield* workspacePaths
-              .resolveRelativePathWithinRoot({
+              .resolvePathWithinRoot({
                 workspaceRoot,
-                relativePath: candidateRelativePath,
+                path: trimmed,
+                ...(flakeSourceRoot === null ? {} : { additionalRoots: [flakeSourceRoot] }),
               })
               .pipe(Effect.catch(() => Effect.succeed(null)));
 
             if (resolved === null) {
               return {
-                rawPath: trimmed,
+                evaluatedPath: trimmed,
                 workspaceRelativePath: null,
                 absolutePath: null,
               } satisfies SecretPathResolution;
             }
 
             return {
-              rawPath: trimmed,
+              evaluatedPath: trimmed,
               workspaceRelativePath: resolved.relativePath,
               absolutePath: resolved.absolutePath,
             } satisfies SecretPathResolution;
@@ -450,9 +453,12 @@ export const ProjectSecretsServiceLive = Layer.effect(
                       secret.encryptedSourcePath !== null &&
                       secret.workspaceRelativeEncryptedSourcePath === null,
                   )
-                  .map(
-                    (secret) =>
-                      `${secret.name}: ${secret.encryptedSourcePath ?? "missing source path"}`,
+                  .map((secret) =>
+                    formatOutsideWorkspaceSource({
+                      secretName: secret.name,
+                      evaluatedPath: secret.encryptedSourcePath ?? "missing source path",
+                      workspacePath: secret.workspaceRelativeEncryptedSourcePath,
+                    }),
                   ),
               );
               const resolvedSourcePaths = uniqueSorted(
@@ -554,9 +560,7 @@ export const ProjectSecretsServiceLive = Layer.effect(
                           ...missingSourceDeclarations.map(
                             (name) => `${name}: missing sopsFile/defaultSopsFile declaration`,
                           ),
-                          ...outsideWorkspaceSources.map(
-                            (entry) => `${entry}: source path is outside the workspace`,
-                          ),
+                          ...outsideWorkspaceSources,
                           ...missingSourceFiles.map(
                             (sourcePath) => `${sourcePath}: file does not exist`,
                           ),

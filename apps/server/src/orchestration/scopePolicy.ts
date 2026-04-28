@@ -7,6 +7,19 @@ export interface HostFilePattern {
   readonly patterns: ReadonlyArray<string>;
 }
 
+export interface DirectRemoteCommandMatch {
+  readonly kind:
+    | "ssh"
+    | "scp"
+    | "sftp"
+    | "rsync"
+    | "mosh"
+    | "nixos-rebuild-target-host"
+    | "nixos-anywhere"
+    | "deploy-rs";
+  readonly match: string;
+}
+
 export type ScopeAction =
   | { readonly kind: "file-change"; readonly path: string }
   | { readonly kind: "command"; readonly command: string; readonly cwd?: string }
@@ -83,6 +96,33 @@ function commandMentionsOtherHost(command: string, scopedHostName: string): stri
     return null;
   }
   return normalizedMention === scopedHostName ? null : normalizedMention;
+}
+
+const DIRECT_REMOTE_COMMAND_PATTERNS: ReadonlyArray<{
+  readonly kind: DirectRemoteCommandMatch["kind"];
+  readonly pattern: RegExp;
+}> = [
+  { kind: "ssh", pattern: /(^|\s)ssh(\s|$)/i },
+  { kind: "scp", pattern: /(^|\s)scp(\s|$)/i },
+  { kind: "sftp", pattern: /(^|\s)sftp(\s|$)/i },
+  { kind: "rsync", pattern: /(^|\s)rsync(\s|$)/i },
+  { kind: "mosh", pattern: /(^|\s)mosh(\s|$)/i },
+  { kind: "nixos-rebuild-target-host", pattern: /nixos-rebuild\b[\s\S]*--target-host\b/i },
+  { kind: "nixos-anywhere", pattern: /(^|\s)nixos-anywhere(\s|$)/i },
+  { kind: "deploy-rs", pattern: /(^|\s)deploy(\s|$)|deploy-rs/i },
+];
+
+export function detectDirectRemoteCommands(
+  command: string,
+): ReadonlyArray<DirectRemoteCommandMatch> {
+  return DIRECT_REMOTE_COMMAND_PATTERNS.flatMap(({ kind, pattern }) => {
+    const match = command.match(pattern)?.[0]?.trim();
+    return match ? [{ kind, match }] : [];
+  });
+}
+
+export function isDirectRemoteCommand(command: string): boolean {
+  return detectDirectRemoteCommands(command).length > 0;
 }
 
 export function evaluateActionScope(input: {

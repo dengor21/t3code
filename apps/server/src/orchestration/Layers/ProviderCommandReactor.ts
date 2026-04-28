@@ -810,7 +810,7 @@ const make = Effect.gen(function* () {
               turnId: result.turnId,
               createdAt: event.payload.createdAt,
               receipt: sendTurnRequest.value.scopeReceipt,
-            })
+            }).pipe(Effect.asVoid)
           : Effect.void,
       ),
       Effect.catchCause(recoverTurnStartFailure),

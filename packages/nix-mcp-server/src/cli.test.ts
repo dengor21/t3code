@@ -130,6 +130,7 @@ async function createIndexFixture() {
   const indexDir = join(baseDir, "index");
   await mkdir(workspaceRoot, { recursive: true });
   await mkdir(indexDir, { recursive: true });
+  await mkdir(join(workspaceRoot, ".hal"), { recursive: true });
 
   const manifest = {
     ...defaultIndexManifest({
@@ -161,6 +162,42 @@ async function createIndexFixture() {
         description: "HTTP and reverse proxy server",
         license: "BSD-2-Clause",
       },
+    })}\n`,
+  );
+  await writeFile(
+    join(workspaceRoot, ".hal", "repo-style.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      projectTitle: "Fixture project",
+      workspaceRoot,
+      questionnaire: {
+        hostScale: "2-5",
+        platformMatrix: "mixed",
+        homeManager: true,
+        moduleStyle: "explicit-modules",
+        moduleNamespace: "shared",
+      },
+      layoutPattern: "shared-modules",
+      paths: {
+        flake: "flake.nix",
+        repoStyle: ".hal/repo-style.json",
+        hosts: "hosts",
+        modules: "modules/shared",
+        profiles: "profiles",
+        homes: "homes",
+      },
+      createdSkeletonPaths: [".hal", "hosts", "modules", "profiles", "homes"],
+      conventions: {
+        flakeFile: "flake.nix",
+        halHostsAttribute: "halHosts",
+        deployNodesAttribute: "deploy.nodes",
+        hostsDir: "hosts",
+        modulesDir: "modules/shared",
+        profilesDir: "profiles",
+        homesDir: "homes",
+      },
+      guidance: ["Preserve the chosen layout."],
     })}\n`,
   );
 
@@ -216,6 +253,7 @@ describe("nix MCP CLI", () => {
       protocolVersion: "2024-11-05",
       capabilities: {
         tools: {},
+        resources: {},
       },
       serverInfo: {
         name: NIX_MCP_SERVER_NAME,
@@ -233,6 +271,7 @@ describe("nix MCP CLI", () => {
       ),
     ).toEqual([
       "hal_current_scope",
+      "hal_repo_style",
       "search_options",
       "get_option",
       "search_packages",
@@ -260,7 +299,78 @@ describe("nix MCP CLI", () => {
       workspaceRoot,
       flakeAttr: "nixosConfigurations.nexus",
       hostDocPath: ".hal/docs/hosts/nexus.md",
+      repoStylePath: ".hal/repo-style.json",
       rule: "Use this host by default unless the user explicitly broadens scope.",
+    });
+  });
+
+  it("serves repo style through both the tool and MCP resources", async () => {
+    const { client } = await startCli();
+
+    await client.request("initialize");
+
+    const toolResponse = await client.request("tools/call", {
+      name: "hal_repo_style",
+      arguments: {},
+    });
+    expect(toolResponse.error).toBeUndefined();
+    expect(
+      (
+        toolResponse.result as {
+          structuredContent: {
+            exists: boolean;
+            path: string;
+            repoStyle: { layoutPattern: string } | null;
+          };
+        }
+      ).structuredContent,
+    ).toMatchObject({
+      exists: true,
+      path: ".hal/repo-style.json",
+      repoStyle: {
+        layoutPattern: "shared-modules",
+      },
+    });
+
+    const resourceList = await client.request("resources/list");
+    expect(resourceList.error).toBeUndefined();
+    expect(
+      (
+        resourceList.result as {
+          resources: ReadonlyArray<{ uri: string }>;
+        }
+      ).resources,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uri: "hal://repo-style",
+        }),
+      ]),
+    );
+
+    const resourceRead = await client.request("resources/read", {
+      uri: "hal://repo-style",
+    });
+    expect(resourceRead.error).toBeUndefined();
+    expect(
+      (
+        resourceRead.result as {
+          contents: ReadonlyArray<{ uri: string; text: string }>;
+        }
+      ).contents[0],
+    ).toMatchObject({
+      uri: "hal://repo-style",
+    });
+    expect(
+      JSON.parse(
+        (
+          resourceRead.result as {
+            contents: ReadonlyArray<{ uri: string; text: string }>;
+          }
+        ).contents[0]?.text ?? "{}",
+      ),
+    ).toMatchObject({
+      layoutPattern: "shared-modules",
     });
   });
 

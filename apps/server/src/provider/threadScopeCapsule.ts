@@ -17,6 +17,9 @@ export function buildThreadScopeCapsule(input: {
   if (!isBlank(providerContext.workspaceRoot)) {
     sections.push(`workspace_root: ${providerContext.workspaceRoot}`);
   }
+  if (!isBlank(providerContext.remoteHostAccessPolicy)) {
+    sections.push(`remote_host_access_policy: ${providerContext.remoteHostAccessPolicy}`);
+  }
 
   if (scopedHostName.length > 0) {
     sections.push("scope: host");
@@ -31,6 +34,9 @@ export function buildThreadScopeCapsule(input: {
     if (!isBlank(providerContext.flake?.hostFlakeAttr)) {
       sections.push(`host_flake_attr: ${providerContext.flake?.hostFlakeAttr}`);
     }
+    if (!isBlank(providerContext.flake?.documentationPaths?.repoStyle)) {
+      sections.push(`repo_style: ${providerContext.flake?.documentationPaths?.repoStyle}`);
+    }
     if (!isBlank(providerContext.flake?.documentationPaths?.hostDoc)) {
       sections.push(`host_doc: ${providerContext.flake?.documentationPaths?.hostDoc}`);
     }
@@ -42,6 +48,9 @@ export function buildThreadScopeCapsule(input: {
     sections.push("scope_status: unlocked");
     if (!isBlank(providerContext.flake?.flakePath)) {
       sections.push(`flake_entrypoint: ${providerContext.flake?.flakePath}`);
+    }
+    if (!isBlank(providerContext.flake?.documentationPaths?.repoStyle)) {
+      sections.push(`repo_style: ${providerContext.flake?.documentationPaths?.repoStyle}`);
     }
     sections.push(
       "cross_host_rule: Ask before choosing a host-specific write or deployment target.",

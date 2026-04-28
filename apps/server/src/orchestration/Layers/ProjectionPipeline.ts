@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   type ChatAttachment,
+  DEFAULT_REMOTE_HOST_ACCESS_POLICY,
   type OrchestrationEvent,
   ThreadId,
 } from "@t3tools/contracts";
@@ -587,6 +588,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             title: event.payload.title,
             modelSelection: event.payload.modelSelection,
             runtimeMode: event.payload.runtimeMode,
+            remoteHostAccessPolicy:
+              event.payload.remoteHostAccessPolicy ?? DEFAULT_REMOTE_HOST_ACCESS_POLICY,
             interactionMode: event.payload.interactionMode,
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
@@ -654,6 +657,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
             ...(event.payload.modelSelection !== undefined
               ? { modelSelection: event.payload.modelSelection }
+              : {}),
+            ...(event.payload.remoteHostAccessPolicy !== undefined
+              ? { remoteHostAccessPolicy: event.payload.remoteHostAccessPolicy }
               : {}),
             ...(event.payload.branch !== undefined ? { branch: event.payload.branch } : {}),
             ...(event.payload.worktreePath !== undefined

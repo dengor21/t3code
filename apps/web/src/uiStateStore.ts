@@ -1,5 +1,6 @@
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
+import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -34,7 +35,26 @@ export interface UiThreadState {
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
-export interface UiState extends UiProjectState, UiThreadState {}
+interface PendingFlakeUiActionBase {
+  environmentId: EnvironmentId;
+  projectId: ProjectId;
+  threadId: ThreadId;
+  actionId: string;
+}
+
+export type PendingFlakeUiAction =
+  | (PendingFlakeUiActionBase & {
+      kind: "open-host-deploy-dialog";
+      hostName: string;
+    })
+  | (PendingFlakeUiActionBase & {
+      kind: "open-fleet-rollout";
+    });
+
+export interface UiState extends UiProjectState, UiThreadState {
+  pendingFlakeUiActionByProjectKey: Record<string, PendingFlakeUiAction>;
+  handledFlakeUiActionIdsByThreadId: Record<string, string[]>;
+}
 
 export interface SyncProjectInput {
   /** Physical project key (env + cwd). Used for manual sort order. */
@@ -55,6 +75,8 @@ const initialState: UiState = {
   nixDesignerEnabledByProjectKey: {},
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
+  pendingFlakeUiActionByProjectKey: {},
+  handledFlakeUiActionIdsByThreadId: {},
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -493,17 +515,87 @@ export function markThreadUnread(
 export function clearThreadUi(state: UiState, threadId: string): UiState {
   const hasVisitedState = threadId in state.threadLastVisitedAtById;
   const hasChangedFilesState = threadId in state.threadChangedFilesExpandedById;
-  if (!hasVisitedState && !hasChangedFilesState) {
+  const hasHandledActionState = threadId in state.handledFlakeUiActionIdsByThreadId;
+  if (!hasVisitedState && !hasChangedFilesState && !hasHandledActionState) {
     return state;
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById };
   const nextThreadChangedFilesExpandedById = { ...state.threadChangedFilesExpandedById };
+  const nextHandledFlakeUiActionIdsByThreadId = { ...state.handledFlakeUiActionIdsByThreadId };
   delete nextThreadLastVisitedAtById[threadId];
   delete nextThreadChangedFilesExpandedById[threadId];
+  delete nextHandledFlakeUiActionIdsByThreadId[threadId];
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     threadChangedFilesExpandedById: nextThreadChangedFilesExpandedById,
+    handledFlakeUiActionIdsByThreadId: nextHandledFlakeUiActionIdsByThreadId,
+  };
+}
+
+function projectActionKey(environmentId: string, projectId: string): string {
+  return `${environmentId}:${projectId}`;
+}
+
+export function queuePendingFlakeUiAction(state: UiState, action: PendingFlakeUiAction): UiState {
+  const key = projectActionKey(action.environmentId, action.projectId);
+  const currentAction = state.pendingFlakeUiActionByProjectKey[key];
+  if (
+    currentAction &&
+    currentAction.actionId === action.actionId &&
+    currentAction.kind === action.kind &&
+    ("hostName" in currentAction ? currentAction.hostName : undefined) ===
+      ("hostName" in action ? action.hostName : undefined) &&
+    currentAction.threadId === action.threadId
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    pendingFlakeUiActionByProjectKey: {
+      ...state.pendingFlakeUiActionByProjectKey,
+      [key]: action,
+    },
+  };
+}
+
+export function clearPendingFlakeUiAction(
+  state: UiState,
+  environmentId: string,
+  projectId: string,
+  actionId?: string,
+): UiState {
+  const key = projectActionKey(environmentId, projectId);
+  const currentAction = state.pendingFlakeUiActionByProjectKey[key];
+  if (!currentAction) {
+    return state;
+  }
+  if (actionId !== undefined && currentAction.actionId !== actionId) {
+    return state;
+  }
+  const nextPendingFlakeUiActionByProjectKey = { ...state.pendingFlakeUiActionByProjectKey };
+  delete nextPendingFlakeUiActionByProjectKey[key];
+  return {
+    ...state,
+    pendingFlakeUiActionByProjectKey: nextPendingFlakeUiActionByProjectKey,
+  };
+}
+
+export function markFlakeUiActionHandled(
+  state: UiState,
+  threadId: string,
+  actionId: string,
+): UiState {
+  const handledActionIds = state.handledFlakeUiActionIdsByThreadId[threadId] ?? [];
+  if (handledActionIds.includes(actionId)) {
+    return state;
+  }
+  return {
+    ...state,
+    handledFlakeUiActionIdsByThreadId: {
+      ...state.handledFlakeUiActionIdsByThreadId,
+      [threadId]: [...handledActionIds, actionId].slice(-100),
+    },
   };
 }
 
@@ -659,6 +751,9 @@ interface UiStateStore extends UiState {
   markThreadVisited: (threadId: string, visitedAt?: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   clearThreadUi: (threadId: string) => void;
+  queuePendingFlakeUiAction: (action: PendingFlakeUiAction) => void;
+  clearPendingFlakeUiAction: (environmentId: string, projectId: string, actionId?: string) => void;
+  markFlakeUiActionHandled: (threadId: string, actionId: string) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
@@ -678,6 +773,11 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
     set((state) => markThreadUnread(state, threadId, latestTurnCompletedAt)),
   clearThreadUi: (threadId) => set((state) => clearThreadUi(state, threadId)),
+  queuePendingFlakeUiAction: (action) => set((state) => queuePendingFlakeUiAction(state, action)),
+  clearPendingFlakeUiAction: (environmentId, projectId, actionId) =>
+    set((state) => clearPendingFlakeUiAction(state, environmentId, projectId, actionId)),
+  markFlakeUiActionHandled: (threadId, actionId) =>
+    set((state) => markFlakeUiActionHandled(state, threadId, actionId)),
   setThreadChangedFilesExpanded: (threadId, turnId, expanded) =>
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),

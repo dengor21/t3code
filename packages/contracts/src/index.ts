@@ -14,6 +14,7 @@ export * from "./git.ts";
 export * from "./orchestration.ts";
 export * from "./nixDesigner.ts";
 export * from "./editor.ts";
+export * from "./flakeOnboarding.ts";
 export * from "./project.ts";
 export * from "./projectSecrets.ts";
 export * from "./hostDeployment.ts";

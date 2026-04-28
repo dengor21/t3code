@@ -5,6 +5,7 @@ import type {
   OrchestrationThread,
   ProviderTurnContext,
 } from "@t3tools/contracts";
+import { FLAKE_REPO_STYLE_RELATIVE_PATH } from "@t3tools/shared/flakeWorkflow";
 
 import {
   HOST_DOCS_DIR,
@@ -70,12 +71,28 @@ export function buildProviderTurnContext(input: {
               ? { status: input.thread.workflow.status }
               : {}),
           }
-        : undefined;
+        : input.thread.workflow?.kind === "flake-creation"
+          ? {
+              kind: "flake-creation" as const,
+              hostScale: input.thread.workflow.hostScale,
+              platformMatrix: input.thread.workflow.platformMatrix,
+              homeManager: input.thread.workflow.homeManager,
+              moduleStyle: input.thread.workflow.moduleStyle,
+              ...(input.thread.workflow.moduleNamespace !== undefined
+                ? { moduleNamespace: input.thread.workflow.moduleNamespace }
+                : {}),
+              layoutPattern: input.thread.workflow.layoutPattern,
+              ...(input.thread.workflow.status !== undefined
+                ? { status: input.thread.workflow.status }
+                : {}),
+            }
+          : undefined;
 
   if (!flakeProject) {
     return {
       projectKind: "generic",
       workspaceRoot: input.project.workspaceRoot,
+      remoteHostAccessPolicy: input.thread.remoteHostAccessPolicy,
       ...(scopedHostName !== null ? { scopedHostName } : {}),
       ...(workflow !== undefined ? { workflow } : {}),
     };
@@ -91,6 +108,9 @@ export function buildProviderTurnContext(input: {
       : {}),
     documentationPaths: {
       generalChanges: GENERAL_CHANGELOG_PATH,
+      ...(existsSync(path.join(input.project.workspaceRoot, FLAKE_REPO_STYLE_RELATIVE_PATH))
+        ? { repoStyle: FLAKE_REPO_STYLE_RELATIVE_PATH }
+        : {}),
       ...(scopedHostName !== null
         ? {
             hostDoc:
@@ -106,6 +126,7 @@ export function buildProviderTurnContext(input: {
   return {
     projectKind: "nix-flake",
     workspaceRoot: input.project.workspaceRoot,
+    remoteHostAccessPolicy: input.thread.remoteHostAccessPolicy,
     ...(scopedHostName !== null ? { scopedHostName } : {}),
     ...(workflow !== undefined ? { workflow } : {}),
     flake: flakeContext,

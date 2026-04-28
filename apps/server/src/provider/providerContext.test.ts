@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ProjectId,
@@ -31,6 +34,7 @@ const baseThread: OrchestrationThread = {
     model: "gpt-5.3-codex",
   },
   runtimeMode: "full-access",
+  remoteHostAccessPolicy: "hal-managed-only",
   interactionMode: "default",
   branch: null,
   worktreePath: null,
@@ -60,6 +64,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "generic",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
     });
   });
 
@@ -75,6 +80,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "generic",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
       scopedHostName: "nexus",
     });
   });
@@ -106,6 +112,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "nix-flake",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
       flake: {
         flakePath: "flake.nix",
         hostNames: ["nexus", "router"],
@@ -137,6 +144,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "nix-flake",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
       scopedHostName: "bc250",
       flake: {
         flakePath: "flake.nix",
@@ -179,6 +187,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "nix-flake",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
       scopedHostName: "nexus",
       flake: {
         flakePath: "flake.nix",
@@ -214,6 +223,7 @@ describe("buildProviderTurnContext", () => {
     ).toEqual({
       projectKind: "generic",
       workspaceRoot: "/workspace/flake",
+      remoteHostAccessPolicy: "hal-managed-only",
       scopedHostName: "nexus",
       workflow: {
         kind: "host-creation",
@@ -246,6 +256,7 @@ describe("buildProviderTurnContext", () => {
       }),
     ).toEqual({
       projectKind: "generic",
+      remoteHostAccessPolicy: "hal-managed-only",
       workspaceRoot: "/workspace/flake",
       scopedHostName: "nexus",
       workflow: {
@@ -254,6 +265,90 @@ describe("buildProviderTurnContext", () => {
         target: "root@nexus",
         hostType: "server",
         status: "planning",
+      },
+    });
+  });
+
+  it("includes flake-creation workflow metadata for workflow threads", () => {
+    expect(
+      buildProviderTurnContext({
+        project: {
+          ...baseProject,
+          flakeMetadata: {
+            host: null,
+            hosts: [],
+            source: "parsed-flake",
+            flakePath: "flake.nix",
+            diagnostics: [],
+          },
+        },
+        thread: {
+          ...baseThread,
+          workflow: {
+            kind: "flake-creation",
+            hostScale: "2-5",
+            platformMatrix: "mixed",
+            homeManager: true,
+            moduleStyle: "explicit-modules",
+            moduleNamespace: "shared",
+            layoutPattern: "shared-modules",
+            status: "planning",
+          },
+        },
+      }),
+    ).toEqual({
+      projectKind: "nix-flake",
+      remoteHostAccessPolicy: "hal-managed-only",
+      workspaceRoot: "/workspace/flake",
+      workflow: {
+        kind: "flake-creation",
+        hostScale: "2-5",
+        platformMatrix: "mixed",
+        homeManager: true,
+        moduleStyle: "explicit-modules",
+        moduleNamespace: "shared",
+        layoutPattern: "shared-modules",
+        status: "planning",
+      },
+      flake: {
+        flakePath: "flake.nix",
+        documentationPaths: {
+          generalChanges: ".hal/changes.md",
+        },
+      },
+    });
+  });
+
+  it("includes repo style documentation when the file exists", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "t3-provider-context-"));
+    await mkdir(join(workspaceRoot, ".hal"), { recursive: true });
+    await writeFile(join(workspaceRoot, ".hal", "repo-style.json"), "{}\n", "utf8");
+
+    expect(
+      buildProviderTurnContext({
+        project: {
+          ...baseProject,
+          workspaceRoot,
+          flakeMetadata: {
+            host: null,
+            hosts: [],
+            source: "parsed-flake",
+            flakePath: "flake.nix",
+            diagnostics: [],
+          },
+        },
+        thread: baseThread,
+      }),
+    ).toEqual({
+      projectKind: "nix-flake",
+      remoteHostAccessPolicy: "hal-managed-only",
+      workspaceRoot,
+      flake: {
+        flakePath: "flake.nix",
+        documentationPaths: {
+          generalChanges: ".hal/changes.md",
+          repoStyle: ".hal/repo-style.json",
+        },
       },
     });
   });

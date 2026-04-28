@@ -552,6 +552,7 @@ describe("incremental orchestration updates", () => {
           model: DEFAULT_MODEL_BY_PROVIDER.codex,
         },
         runtimeMode: DEFAULT_RUNTIME_MODE,
+        remoteHostAccessPolicy: "hal-managed-only",
         interactionMode: DEFAULT_INTERACTION_MODE,
         branch: null,
         worktreePath: null,
