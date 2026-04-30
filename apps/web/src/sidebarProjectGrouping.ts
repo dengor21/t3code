@@ -39,27 +39,56 @@ export function buildPhysicalToLogicalProjectKeyMap(input: {
   return mapping;
 }
 
-export function buildSidebarProjectSnapshots(input: {
+/*
+export function temp(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;
   primaryEnvironmentId: EnvironmentId | null;
-  resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
+  resolveEnvironmentLabel: (EnvironmentId: EnvironmentId) => string | null;
 }): SidebarProjectSnapshot[] {
+  const groupedMembers = groupProjectsByLogicalKey(input);
+  return buildSnapshotsFromGroups({
+    ...input,
+    groupedMembers,
+  });
+}
+*/
+
+function groupProjectsByLogicalKey(input: {
+  projects: ReadonlyArray<Project>;
+  settings: ProjectGroupingSettings;
+  resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
+}): Map<string, SidebarProjectGroupMember[]> {
   const groupedMembers = new Map<string, SidebarProjectGroupMember[]>();
+
   for (const project of input.projects) {
     const logicalKey = deriveLogicalProjectKeyFromSettings(project, input.settings);
+
     const member: SidebarProjectGroupMember = {
       ...project,
       physicalProjectKey: derivePhysicalProjectKey(project),
       environmentLabel: input.resolveEnvironmentLabel(project.environmentId),
     };
+
     const existing = groupedMembers.get(logicalKey);
+
     if (existing) {
       existing.push(member);
     } else {
       groupedMembers.set(logicalKey, [member]);
     }
   }
+
+  return groupedMembers;
+}
+
+export function buildSidebarProjectSnapshots(input: {
+  projects: ReadonlyArray<Project>;
+  settings: ProjectGroupingSettings;
+  primaryEnvironmentId: EnvironmentId | null;
+  resolveEnvironmentLabel: (environmentId: EnvironmentId) => string | null;
+}): SidebarProjectSnapshot[] {
+  const groupedMembers = groupProjectsByLogicalKey(input);
 
   const result: SidebarProjectSnapshot[] = [];
   const seen = new Set<string>();
