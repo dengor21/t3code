@@ -82,6 +82,48 @@ function groupProjectsByLogicalKey(input: {
   return groupedMembers;
 }
 
+function chooseRepresentativeProject(input: {
+  members: readonly SidebarProjectGroupMember[];
+  primaryEnvironmentId: EnvironmentId | null;
+}): SidebarProjectGroupMember | null {
+  return (
+    (input.primaryEnvironmentId
+      ? input.members.find((member) => member.environmentId === input.primaryEnvironmentId)
+      : null) ??
+    input.members[0] ??
+    null
+  );
+}
+
+function deriveEnvironmentPresence(input: {
+  members: readonly SidebarProjectGroupMember[];
+  primaryEnvrionmentId: EnvironmentId | null;
+}): EnvironmentPresence {
+  const hasLocal =
+    input.primaryEnvrionmentId !== null &&
+    input.members.some((member) => member.environmentId === input.primaryEnvrionmentId);
+
+  const hasRemote =
+    input.primaryEnvrionmentId !== null
+      ? input.members.some((member) => member.environmentId !== input.primaryEnvrionmentId)
+      : false;
+
+  return hasLocal && hasRemote ? "mixed" : hasRemote ? "remote-only" : "local-only";
+}
+
+function collectRemoteEnvironmentLabels(input: {
+  members: readonly SidebarProjectGroupMember[];
+  primaryEnvironmentId: EnvironmentId | null;
+}): string[] {
+  return input.members
+    .filter(
+      (member) =>
+        input.primaryEnvironmentId !== null && member.environmentId !== input.primaryEnvironmentId,
+    )
+    .flatMap((member) => (member.environmentLabel ? [member.environmentLabel] : []))
+    .filter((label, index, labels) => labels.indexOf(label) == index);
+}
+
 export function buildSidebarProjectSnapshots(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;
@@ -100,29 +142,19 @@ export function buildSidebarProjectSnapshots(input: {
     seen.add(logicalKey);
 
     const members = groupedMembers.get(logicalKey) ?? [];
-    const representative =
-      (input.primaryEnvironmentId
-        ? members.find((member) => member.environmentId === input.primaryEnvironmentId)
-        : null) ?? members[0];
+    const representative = chooseRepresentativeProject({
+      members,
+      primaryEnvironmentId: input.primaryEnvironmentId,
+    });
+
     if (!representative) {
       continue;
     }
 
-    const hasLocal =
-      input.primaryEnvironmentId !== null &&
-      members.some((member) => member.environmentId === input.primaryEnvironmentId);
-    const hasRemote =
-      input.primaryEnvironmentId !== null
-        ? members.some((member) => member.environmentId !== input.primaryEnvironmentId)
-        : false;
-    const remoteEnvironmentLabels = members
-      .filter(
-        (member) =>
-          input.primaryEnvironmentId !== null &&
-          member.environmentId !== input.primaryEnvironmentId,
-      )
-      .flatMap((member) => (member.environmentLabel ? [member.environmentLabel] : []))
-      .filter((label, index, labels) => labels.indexOf(label) === index);
+    const remoteEnvironmentLabels = collectRemoteEnvironmentLabels({
+      members,
+      primaryEnvironmentId: input.primaryEnvironmentId,
+    });
 
     result.push({
       ...representative,
@@ -135,8 +167,10 @@ export function buildSidebarProjectSnapshots(input: {
             })
           : representative.name,
       groupedProjectCount: members.length,
-      environmentPresence:
-        hasLocal && hasRemote ? "mixed" : hasRemote ? "remote-only" : "local-only",
+      environmentPresence: deriveEnvironmentPresence({
+        members,
+        primaryEnvrionmentId: input.primaryEnvironmentId,
+      }),
       memberProjects: members,
       memberProjectRefs: members.map((member) => scopeProjectRef(member.environmentId, member.id)),
       remoteEnvironmentLabels,
